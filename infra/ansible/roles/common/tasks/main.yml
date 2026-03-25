@@ -24,6 +24,16 @@
     shell: /bin/bash
     create_home: true
 
+- name: Ensure deploy has passwordless sudo
+  copy:
+    dest: /etc/sudoers.d/deploy
+    content: |
+      deploy ALL=(ALL) NOPASSWD:ALL
+    owner: root
+    group: root
+    mode: '0440'
+    validate: 'visudo -cf %s'
+
 - name: Allow configured TCP ports through UFW
   ufw:
     rule: allow
