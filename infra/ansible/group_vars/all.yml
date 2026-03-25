@@ -13,4 +13,4 @@ app_blue_port: 18081
 app_green_port: 18082
 app_internal_port: 8080
 app_image_default: ghcr.io/example/myapp:latest
-app_drain_seconds: 20
+app_drain_seconds: 32

@@ -15,7 +15,7 @@ Primary objectives:
 
 ## Recommended topology
 
-### Host A: Application host
+### app-20: Application host
 Responsibilities:
 - reverse proxy (Nginx)
 - blue/green application containers
@@ -23,7 +23,7 @@ Responsibilities:
 - environment configuration files
 - operational metadata (active slot, active image)
 
-### Host B: Database host
+### db-30: Database host
 Responsibilities:
 - PostgreSQL runtime
 - backup jobs
@@ -72,6 +72,6 @@ Responsibilities:
 
 ## Failure isolation
 
-- Application release problems can be rolled back without touching the database host.
+- Application release problems on `app-20` can be rolled back without touching `db-30`.
 - Database issues do not require redeploying the application runtime.
 - Provider migration is reduced to reprovisioning hosts + restoring data + flipping DNS.

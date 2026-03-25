@@ -13,15 +13,15 @@
 - blue/green slot model
 - liveness vs readiness
 - graceful shutdown flow
-- separation of app host and DB host
+- separation of `app-20` and `db-30`
 - how Ansible owns host setup
 - how deployment metadata is stored
 
 ### Required access
 - source repository
 - container registry
-- app host SSH
-- DB host SSH
+- `app-20` SSH
+- `db-30` SSH
 - DNS provider access
 - backup destination access
 

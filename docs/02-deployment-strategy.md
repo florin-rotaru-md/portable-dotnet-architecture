@@ -10,7 +10,7 @@
 
 ## Slot model
 
-Two application slots exist on the app host:
+Two application slots exist on `app-20`:
 - `blue`
 - `green`
 

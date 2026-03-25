@@ -2,7 +2,7 @@
 
 ## Standard operations
 
-### Bootstrap a new app host
+### Bootstrap or replace app-20
 1. Provision fresh Linux VPS.
 2. Install SSH key access.
 3. Update `infra/ansible/inventory/production.ini`.
@@ -10,13 +10,13 @@
 5. Copy secrets and environment files.
 6. Validate Nginx and Docker.
 
-### Bootstrap a new DB host
+### Bootstrap or replace db-30
 1. Provision fresh Linux VPS.
 2. Update inventory.
 3. Run DB bootstrap playbook.
 4. Configure backup destination.
 5. Restore database if needed.
-6. Validate firewall and connectivity from app host.
+6. Validate firewall and connectivity from `app-20`.
 
 ### Deploy a release
 1. Ensure image exists in registry.

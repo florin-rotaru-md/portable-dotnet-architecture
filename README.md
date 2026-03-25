@@ -24,8 +24,8 @@ It is designed to support:
 
 ## High-level topology
 
-- **App host**: Nginx + two application slots (`blue` and `green`) + deployment scripts
-- **DB host**: PostgreSQL + backup jobs + restore scripts
+- **app-20**: Nginx + two application slots (`blue` and `green`) + deployment scripts
+- **db-30**: PostgreSQL + backup jobs + restore scripts
 - **External services**: DNS provider independent from VPS, external backup storage, container registry
 
 ## Core concepts
@@ -63,7 +63,7 @@ This allows traffic to stop flowing to the old instance before container termina
 
 Use this package as a baseline and adapt:
 
-- hostnames
+- hostnames such as `ansible-control`, `app-20`, and `db-30`
 - image names
 - secrets
 - environment variables
