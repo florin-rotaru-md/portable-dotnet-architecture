@@ -309,6 +309,39 @@ Datacenter -> proxmox -> 1030 -> Cloud-init
     IPv4/CIDR   : 192.168.0.30/24
     Gateway     : 192.168.0.1
 
+### Resize disk
+Open Shell
+``` bash
+qm resize 1030 scsi0 +608G
+```
+
+Open VM ssh
+``` bash
+sudo -i
+apt update && apt install cloud-guest-utils
+lsblk
+```
+
+``` bash
+NAME                      MAJ:MIN RM  SIZE RO TYPE MOUNTPOINTS
+sda                         8:0    0  640G  0 disk
+├─sda1                      8:1    0    1M  0 part
+├─sda2                      8:2    0    2G  0 part /boot
+└─sda3                      8:3    0   30G  0 part
+  └─ubuntu--vg-ubuntu--lv 252:0    0   15G  0 lvm  /
+sr0                        11:0    1    4M  0 rom
+```
+
+look for lvm type ex
+└─sda3                      8:3    0   30G  0 part
+  └─ubuntu--vg-ubuntu--lv 252:0    0   15G  0 lvm  /
+
+``` bash
+growpart /dev/sda 3
+pvresize /dev/sda3
+lvextend -l +100%FREE /dev/mapper/ubuntu--vg-ubuntu--lv
+```
+
 ## 11. Generate SSH key on ansible-control
 On ansible-control:
 ``` bash
