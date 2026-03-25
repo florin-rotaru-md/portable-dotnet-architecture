@@ -7,6 +7,6 @@ ufw_allowed_tcp_ports:
 postgres_host: "192.168.0.30"
 postgres_version: "18"
 postgres_bind_cidr: "192.168.0.20/32"
-postgres_user: appuser
+postgres_user: postgres
 postgres_password: "{{ vault_postgres_password }}"
 backup_retention_days: 7

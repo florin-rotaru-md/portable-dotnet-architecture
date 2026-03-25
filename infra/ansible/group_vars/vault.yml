@@ -1,2 +1,2 @@
 ---
-vault_postgres_password: replace-me
+vault_postgres_password: postgres
