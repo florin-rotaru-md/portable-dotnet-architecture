@@ -12,7 +12,7 @@
 - add PostgreSQL replica if business requirements justify it
 
 ## Phase 3
-- add second application host for higher availability
+- add second application runtime host for higher availability
 - add DNS or load-balancer failover
 - improve deployment automation and release tracking
 

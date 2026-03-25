@@ -69,7 +69,7 @@ ansible all -m ping -i inventory.ini
 
 ---
 
-## STEP 7 – Install runtime dependencies (app-20)
+## STEP 7 – Install runtime dependencies (app-20 and db-30)
 
 sudo apt install -y docker.io docker-compose-plugin
 

@@ -17,4 +17,4 @@ Use blue/green deployment with two local slots on `app-20` and Nginx upstream sw
 
 ### Negative
 - duplicate runtime footprint on `app-20` during deployment
-- more deployment logic than a single-container replace flow
+- more deployment logic than a single-instance replace flow

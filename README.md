@@ -48,7 +48,7 @@ During shutdown:
 - `live` remains healthy briefly
 - `ready` becomes unhealthy immediately
 
-This allows traffic to stop flowing to the old instance before container termination.
+This allows traffic to stop flowing to the old instance before runtime termination.
 
 ## Package layout
 
