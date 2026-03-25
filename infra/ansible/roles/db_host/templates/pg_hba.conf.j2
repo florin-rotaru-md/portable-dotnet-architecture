@@ -1,0 +1,3 @@
+# TYPE  DATABASE  USER                  ADDRESS                   METHOD
+local   all       all                                              peer
+host    all       {{ postgres_user }}   {{ postgres_bind_cidr }}   scram-sha-256

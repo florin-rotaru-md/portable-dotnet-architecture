@@ -18,7 +18,7 @@
 - name: Install backup cron job
   cron:
     name: postgres logical backup
-    user: deploy
+    user: postgres
     minute: "15"
     hour: "2"
     job: "/opt/postgres/backup-db.sh >> /opt/postgres/backup.log 2>&1"

@@ -67,12 +67,23 @@ db-30 ansible_host=192.168.0.30 ansible_user=deploy
 
 ------------------------------------------------------------------------
 
-## 5. Docker Setup (app-20 and db-30)
+## 5. Docker Setup (app-20 only)
 
 Install Docker:
 
 ``` bash
 sudo apt install -y docker.io docker-compose-plugin
+```
+
+## 5b. PostgreSQL Setup (db-30 only)
+
+PostgreSQL runs natively on db-30 (no Docker). Ansible installs it via the
+PGDG apt repository and configures `pg_hba.conf` and `listen_addresses`.
+Post-bootstrap, create the application user and database manually:
+
+``` bash
+sudo -u postgres psql -c "CREATE USER appuser WITH PASSWORD 'your-password';"
+sudo -u postgres psql -c "CREATE DATABASE appdb OWNER appuser;"
 ```
 
 ------------------------------------------------------------------------

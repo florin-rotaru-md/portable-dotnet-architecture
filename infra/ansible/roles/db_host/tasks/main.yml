@@ -1,25 +1,65 @@
 ---
-- name: Ensure postgres directories exist
-  file:
-    path: "{{ item }}"
-    state: directory
-    owner: deploy
-    group: deploy
-    mode: '0755'
-  loop:
-    - /opt/postgres
-    - /opt/postgres/data
-    - /opt/postgres/backups
-
-- name: Copy PostgreSQL runtime definition
-  template:
-    src: postgres-compose.yml.j2
-    dest: /opt/postgres/compose.yml
-    owner: deploy
-    group: deploy
+- name: Add PostgreSQL apt signing key
+  get_url:
+    url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+    dest: /usr/share/keyrings/postgresql.asc
     mode: '0644'
 
-- name: Start PostgreSQL runtime
-  community.docker.docker_compose_v2:
-    project_src: /opt/postgres
+- name: Add PostgreSQL apt repository
+  apt_repository:
+    repo: "deb [signed-by=/usr/share/keyrings/postgresql.asc] http://apt.postgresql.org/pub/repos/apt {{ ansible_distribution_release }}-pgdg main"
     state: present
+    filename: pgdg
+
+- name: Install PostgreSQL
+  apt:
+    name: "postgresql-{{ postgres_version }}"
+    state: present
+    update_cache: true
+
+- name: Ensure backup directory exists
+  file:
+    path: /opt/postgres/backups
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: '0750'
+
+- name: Configure pg_hba.conf
+  template:
+    src: pg_hba.conf.j2
+    dest: /etc/postgresql/{{ postgres_version }}/main/pg_hba.conf
+    owner: postgres
+    group: postgres
+    mode: '0640'
+
+- name: Set listen_addresses in postgresql.conf
+  lineinfile:
+    path: /etc/postgresql/{{ postgres_version }}/main/postgresql.conf
+    regexp: '^#?listen_addresses\s*='
+    line: "listen_addresses = '*'"
+
+- name: Allow PostgreSQL port through UFW from app host
+  ufw:
+    rule: allow
+    port: "5432"
+    proto: tcp
+    src: "{{ postgres_bind_cidr }}"
+
+- name: Enable and restart PostgreSQL service
+  service:
+    name: postgresql
+    enabled: true
+    state: restarted
+
+- name: Check if application database user exists
+  become_user: postgres
+  command: psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='{{ postgres_user }}'"
+  register: pg_user_check
+  changed_when: false
+
+- name: Create application database user
+  become_user: postgres
+  command: psql -c "CREATE USER {{ postgres_user }} WITH PASSWORD '{{ postgres_password }}' CREATEDB"
+  when: pg_user_check.stdout != '1'
+  no_log: true

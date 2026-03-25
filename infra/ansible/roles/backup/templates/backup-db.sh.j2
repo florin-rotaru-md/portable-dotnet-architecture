@@ -2,9 +2,10 @@
 set -euo pipefail
 
 TS=$(date +%Y%m%d-%H%M%S)
-OUT="/opt/postgres/backups/appdb-${TS}.dump"
 
-docker exec postgres pg_dump -U appuser -d appdb -Fc -f "/backups/appdb-${TS}.dump"
+{% for app in applications %}
+pg_dump -d {{ app.db }} -Fc -f "/opt/postgres/backups/{{ app.db }}-${TS}.dump"
+echo "Created /opt/postgres/backups/{{ app.db }}-${TS}.dump"
+{% endfor %}
+
 find /opt/postgres/backups -type f -mtime +{{ backup_retention_days }} -delete
-
-echo "Created ${OUT}"

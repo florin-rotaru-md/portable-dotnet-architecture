@@ -419,10 +419,30 @@ ufw_allowed_tcp_ports:
   - 22
   - 80
   - 443
+postgres_host: "192.168.0.30"
 postgres_version: "18"
 postgres_bind_cidr: "192.168.0.20/32"
+postgres_user: appuser
+postgres_password: "{{ vault_postgres_password }}"
 backup_retention_days: 7
 ```
+
+Edit `portable-dotnet-architecture/infra/ansible/group_vars/vault.yml` and set the database password:
+``` yml
+vault_postgres_password: your-strong-password
+```
+
+Then encrypt the file with Ansible Vault:
+``` bash
+ansible-vault encrypt group_vars/vault.yml
+```
+
+From this point on, run playbooks with:
+``` bash
+ansible-playbook playbooks/bootstrap-db.yml --ask-vault-pass
+```
+
+Or store the vault password in a file and reference it via `--vault-password-file`.
 
 Edit `portable-dotnet-architecture/infra/ansible/group_vars/all.yml` and define the applications to run on `app-20`:
 ``` yml
@@ -431,6 +451,7 @@ backup_root: /opt/postgres/backups
 app_network_name: app_net
 applications:
   - name: myapp
+    db: myapp_db
     server_name: myapp.example.com
     blue_port: 18081
     green_port: 18082
@@ -438,6 +459,7 @@ applications:
     image_default: ghcr.io/example/myapp:latest
     drain_seconds: 32
   - name: anotherapp
+    db: anotherapp_db
     server_name: anotherapp.example.com
     blue_port: 18091
     green_port: 18092
@@ -454,10 +476,8 @@ These files still contain template values and should be adjusted before producti
   - `applications[*].blue_port`
   - `applications[*].green_port`
   - `applications[*].image_default`
-- `portable-dotnet-architecture/infra/ansible/roles/app_host/tasks/main.yml`
-  - `ConnectionStrings__Main=Host=192.168.0.30;...`
-- `portable-dotnet-architecture/infra/ansible/roles/db_host/templates/postgres-compose.yml.j2`
-  - `POSTGRES_PASSWORD=replace-me`
+- `portable-dotnet-architecture/infra/ansible/group_vars/vault.yml`
+  - `vault_postgres_password`
 
 ## 16. Validate Ansible connectivity
 From `portable-dotnet-architecture/infra/ansible`:
@@ -480,8 +500,8 @@ ansible-playbook playbooks/bootstrap-db.yml
 Verify:
 ``` bash
 ssh deploy@192.168.0.30
-docker ps
-sudo crontab -l -u deploy
+systemctl status postgresql --no-pager
+sudo crontab -l -u postgres
 exit
 ```
 
@@ -515,32 +535,17 @@ On `app-20` Ansible will create one runtime root per application. Example for `m
 On `db-30` Ansible will create:
 ``` text
 /opt/postgres/
-  compose.yml
-  data/
   backups/
   backup-db.sh
   backup-files.sh
 ```
 
-## 20. First post-bootstrap adjustments
-After bootstrap, log into the hosts and replace placeholders:
+PostgreSQL data lives at `/var/lib/postgresql/<version>/main` (standard Debian/Ubuntu location).
 
-On `db-30`:
-``` bash
-nano /opt/postgres/compose.yml
-docker compose -f /opt/postgres/compose.yml up -d
-```
+## 20. Verify post-bootstrap connectivity
+The playbooks fully configure both hosts, including the database user. No manual steps are required.
 
-This applies the PostgreSQL runtime configuration on `db-30`.
-
-On `app-20`, update the target application runtime. Example for `myapp`:
-``` bash
-nano /opt/apps/myapp/env/common.env
-```
-
-Repeat the same pattern for every application configured in `applications`.
-
-Then test network reachability from app to db:
+Test network reachability from app to db:
 ``` bash
 ssh deploy@192.168.0.20
 nc -zv 192.168.0.30 5432
