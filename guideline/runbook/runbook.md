@@ -77,11 +77,12 @@ sudo apt install -y docker.io docker-compose-plugin
 
 ## STEP 8 – Setup App Directories
 
-/opt/myapp/
-  docker/
-  nginx/
-  scripts/
-  env/
+/opt/apps/<app-name>/
+   docker/
+   nginx/
+   scripts/
+   env/
+   runtime/
 
 ---
 
@@ -89,20 +90,20 @@ sudo apt install -y docker.io docker-compose-plugin
 
 docker network create app_net
 
-docker compose up -d
+/opt/apps/<app-name>/scripts/deploy.sh ghcr.io/<owner>/<app-name>:latest
 
 Test:
-curl localhost/.well-known/live
-curl localhost/.well-known/ready
+curl -H 'Host: <app-hostname>' http://127.0.0.1/.well-known/live
+curl -H 'Host: <app-hostname>' http://127.0.0.1/.well-known/ready
 
 ---
 
 ## STEP 10 – Blue/Green Deploy
 
-1. Deploy new version
+1. Deploy new version for the target application
 2. Wait ready
-3. Switch nginx
-4. Stop old
+3. Switch the application upstream in nginx
+4. Stop the old slot for that application
 
 ---
 

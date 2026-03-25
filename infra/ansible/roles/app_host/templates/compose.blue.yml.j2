@@ -1,0 +1,4 @@
+services:
+  {{ app.name }}-blue:
+    ports:
+      - "127.0.0.1:{{ app.blue_port }}:{{ app.internal_port }}"

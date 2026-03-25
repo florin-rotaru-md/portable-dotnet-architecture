@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPTS_ROOT="{{ apps_root }}/{{ app.name }}/scripts"
+RUNTIME_ROOT="{{ apps_root }}/{{ app.name }}/runtime"
+CURRENT_SLOT="$($SCRIPTS_ROOT/current-slot.sh)"
+
+if [ "$CURRENT_SLOT" = "blue" ]; then
+  PREVIOUS_SLOT="green"
+else
+  PREVIOUS_SLOT="blue"
+fi
+
+"$SCRIPTS_ROOT/switch-nginx.sh" "$PREVIOUS_SLOT"
+printf '%s | rollback | slot=%s\n' "$(date -Iseconds)" "$PREVIOUS_SLOT" >> "$RUNTIME_ROOT/deploy-history.log"
+
+echo "Rollback switched traffic to ${PREVIOUS_SLOT}"

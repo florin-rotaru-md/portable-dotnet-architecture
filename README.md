@@ -24,21 +24,21 @@ It is designed to support:
 
 ## High-level topology
 
-- **app-20**: Nginx + two application slots (`blue` and `green`) + deployment scripts
+- **app-20**: Nginx + multiple application runtimes, each with its own `blue` and `green` slots + deployment scripts
 - **db-30**: PostgreSQL runtime + backup jobs + restore scripts
 - **External services**: DNS provider independent from VPS, external backup storage, container registry
 
 ## Core concepts
 
 ### Blue/Green deployment
-Only one application slot is active at a time.
+Each application on `app-20` has its own blue/green pair.
 
-1. Detect active slot.
-2. Start the inactive slot with the new image.
+1. Detect the active slot for the target application.
+2. Start the inactive slot for that application with the new image.
 3. Wait until `/.well-known/ready` returns success.
-4. Switch Nginx upstream to the new slot.
+4. Switch the Nginx upstream for that application to the new slot.
 5. Allow a drain period for in-flight requests.
-6. Stop the old slot.
+6. Stop the old slot for that application.
 
 ### Health model
 - `/.well-known/live`: process liveness only
@@ -64,6 +64,7 @@ This allows traffic to stop flowing to the old instance before runtime terminati
 Use this package as a baseline and adapt:
 
 - hostnames such as `ansible-control`, `app-20`, and `db-30`
+- application names, unique server names, and port pairs in `applications`
 - image names
 - secrets
 - environment variables

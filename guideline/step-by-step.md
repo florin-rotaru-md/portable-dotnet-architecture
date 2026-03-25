@@ -391,13 +391,36 @@ postgres_bind_cidr: "192.168.0.20/32"
 backup_retention_days: 7
 ```
 
+Edit `portable-dotnet-architecture/infra/ansible/group_vars/all.yml` and define the applications to run on `app-20`:
+``` yml
+apps_root: /opt/apps
+backup_root: /opt/postgres/backups
+app_network_name: app_net
+applications:
+  - name: myapp
+    server_name: myapp.example.com
+    blue_port: 18081
+    green_port: 18082
+    internal_port: 8080
+    image_default: ghcr.io/example/myapp:latest
+    drain_seconds: 32
+  - name: anotherapp
+    server_name: anotherapp.example.com
+    blue_port: 18091
+    green_port: 18092
+    internal_port: 8080
+    image_default: ghcr.io/example/anotherapp:latest
+    drain_seconds: 32
+```
+
 ## 15. Review placeholders before first bootstrap
 These files still contain template values and should be adjusted before production use:
 
 - `portable-dotnet-architecture/infra/ansible/group_vars/all.yml`
-  - `project_name`
-  - `nginx_server_name`
-  - `app_image_default`
+  - `applications[*].server_name`
+  - `applications[*].blue_port`
+  - `applications[*].green_port`
+  - `applications[*].image_default`
 - `portable-dotnet-architecture/infra/ansible/roles/app_host/tasks/main.yml`
   - `ConnectionStrings__Main=Host=192.168.0.30;...`
 - `portable-dotnet-architecture/infra/ansible/roles/db_host/templates/postgres-compose.yml.j2`
@@ -439,19 +462,21 @@ Verify:
 ssh deploy@192.168.0.20
 docker network ls | grep app_net
 systemctl status nginx --no-pager
-ls -lah /opt/myapp
+ls -lah /opt/apps
+ls -lah /opt/apps/myapp
 exit
 ```
 
 ## 19. Files created by bootstrap
-On `app-20` Ansible will create:
+On `app-20` Ansible will create one runtime root per application. Example for `myapp`:
 ``` text
-/opt/myapp/
-  docker/
-  env/
-  nginx/
-  runtime/
-  scripts/
+/opt/apps/
+  myapp/
+    docker/
+    env/
+    nginx/
+    runtime/
+    scripts/
 ```
 
 On `db-30` Ansible will create:
@@ -475,10 +500,12 @@ docker compose -f /opt/postgres/compose.yml up -d
 
 This applies the PostgreSQL runtime configuration on `db-30`.
 
-On `app-20`:
+On `app-20`, update the target application runtime. Example for `myapp`:
 ``` bash
-nano /opt/myapp/env/common.env
+nano /opt/apps/myapp/env/common.env
 ```
+
+Repeat the same pattern for every application configured in `applications`.
 
 Then test network reachability from app to db:
 ``` bash

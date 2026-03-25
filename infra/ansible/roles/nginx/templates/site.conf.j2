@@ -1,9 +1,9 @@
 server {
     listen 80;
-    server_name {{ nginx_server_name }};
+    server_name {{ app.server_name }};
 
     location / {
-        proxy_pass http://myapp_active;
+        proxy_pass http://{{ app.name }}_active;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -15,10 +15,10 @@ server {
     }
 
     location = /.well-known/live {
-        proxy_pass http://myapp_active;
+        proxy_pass http://{{ app.name }}_active;
     }
 
     location = /.well-known/ready {
-        proxy_pass http://myapp_active;
+        proxy_pass http://{{ app.name }}_active;
     }
 }

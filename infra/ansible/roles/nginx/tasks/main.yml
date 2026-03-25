@@ -5,37 +5,16 @@
     state: present
     update_cache: true
 
-- name: Ensure nginx runtime directory exists
+- name: Remove legacy shared upstream config
   file:
-    path: "{{ nginx_runtime_root }}"
-    state: directory
-    mode: '0755'
+    path: /etc/nginx/conf.d/upstream-active.conf
+    state: absent
 
-- name: Render upstream blue config
-  template:
-    src: upstream-blue.conf.j2
-    dest: "{{ nginx_runtime_root }}/upstream-blue.conf"
-    mode: '0644'
-
-- name: Render upstream green config
-  template:
-    src: upstream-green.conf.j2
-    dest: "{{ nginx_runtime_root }}/upstream-green.conf"
-    mode: '0644'
-
-- name: Render active upstream config initially to blue
-  template:
-    src: upstream-blue.conf.j2
-    dest: /etc/nginx/conf.d/upstream-active.conf
-    mode: '0644'
-  args:
-    creates: /etc/nginx/conf.d/upstream-active.conf
-
-- name: Render main site config
-  template:
-    src: site.conf.j2
-    dest: /etc/nginx/conf.d/myapp.conf
-    mode: '0644'
+- name: Render per-application nginx configs
+  include_tasks: app.yml
+  loop: "{{ applications }}"
+  loop_control:
+    loop_var: app
 
 - name: Validate nginx config
   command: nginx -t

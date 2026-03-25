@@ -10,12 +10,13 @@
 - `docs/04-backup-and-restore.md`
 
 ### Understand these concepts
-- blue/green slot model
+- per-application blue/green slot model
 - liveness vs readiness
 - graceful shutdown flow
 - separation of `app-20` and `db-30`
 - how Ansible owns host setup
 - how deployment metadata is stored
+- why each application needs a unique `server_name`, `blue_port`, and `green_port`
 
 ### Required access
 - source repository
@@ -26,7 +27,7 @@
 - backup destination access
 
 ### First exercises
-- inspect the active slot file
+- inspect an active slot file under `/opt/apps/<app-name>/runtime/active-slot`
 - run a dry deployment in a non-production environment
 - perform a restore test in a disposable environment
 - trace the full request path from Nginx to the app

@@ -18,10 +18,11 @@ Primary objectives:
 ### app-20: Application host
 Responsibilities:
 - reverse proxy (Nginx)
-- blue/green application containers
-- deployment scripts
-- environment configuration files
-- operational metadata (active slot, active image)
+- multiple application runtimes
+- blue/green slots for each application runtime
+- deployment scripts for each application
+- environment configuration files per application
+- operational metadata per application (`active-slot`, `active-image`, deployment history)
 
 ### db-30: Database host
 Responsibilities:
@@ -62,13 +63,13 @@ Responsibilities:
 
 ## Traffic flow
 
-1. Client requests reach Nginx.
-2. Nginx forwards requests to the currently active slot (`blue` or `green`).
-3. A new release is launched on the inactive slot.
-4. After readiness succeeds, Nginx is reloaded to point to the new slot.
-5. Old slot stops receiving new traffic.
-6. Old slot drains in-flight requests.
-7. Old slot is stopped after the drain window.
+1. Client requests reach Nginx using the hostname of the target application.
+2. Nginx forwards requests to the currently active slot (`blue` or `green`) for that application.
+3. A new release is launched on the inactive slot for that application.
+4. After readiness succeeds, Nginx is reloaded to point that application to the new slot.
+5. The old slot stops receiving new traffic.
+6. The old slot drains in-flight requests.
+7. The old slot is stopped after the drain window.
 
 ## Failure isolation
 

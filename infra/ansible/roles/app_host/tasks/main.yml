@@ -1,116 +1,14 @@
 ---
-- name: Ensure application directories exist
+- name: Ensure applications root exists
   file:
-    path: "{{ item }}"
+    path: "{{ apps_root }}"
     state: directory
     owner: deploy
     group: deploy
     mode: '0755'
-  loop:
-    - "{{ project_root }}"
-    - "{{ runtime_root }}"
-    - "{{ env_root }}"
-    - "{{ scripts_root }}"
-    - "{{ docker_root }}"
-    - "{{ nginx_runtime_root }}"
 
-- name: Copy compose base file
-  copy:
-    src: ../../../../../deploy/docker/compose.base.yml
-    dest: "{{ docker_root }}/compose.base.yml"
-    owner: deploy
-    group: deploy
-    mode: '0644'
-
-- name: Copy compose blue file
-  copy:
-    src: ../../../../../deploy/docker/compose.blue.yml
-    dest: "{{ docker_root }}/compose.blue.yml"
-    owner: deploy
-    group: deploy
-    mode: '0644'
-
-- name: Copy compose green file
-  copy:
-    src: ../../../../../deploy/docker/compose.green.yml
-    dest: "{{ docker_root }}/compose.green.yml"
-    owner: deploy
-    group: deploy
-    mode: '0644'
-
-- name: Copy deploy scripts
-  copy:
-    src: "../../../../../deploy/scripts/{{ item }}"
-    dest: "{{ scripts_root }}/{{ item }}"
-    owner: deploy
-    group: deploy
-    mode: '0755'
-  loop:
-    - current-slot.sh
-    - health-check.sh
-    - switch-nginx.sh
-    - deploy.sh
-    - rollback.sh
-
-- name: Copy nginx switching configs
-  copy:
-    src: "../../../../../deploy/nginx/{{ item }}"
-    dest: "{{ nginx_runtime_root }}/{{ item }}"
-    owner: deploy
-    group: deploy
-    mode: '0644'
-  loop:
-    - upstream-blue.conf
-    - upstream-green.conf
-
-- name: Initialize active-slot runtime file
-  copy:
-    dest: "{{ runtime_root }}/active-slot"
-    content: "blue
-"
-    owner: deploy
-    group: deploy
-    mode: '0644'
-    force: false
-
-- name: Initialize active-image runtime file
-  copy:
-    dest: "{{ runtime_root }}/active-image"
-    content: "{{ app_image_default }}
-"
-    owner: deploy
-    group: deploy
-    mode: '0644'
-    force: false
-
-- name: Ensure common env file exists placeholder
-  copy:
-    dest: "{{ env_root }}/common.env"
-    content: |
-      ASPNETCORE_URLS=http://0.0.0.0:8080
-      DOTNET_ENVIRONMENT=Production
-      ConnectionStrings__Main=Host=192.168.0.30;Port=5432;Database=appdb;Username=appuser;Password=replace-me
-    owner: deploy
-    group: deploy
-    mode: '0600'
-    force: false
-
-- name: Ensure blue env file exists placeholder
-  copy:
-    dest: "{{ env_root }}/blue.env"
-    content: |
-      SLOT_NAME=blue
-    owner: deploy
-    group: deploy
-    mode: '0600'
-    force: false
-
-- name: Ensure green env file exists placeholder
-  copy:
-    dest: "{{ env_root }}/green.env"
-    content: |
-      SLOT_NAME=green
-    owner: deploy
-    group: deploy
-    mode: '0600'
-    force: false
+- name: Provision application runtimes
+  include_tasks: app.yml
+  loop: "{{ applications }}"
+  loop_control:
+    loop_var: app

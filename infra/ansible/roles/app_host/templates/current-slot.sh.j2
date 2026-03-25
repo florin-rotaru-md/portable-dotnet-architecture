@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ -f "{{ apps_root }}/{{ app.name }}/runtime/active-slot" ]; then
+  tr -d '\n' < "{{ apps_root }}/{{ app.name }}/runtime/active-slot"
+  exit 0
+fi
+
+if grep -q '{{ app.blue_port }}' "/etc/nginx/conf.d/{{ app.name }}-upstream-active.conf" 2>/dev/null; then
+  echo blue
+else
+  echo green
+fi

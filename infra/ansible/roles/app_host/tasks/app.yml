@@ -1,0 +1,115 @@
+---
+- name: Ensure runtime directories exist for {{ app.name }}
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: deploy
+    group: deploy
+    mode: '0755'
+  loop:
+    - "{{ apps_root }}/{{ app.name }}"
+    - "{{ apps_root }}/{{ app.name }}/runtime"
+    - "{{ apps_root }}/{{ app.name }}/env"
+    - "{{ apps_root }}/{{ app.name }}/scripts"
+    - "{{ apps_root }}/{{ app.name }}/docker"
+    - "{{ apps_root }}/{{ app.name }}/nginx"
+
+- name: Render compose base file for {{ app.name }}
+  template:
+    src: compose.base.yml.j2
+    dest: "{{ apps_root }}/{{ app.name }}/docker/compose.base.yml"
+    owner: deploy
+    group: deploy
+    mode: '0644'
+
+- name: Render compose blue file for {{ app.name }}
+  template:
+    src: compose.blue.yml.j2
+    dest: "{{ apps_root }}/{{ app.name }}/docker/compose.blue.yml"
+    owner: deploy
+    group: deploy
+    mode: '0644'
+
+- name: Render compose green file for {{ app.name }}
+  template:
+    src: compose.green.yml.j2
+    dest: "{{ apps_root }}/{{ app.name }}/docker/compose.green.yml"
+    owner: deploy
+    group: deploy
+    mode: '0644'
+
+- name: Copy health check script for {{ app.name }}
+  copy:
+    src: ../../../../../deploy/scripts/health-check.sh
+    dest: "{{ apps_root }}/{{ app.name }}/scripts/health-check.sh"
+    owner: deploy
+    group: deploy
+    mode: '0755'
+
+- name: Render runtime scripts for {{ app.name }}
+  template:
+    src: "{{ item }}"
+    dest: "{{ apps_root }}/{{ app.name }}/scripts/{{ item | regex_replace('\\.j2$', '') }}"
+    owner: deploy
+    group: deploy
+    mode: '0755'
+  loop:
+    - current-slot.sh.j2
+    - switch-nginx.sh.j2
+    - deploy.sh.j2
+    - rollback.sh.j2
+
+- name: Initialize active-slot runtime file for {{ app.name }}
+  copy:
+    dest: "{{ apps_root }}/{{ app.name }}/runtime/active-slot"
+    content: "blue
+"
+    owner: deploy
+    group: deploy
+    mode: '0644'
+    force: false
+
+- name: Initialize active-image runtime file for {{ app.name }}
+  copy:
+    dest: "{{ apps_root }}/{{ app.name }}/runtime/active-image"
+    content: "{{ app.image_default }}
+"
+    owner: deploy
+    group: deploy
+    mode: '0644'
+    force: false
+
+- name: Ensure common env file exists placeholder for {{ app.name }}
+  copy:
+    dest: "{{ apps_root }}/{{ app.name }}/env/common.env"
+    content: |
+      ASPNETCORE_URLS=http://0.0.0.0:{{ app.internal_port }}
+      DOTNET_ENVIRONMENT=Production
+      APP_NAME={{ app.name }}
+      ConnectionStrings__Main=Host=192.168.0.30;Port=5432;Database=appdb;Username=appuser;Password=replace-me
+    owner: deploy
+    group: deploy
+    mode: '0600'
+    force: false
+
+- name: Ensure blue env file exists placeholder for {{ app.name }}
+  copy:
+    dest: "{{ apps_root }}/{{ app.name }}/env/blue.env"
+    content: |
+      SLOT_NAME=blue
+      APP_NAME={{ app.name }}
+    owner: deploy
+    group: deploy
+    mode: '0600'
+    force: false
+
+- name: Ensure green env file exists placeholder for {{ app.name }}
+  copy:
+    dest: "{{ apps_root }}/{{ app.name }}/env/green.env"
+    content: |
+      SLOT_NAME=green
+      APP_NAME={{ app.name }}
+    owner: deploy
+    group: deploy
+    mode: '0600'
+    force: false

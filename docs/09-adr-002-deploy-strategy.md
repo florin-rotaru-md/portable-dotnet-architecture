@@ -7,7 +7,7 @@ Accepted
 We require no-downtime application updates and fast rollback without introducing Kubernetes.
 
 ## Decision
-Use blue/green deployment with two local slots on `app-20` and Nginx upstream switching.
+Use blue/green deployment with two local slots per application on `app-20` and Nginx upstream switching.
 
 ## Consequences
 ### Positive
@@ -16,5 +16,5 @@ Use blue/green deployment with two local slots on `app-20` and Nginx upstream sw
 - clear active vs inactive runtime state
 
 ### Negative
-- duplicate runtime footprint on `app-20` during deployment
+- duplicate runtime footprint on `app-20` for each application during deployment
 - more deployment logic than a single-instance replace flow

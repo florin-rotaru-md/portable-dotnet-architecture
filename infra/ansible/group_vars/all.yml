@@ -1,16 +1,12 @@
 ---
-project_name: myapp
-project_root: /opt/myapp
-runtime_root: /opt/myapp/runtime
-env_root: /opt/myapp/env
-scripts_root: /opt/myapp/scripts
-docker_root: /opt/myapp/docker
-nginx_runtime_root: /opt/myapp/nginx
+apps_root: /opt/apps
 backup_root: /opt/postgres/backups
 app_network_name: app_net
-nginx_server_name: _
-app_blue_port: 18081
-app_green_port: 18082
-app_internal_port: 8080
-app_image_default: ghcr.io/example/myapp:latest
-app_drain_seconds: 32
+applications:
+  - name: myapp
+    server_name: myapp.example.com
+    blue_port: 18081
+    green_port: 18082
+    internal_port: 8080
+    image_default: ghcr.io/example/myapp:latest
+    drain_seconds: 32

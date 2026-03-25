@@ -81,12 +81,12 @@ sudo apt install -y docker.io docker-compose-plugin
 
 ### Blue/Green Deployment
 
--   Two slots: blue / green
--   Deploy to inactive slot
+-   Two slots per application runtime: blue / green
+-   Deploy to the inactive slot of the target application
 -   Health check via:
     -   /.well-known/live
     -   /.well-known/ready
--   Switch Nginx upstream
+-   Switch the Nginx upstream for the target application
 -   Drain old instance
 
 ------------------------------------------------------------------------
@@ -131,6 +131,7 @@ nginx -t && systemctl reload nginx
 ## 11. Best Practices
 
 -   Do not hardcode IPs
+-   Use unique hostnames and blue/green ports for each application
 -   Use environment variables
 -   Keep configs versioned
 -   Test rollback procedures
