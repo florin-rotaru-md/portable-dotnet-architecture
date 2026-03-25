@@ -355,7 +355,7 @@ ansible-galaxy collection install community.docker ansible.posix
 
 Optional local config for cleaner output:
 ``` bash
-cat > ~/src/Statics/portable-dotnet-architecture/infra/ansible/ansible.cfg <<'EOF'
+cat > ~/src/portable-dotnet-architecture/infra/ansible/ansible.cfg <<'EOF'
 [defaults]
 inventory = inventory/production.ini
 host_key_checking = False
@@ -473,6 +473,8 @@ nano /opt/postgres/compose.yml
 docker compose -f /opt/postgres/compose.yml up -d
 ```
 
+This applies the PostgreSQL runtime configuration on `db-30`.
+
 On `app-20`:
 ``` bash
 nano /opt/myapp/env/common.env
@@ -491,7 +493,7 @@ Create a simple wrapper to avoid long commands:
 cat > ~/bootstrap-local.sh <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
-cd ~/src/Statics/portable-dotnet-architecture/infra/ansible
+cd ~/src/portable-dotnet-architecture/infra/ansible
 ansible all -m ping
 ansible-playbook playbooks/bootstrap-db.yml
 ansible-playbook playbooks/bootstrap-app.yml

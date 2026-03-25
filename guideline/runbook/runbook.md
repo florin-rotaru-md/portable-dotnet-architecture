@@ -33,7 +33,7 @@ Step-by-step execution guide for deploying the full stack.
 - 8 CPU / 16GB RAM
 
 ### db-30
-- 8 CPU / 24GB RAM
+- 8 CPU / 32GB RAM
 
 ---
 
@@ -69,7 +69,7 @@ ansible all -m ping -i inventory.ini
 
 ---
 
-## STEP 7 – Install Docker (app)
+## STEP 7 – Install runtime dependencies (app-20)
 
 sudo apt install -y docker.io docker-compose-plugin
 
@@ -109,7 +109,7 @@ curl localhost/.well-known/ready
 ## STEP 11 – Backup
 
 DB:
-pg_dump daily
+pg_dump daily from the PostgreSQL runtime on db-30
 
 Store externally
 

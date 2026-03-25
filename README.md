@@ -25,7 +25,7 @@ It is designed to support:
 ## High-level topology
 
 - **app-20**: Nginx + two application slots (`blue` and `green`) + deployment scripts
-- **db-30**: PostgreSQL + backup jobs + restore scripts
+- **db-30**: PostgreSQL runtime + backup jobs + restore scripts
 - **External services**: DNS provider independent from VPS, external backup storage, container registry
 
 ## Core concepts

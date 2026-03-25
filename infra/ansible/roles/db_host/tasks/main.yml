@@ -11,7 +11,7 @@
     - /opt/postgres/data
     - /opt/postgres/backups
 
-- name: Copy postgres compose file
+- name: Copy PostgreSQL runtime definition
   template:
     src: postgres-compose.yml.j2
     dest: /opt/postgres/compose.yml
@@ -19,7 +19,7 @@
     group: deploy
     mode: '0644'
 
-- name: Start postgres container
+- name: Start PostgreSQL runtime
   community.docker.docker_compose_v2:
     project_src: /opt/postgres
     state: present

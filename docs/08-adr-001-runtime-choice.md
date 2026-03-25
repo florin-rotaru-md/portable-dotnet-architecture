@@ -7,7 +7,7 @@ Accepted
 We need a portable deployment runtime for a small number of .NET services running on Linux VPS infrastructure.
 
 ## Decision
-Use Docker Compose as the application runtime layer.
+Use Docker Compose as the application runtime layer, with PostgreSQL runtime on the dedicated database host.
 
 ## Consequences
 ### Positive

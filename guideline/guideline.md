@@ -67,7 +67,7 @@ db-30 ansible_host=192.168.0.30 ansible_user=deploy
 
 ------------------------------------------------------------------------
 
-## 5. Docker Setup (app-20)
+## 5. Docker Setup (app-20 and db-30)
 
 Install Docker:
 
@@ -104,7 +104,7 @@ nginx -t && systemctl reload nginx
 
 ## 8. PostgreSQL
 
--   Dedicated VM
+-   Dedicated VM for PostgreSQL runtime
 -   Backup with pg_dump
 -   Restrict access by IP
 
