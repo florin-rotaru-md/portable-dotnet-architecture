@@ -1,0 +1,25 @@
+---
+- name: Ensure postgres directories exist
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: deploy
+    group: deploy
+    mode: '0755'
+  loop:
+    - /opt/postgres
+    - /opt/postgres/data
+    - /opt/postgres/backups
+
+- name: Copy postgres compose file
+  template:
+    src: postgres-compose.yml.j2
+    dest: /opt/postgres/compose.yml
+    owner: deploy
+    group: deploy
+    mode: '0644'
+
+- name: Start postgres container
+  community.docker.docker_compose_v2:
+    project_src: /opt/postgres
+    state: present

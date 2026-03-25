@@ -1,0 +1,36 @@
+---
+- name: Install base packages
+  apt:
+    name:
+      - curl
+      - git
+      - ufw
+      - ca-certificates
+      - gnupg
+      - unzip
+      - jq
+    state: present
+    update_cache: true
+
+- name: Ensure deploy group exists
+  group:
+    name: deploy
+    state: present
+
+- name: Ensure deploy user exists
+  user:
+    name: deploy
+    group: deploy
+    shell: /bin/bash
+    create_home: true
+
+- name: Allow configured TCP ports through UFW
+  ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+  loop: "{{ ufw_allowed_tcp_ports | default([]) }}"
+
+- name: Enable UFW
+  ufw:
+    state: enabled

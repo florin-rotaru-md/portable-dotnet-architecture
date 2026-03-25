@@ -1,0 +1,9 @@
+---
+- name: Bootstrap database host
+  hosts: db
+  become: true
+  roles:
+    - common
+    - docker
+    - db_host
+    - backup

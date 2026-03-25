@@ -1,0 +1,9 @@
+---
+ansible_python_interpreter: /usr/bin/python3
+ufw_allowed_tcp_ports:
+  - 22
+  - 80
+  - 443
+postgres_version: "17"
+postgres_bind_cidr: "192.168.0.20/32"
+backup_retention_days: 14

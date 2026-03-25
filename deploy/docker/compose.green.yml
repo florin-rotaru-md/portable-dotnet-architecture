@@ -1,0 +1,4 @@
+services:
+  myapp-green:
+    ports:
+      - "127.0.0.1:18082:8080"

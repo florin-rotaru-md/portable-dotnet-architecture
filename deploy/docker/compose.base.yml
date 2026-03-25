@@ -1,0 +1,40 @@
+services:
+  myapp-blue:
+    image: ${APP_IMAGE}
+    container_name: myapp-blue
+    restart: unless-stopped
+    env_file:
+      - /opt/myapp/env/common.env
+      - /opt/myapp/env/blue.env
+    stop_signal: SIGTERM
+    stop_grace_period: 60s
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/.well-known/live || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+    networks:
+      - app_net
+
+  myapp-green:
+    image: ${APP_IMAGE}
+    container_name: myapp-green
+    restart: unless-stopped
+    env_file:
+      - /opt/myapp/env/common.env
+      - /opt/myapp/env/green.env
+    stop_signal: SIGTERM
+    stop_grace_period: 60s
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/.well-known/live || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+    networks:
+      - app_net
+
+networks:
+  app_net:
+    external: true

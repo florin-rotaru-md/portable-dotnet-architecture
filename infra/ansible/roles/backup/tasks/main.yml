@@ -1,0 +1,24 @@
+---
+- name: Render database backup script
+  template:
+    src: backup-db.sh.j2
+    dest: /opt/postgres/backup-db.sh
+    owner: deploy
+    group: deploy
+    mode: '0755'
+
+- name: Render file backup script placeholder
+  template:
+    src: backup-files.sh.j2
+    dest: /opt/postgres/backup-files.sh
+    owner: deploy
+    group: deploy
+    mode: '0755'
+
+- name: Install backup cron job
+  cron:
+    name: postgres logical backup
+    user: deploy
+    minute: "15"
+    hour: "2"
+    job: "/opt/postgres/backup-db.sh >> /opt/postgres/backup.log 2>&1"

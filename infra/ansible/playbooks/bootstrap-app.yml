@@ -1,0 +1,9 @@
+---
+- name: Bootstrap application host
+  hosts: app
+  become: true
+  roles:
+    - common
+    - docker
+    - nginx
+    - app_host
