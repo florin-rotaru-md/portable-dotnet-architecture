@@ -1,4 +1,0 @@
-services:
-  ${APP_NAME}-green:
-    ports:
-      - "127.0.0.1:${APP_GREEN_PORT}:${APP_INTERNAL_PORT}"

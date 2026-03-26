@@ -1,0 +1,42 @@
+#cloud-config
+# Same baseline as k3s/ — Proxmox injects this via the initialization block.
+
+hostname: ${hostname}
+fqdn:     ${hostname}
+
+users:
+  - name: ops
+    groups: [sudo]
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    ssh_authorized_keys:
+      - ${ssh_public_key}
+
+ssh_pwauth: false
+
+package_update:  true
+package_upgrade: true
+
+packages:
+  - curl
+  - git
+  - wget
+  - unzip
+  - jq
+  - ufw
+  - ca-certificates
+  - gnupg
+  - lsb-release
+  - fail2ban
+  - htop
+  - qemu-guest-agent    # required for Proxmox agent communication
+
+runcmd:
+  - systemctl enable --now qemu-guest-agent
+  - ufw allow 22/tcp
+  - ufw --force enable
+  - sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
+  - systemctl reload ssh
+  - touch /var/lib/cloud-init-done
+
+final_message: "cloud-init bootstrap complete on ${hostname}"

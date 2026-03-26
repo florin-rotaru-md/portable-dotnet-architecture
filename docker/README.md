@@ -43,12 +43,12 @@ vim infra/ansible/group_vars/vault.yml
 
 ### Key variables in `group_vars/all.yml`
 
-| Variable             | Description                                 |
-|----------------------|---------------------------------------------|
-| `applications`       | List of app definitions (see below)         |
-| `postgres_version`   | Postgres image tag (default `16`)           |
-| `backup_retention_days` | Days to keep nightly dumps (default 7)  |
-| `use_cloudflared`    | `true` to install Cloudflare Tunnel         |
+| Variable                | Description                                 |
+|-------------------------|---------------------------------------------|
+| `applications`          | List of app definitions (see below)         |
+| `postgres_version`      | Postgres image tag (default `16`)           |
+| `backup_retention_days` | Days to keep nightly dumps (default 7)      |
+| `use_cloudflared`       | `true` to install Cloudflare Tunnel         |
 
 ### Application definition
 

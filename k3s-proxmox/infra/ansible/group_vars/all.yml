@@ -1,0 +1,26 @@
+---
+# ── Cluster ────────────────────────────────────────────────────────────────────
+cluster_name: prod
+k3s_version:  v1.30.4+k3s1
+flux_version: v2.3.0
+
+# ── Postgres (on a separate Proxmox VM, internal bridge IP) ───────────────────
+postgres_version:    "16"
+postgres_private_ip: "10.10.0.50"   # internal bridge IP of the Postgres VM
+postgres_user:       appuser
+postgres_db:         myapp_db
+# postgres_password comes from vault.yml
+
+# ── S3-compatible backup ───────────────────────────────────────────────────────
+# Works with any S3-compatible endpoint: AWS, Hetzner Object Storage, Backblaze B2, MinIO, etc.
+s3_bucket:   your-cluster-backups
+s3_endpoint: https://s3.amazonaws.com
+s3_region:   eu-central-1
+# s3_access_key and s3_secret_key come from vault.yml
+backup_retention_days: 30
+
+# ── FluxCD Git source ─────────────────────────────────────────────────────────
+# Flux will watch the same k3s/flux/ path as the cloud k3s setup.
+flux_git_repo:   https://github.com/your-org/portable-dotnet-architecture
+flux_git_branch: master
+# flux_git_token comes from vault.yml (private repos only)

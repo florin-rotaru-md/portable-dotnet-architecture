@@ -1,0 +1,26 @@
+---
+# Same playbook structure as k3s/ — roles are shared via ansible.cfg roles_path.
+
+- name: Bootstrap all nodes
+  hosts: all
+  become: true
+  roles:
+    - common
+
+- name: Configure Postgres VM
+  hosts: postgres
+  become: true
+  roles:
+    - postgres
+
+- name: Install k3s server
+  hosts: k3s_server
+  become: true
+  roles:
+    - k3s_server
+
+- name: Bootstrap FluxCD
+  hosts: k3s_server[0]
+  become: false
+  roles:
+    - flux

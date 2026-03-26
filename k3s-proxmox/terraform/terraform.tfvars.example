@@ -1,0 +1,32 @@
+# Copy to terraform.tfvars (gitignored) and fill in values.
+
+proxmox_endpoint  = "https://192.168.1.10:8006/"
+proxmox_api_token = "root@pam!terraform=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+proxmox_insecure  = true   # set to false if you have a valid TLS cert
+proxmox_ssh_user  = "root"
+proxmox_node      = "pve"
+
+vm_template_id     = 9000          # VMID of the Ubuntu template (see docs/proxmox-setup.md)
+snippets_datastore = "local"
+storage_pool       = "local-lvm"
+
+bridge_external = "vmbr0"
+bridge_internal = "vmbr1"
+
+cluster_name   = "prod"
+ssh_public_key = "ssh-ed25519 AAAA..."
+
+server_count      = 1
+server_vmid_start = 200
+server_cores      = 2
+server_memory_mb  = 4096
+server_disk_gb    = 40
+
+db_vmid      = 210
+db_cores     = 2
+db_memory_mb = 4096
+db_disk_gb   = 80
+
+# Optional — leave empty to skip Cloudflare DNS records
+cloudflare_api_token = ""
+cloudflare_zone_id   = ""

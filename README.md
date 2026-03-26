@@ -10,7 +10,8 @@ when you need to.
 |------------|------------------------------------------------------|----------------------------------------|
 | [`native/`](native/) | Single app, no Docker, minimal overhead | Ansible, systemd, Nginx, Postgres (native) |
 | [`docker/`](docker/) | Multiple apps, Docker-based, intermediate complexity | Ansible, Docker Compose, Nginx, Postgres (container) |
-| [`k3s/`](k3s/)       | Horizontal scaling, GitOps, full IaC | Terraform, Ansible, k3s, FluxCD, Helm |
+| [`k3s/`](k3s/)       | Horizontal scaling, GitOps, full IaC on cloud VPS | Terraform (Hetzner), Ansible, k3s, FluxCD, Helm |
+| [`k3s-proxmox/`](k3s-proxmox/) | Same as `k3s/` but on self-hosted Proxmox | Terraform (bpg/proxmox), Ansible, k3s, FluxCD, Helm |
 
 ## Minimal bootstrap (all setups)
 
@@ -60,13 +61,15 @@ See [`native/`](native/README.md) for a reference .NET 10 implementation.
 ## Incremental path
 
 ```
-native  ──►  docker  ──►  k3s
-  ↑             ↑            ↑
-single app   multi-app   horizontal scale
-no Docker    Compose      GitOps + IaC
-manual CI    manual CI    image-automation
+native  ──►  docker  ──►  k3s  ──►  k3s-proxmox
+  ↑             ↑            ↑             ↑
+single app   multi-app   cloud GitOps   on-prem GitOps
+no Docker    Compose      Hetzner VPS   self-hosted Proxmox
+manual CI    manual CI    IaC+FluxCD    IaC+FluxCD (no public IPs)
 ```
 
 You can start with `native/`, migrate to `docker/` by containerising the app
 (add a `Dockerfile`, push to a registry, update `image_default`), then move to `k3s/`
 when you need autoscaling or want full GitOps.
+Use `k3s-proxmox/` instead of `k3s/` when you prefer on-prem hardware over cloud VPS.
+The two k3s setups share Ansible roles, Flux configs, and Helm charts.

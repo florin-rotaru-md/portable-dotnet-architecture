@@ -1,8 +1,0 @@
----
-- name: Bootstrap database host
-  hosts: db
-  become: true
-  roles:
-    - common
-    - db_host
-    - backup
