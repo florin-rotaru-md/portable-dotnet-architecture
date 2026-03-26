@@ -1,0 +1,40 @@
+services:
+  {{ app.name }}-blue:
+    image: ${APP_IMAGE}
+    container_name: {{ app.name }}-blue
+    restart: unless-stopped
+    env_file:
+      - {{ apps_root }}/{{ app.name }}/env/common.env
+      - {{ apps_root }}/{{ app.name }}/env/blue.env
+    stop_signal: SIGTERM
+    stop_grace_period: 60s
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:{{ app.internal_port }}/.well-known/live || exit 1"]
+      interval: 10s
+      timeout:  3s
+      retries:  5
+      start_period: 20s
+    networks:
+      - {{ app_network_name }}
+
+  {{ app.name }}-green:
+    image: ${APP_IMAGE}
+    container_name: {{ app.name }}-green
+    restart: unless-stopped
+    env_file:
+      - {{ apps_root }}/{{ app.name }}/env/common.env
+      - {{ apps_root }}/{{ app.name }}/env/green.env
+    stop_signal: SIGTERM
+    stop_grace_period: 60s
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:{{ app.internal_port }}/.well-known/live || exit 1"]
+      interval: 10s
+      timeout:  3s
+      retries:  5
+      start_period: 20s
+    networks:
+      - {{ app_network_name }}
+
+networks:
+  {{ app_network_name }}:
+    external: true

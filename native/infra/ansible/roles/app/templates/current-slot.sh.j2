@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+APP_NAME="{{ app_name }}"
+RUNTIME_FILE="{{ apps_root }}/$APP_NAME/runtime/active-slot"
+NGINX_CONF="/etc/nginx/conf.d/${APP_NAME}-upstream-active.conf"
+
+if [ -f "$RUNTIME_FILE" ]; then
+  tr -d '\n' < "$RUNTIME_FILE"
+  exit 0
+fi
+
+# Fallback: inspect nginx conf
+if grep -q '{{ app_port_blue }}' "$NGINX_CONF" 2>/dev/null; then
+  echo blue
+else
+  echo green
+fi

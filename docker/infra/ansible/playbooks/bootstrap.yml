@@ -1,0 +1,13 @@
+---
+- name: Bootstrap multi-app VPS (Docker Compose)
+  hosts: app
+  become: true
+  roles:
+    - common
+    - docker
+    - postgres
+    - app_host
+    - nginx
+    - backup
+    - role: cloudflared
+      when: use_cloudflared | bool

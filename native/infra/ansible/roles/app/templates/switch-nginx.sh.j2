@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# switch-nginx.sh <blue|green>
+set -euo pipefail
+
+APP_NAME="{{ app_name }}"
+APP_ROOT="{{ apps_root }}/$APP_NAME"
+TARGET_SLOT="${1:?Usage: switch-nginx.sh <blue|green>}"
+
+case "$TARGET_SLOT" in
+  blue)  SRC="$APP_ROOT/nginx/upstream-blue.conf"  ;;
+  green) SRC="$APP_ROOT/nginx/upstream-green.conf" ;;
+  *)     echo "Unknown slot: $TARGET_SLOT" >&2; exit 1 ;;
+esac
+
+cp "$SRC" "/etc/nginx/conf.d/${APP_NAME}-upstream-active.conf"
+nginx -t
+systemctl reload nginx
+printf '%s\n' "$TARGET_SLOT" > "$APP_ROOT/runtime/active-slot"
+echo "Nginx → $TARGET_SLOT"

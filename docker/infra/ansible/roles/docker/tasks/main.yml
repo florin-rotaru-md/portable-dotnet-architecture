@@ -1,0 +1,26 @@
+---
+- name: Install Docker engine and Compose plugin
+  apt:
+    name:
+      - docker.io
+      - docker-compose-v2
+      - python3-docker
+    state: present
+    update_cache: true
+
+- name: Ensure Docker service is enabled and started
+  service:
+    name:    docker
+    enabled: true
+    state:   started
+
+- name: Add deploy user to docker group
+  user:
+    name:   "{{ app_user }}"
+    groups: docker
+    append: true
+
+- name: Ensure shared Docker network exists
+  community.docker.docker_network:
+    name:  "{{ app_network_name }}"
+    state: present

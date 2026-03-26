@@ -1,0 +1,85 @@
+---
+- name: Add PostgreSQL apt signing key
+  get_url:
+    url:  https://www.postgresql.org/media/keys/ACCC4CF8.asc
+    dest: /usr/share/keyrings/postgresql.asc
+    mode: '0644'
+
+- name: Add PostgreSQL apt repository
+  apt_repository:
+    repo: "deb [signed-by=/usr/share/keyrings/postgresql.asc] http://apt.postgresql.org/pub/repos/apt {{ ansible_distribution_release }}-pgdg main"
+    state:    present
+    filename: pgdg
+
+- name: Install PostgreSQL
+  apt:
+    name:         "postgresql-{{ postgres_version }}"
+    state:        present
+    update_cache: true
+
+- name: Configure pg_hba.conf (local md5 auth)
+  template:
+    src:   pg_hba.conf.j2
+    dest:  "/etc/postgresql/{{ postgres_version }}/main/pg_hba.conf"
+    owner: postgres
+    group: postgres
+    mode:  '0640'
+  notify: restart postgresql
+
+- name: Ensure PostgreSQL is enabled and started
+  service:
+    name:    postgresql
+    enabled: true
+    state:   started
+
+- name: Check if app DB user exists
+  become_user: postgres
+  command: psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='{{ postgres_user }}'"
+  register: pg_user_check
+  changed_when: false
+
+- name: Create app DB user
+  become_user: postgres
+  command: >
+    psql -c "CREATE USER {{ postgres_user }}
+             WITH PASSWORD '{{ postgres_password }}' CREATEDB"
+  when: pg_user_check.stdout != '1'
+  no_log: true
+
+- name: Check if app database exists
+  become_user: postgres
+  command: psql -tAc "SELECT 1 FROM pg_database WHERE datname='{{ postgres_db }}'"
+  register: pg_db_check
+  changed_when: false
+
+- name: Create app database
+  become_user: postgres
+  command: >
+    psql -c "CREATE DATABASE {{ postgres_db }}
+             OWNER {{ postgres_user }}"
+  when: pg_db_check.stdout != '1'
+
+- name: Ensure backup directory exists
+  file:
+    path:  /opt/postgres/backups
+    state: directory
+    owner: postgres
+    group: postgres
+    mode:  '0750'
+
+- name: Install backup cron job
+  cron:
+    name:   "postgres nightly backup"
+    user:   postgres
+    minute: "15"
+    hour:   "2"
+    job:    >
+      pg_dump -Fc {{ postgres_db }}
+      > /opt/postgres/backups/{{ postgres_db }}_$(date +\%Y\%m\%d_\%H\%M).dump
+      && find /opt/postgres/backups -name '*.dump' -mtime +7 -delete
+
+handlers:
+  - name: restart postgresql
+    service:
+      name:  postgresql
+      state: restarted

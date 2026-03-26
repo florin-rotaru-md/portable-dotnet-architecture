@@ -1,0 +1,78 @@
+---
+- name: Allow k3s API server port through UFW
+  ufw:
+    rule:  allow
+    port:  "6443"
+    proto: tcp
+
+- name: Allow k3s cluster communication
+  ufw:
+    rule:  allow
+    port:  "{{ item }}"
+    proto: tcp
+  loop:
+    - "2379"   # etcd client
+    - "2380"   # etcd peer
+    - "10250"  # kubelet
+    - "51820"  # WireGuard (flannel)
+
+- name: Download k3s install script
+  get_url:
+    url:  https://get.k3s.io
+    dest: /tmp/install-k3s.sh
+    mode: '0755'
+
+- name: Install k3s server (first node initializes etcd)
+  command: >
+    /tmp/install-k3s.sh server
+    --cluster-init
+    --disable traefik
+    --disable servicelb
+    --write-kubeconfig-mode 644
+  environment:
+    INSTALL_K3S_VERSION: "{{ k3s_version }}"
+  args:
+    creates: /usr/local/bin/k3s
+
+- name: Ensure k3s service is enabled and started
+  service:
+    name:    k3s
+    enabled: true
+    state:   started
+
+- name: Wait for k3s to be ready
+  command: k3s kubectl get nodes
+  register: k3s_ready
+  until:    k3s_ready.rc == 0
+  retries:  20
+  delay:    5
+  changed_when: false
+
+- name: Fetch kubeconfig for Flux bootstrap
+  fetch:
+    src:  /etc/rancher/k3s/k3s.yaml
+    dest: "{{ playbook_dir }}/../../../kubeconfig"
+    flat: true
+
+- name: Fix kubeconfig server address
+  delegate_to: localhost
+  become: false
+  replace:
+    path:    "{{ playbook_dir }}/../../../kubeconfig"
+    regexp:  'https://127.0.0.1:6443'
+    replace: "https://{{ ansible_host }}:6443"
+
+- name: Schedule etcd snapshot backup to S3
+  cron:
+    name:   "k3s etcd snapshot"
+    minute: "0"
+    hour:   "3"
+    job: >
+      k3s etcd-snapshot save
+      --s3
+      --s3-bucket {{ s3_bucket }}
+      --s3-endpoint {{ s3_endpoint }}
+      --s3-region {{ s3_region }}
+      --s3-access-key {{ s3_access_key }}
+      --s3-secret-key {{ s3_secret_key }}
+  no_log: true

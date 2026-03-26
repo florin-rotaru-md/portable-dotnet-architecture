@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# health-check.sh <base_url> [max_attempts] [interval_seconds]
+set -euo pipefail
+
+BASE_URL="${1:?Usage: health-check.sh <base_url> [max_attempts] [interval]}"
+MAX="${2:-45}"
+INTERVAL="${3:-2}"
+
+echo "Health-checking $BASE_URL/.well-known/ready (max ${MAX}×${INTERVAL}s)..."
+
+for i in $(seq 1 "$MAX"); do
+  code=$(curl -s -o /dev/null -w "%{http_code}" \
+    --connect-timeout 2 --max-time 3 \
+    "${BASE_URL}/.well-known/ready" 2>/dev/null || echo "000")
+  if [ "$code" = "200" ]; then
+    echo "  ✓ Ready after ${i} attempt(s)"
+    exit 0
+  fi
+  echo "  attempt $i/$MAX: HTTP $code — retrying in ${INTERVAL}s..."
+  sleep "$INTERVAL"
+done
+
+echo "Health check failed after $MAX attempts" >&2
+exit 1

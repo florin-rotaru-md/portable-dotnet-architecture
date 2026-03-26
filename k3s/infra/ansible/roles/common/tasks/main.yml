@@ -1,0 +1,33 @@
+---
+- name: Install base packages
+  apt:
+    name:
+      - curl
+      - git
+      - wget
+      - unzip
+      - jq
+      - ufw
+      - ca-certificates
+      - gnupg
+      - lsb-release
+      - fail2ban
+      - htop
+    state: present
+    update_cache: true
+
+- name: Allow SSH through UFW
+  ufw:
+    rule:  allow
+    port:  "22"
+    proto: tcp
+
+- name: Enable UFW
+  ufw:
+    state: enabled
+
+- name: Enable fail2ban
+  service:
+    name:    fail2ban
+    enabled: true
+    state:   started

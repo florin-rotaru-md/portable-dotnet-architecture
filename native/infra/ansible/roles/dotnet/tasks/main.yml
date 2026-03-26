@@ -1,0 +1,32 @@
+---
+- name: Add Microsoft apt signing key
+  get_url:
+    url:  https://packages.microsoft.com/keys/microsoft.asc
+    dest: /usr/share/keyrings/microsoft.asc
+    mode: '0644'
+
+- name: Add Microsoft apt repository
+  apt_repository:
+    repo: >-
+      deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft.asc]
+      https://packages.microsoft.com/repos/microsoft-ubuntu-{{ ansible_distribution_release }}-prod
+      {{ ansible_distribution_release }} main
+    state:    present
+    filename: microsoft
+  ignore_errors: true   # fall back to packages.microsoft.com/ubuntu if distro-specific repo missing
+
+- name: Add packages.microsoft.com/ubuntu repo (fallback)
+  apt_repository:
+    repo: >-
+      deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft.asc]
+      https://packages.microsoft.com/ubuntu/22.04/prod
+      jammy main
+    state:    present
+    filename: microsoft-ubuntu
+  when: ansible_distribution_release not in ['jammy', 'noble']
+
+- name: Install .NET SDK
+  apt:
+    name:         "dotnet-sdk-{{ dotnet_version }}"
+    state:        present
+    update_cache: true

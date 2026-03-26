@@ -1,20 +1,175 @@
-# WAA Platform Starter
+# Setup 3 — k3s + Terraform + FluxCD + Helm
 
-Pachet de pornire pentru:
-- HAProxy
-- k3s manifests pentru un API generic
-- Cloudflare Tunnel în Kubernetes
-- documentația playbook
+Full GitOps stack on a single-region k3s cluster. Infrastructure as code from VPS provisioning
+to application deployment. External Postgres for data durability independent of the cluster.
 
-Înlocuiește valorile placeholder:
-- `api.example.com`
-- `ghcr.io/example/app-api:latest`
-- `CHANGE_ME`
-- `TUNNEL_ID`
+## Stack
 
-Aplicare recomandată:
+| Layer           | Tool                          |
+|-----------------|-------------------------------|
+| VPS / DNS       | Terraform + Hetzner Cloud     |
+| OS bootstrap    | cloud-init                    |
+| Configuration   | Ansible                       |
+| Kubernetes      | k3s (embedded etcd)           |
+| GitOps          | FluxCD v2                     |
+| Apps            | Helm charts                   |
+| Ingress         | ingress-nginx                 |
+| TLS             | cert-manager (Let's Encrypt)  |
+| Tunnel          | Cloudflare Tunnel             |
+| DB              | Postgres on a separate VPS    |
+| Backups         | S3-compatible (etcd + pg_dump)|
+
+## Minimal bootstrap commands
+
 ```bash
-kubectl apply -f kubernetes/infra/cloudflared/namespace.yaml
-kubectl apply -f kubernetes/app/namespace.yaml
-kubectl apply -f kubernetes/app/
+# 1. Install tools on your laptop:
+sudo apt install -y curl git unzip
+# Terraform:
+curl -fsSL https://apt.releases.hashicorp.com/gpg | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp.gpg
+echo "deb [signed-by=/usr/share/keyrings/hashicorp.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" \
+  | sudo tee /etc/apt/sources.list.d/hashicorp.list
+sudo apt update && sudo apt install -y terraform
+# Ansible + kubectl:
+pipx install --include-deps ansible
+curl -LO "https://dl.k8s.io/release/$(curl -sL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+sudo install kubectl /usr/local/bin/
+
+# 2. Clone this repo
+mkdir -p ~/src && cd ~/src
+git clone https://github.com/<your-org>/portable-dotnet-architecture.git
+cd ~/src/portable-dotnet-architecture/k3s
 ```
+
+## Step-by-step setup
+
+### 1. Configure and provision infrastructure
+
+```bash
+cd terraform
+cp terraform.tfvars.example terraform.tfvars
+vim terraform.tfvars          # fill in Hetzner + Cloudflare tokens, SSH key
+
+terraform init
+terraform plan
+terraform apply
+```
+
+Take note of the output IPs:
+```bash
+terraform output
+```
+
+### 2. Update Ansible inventory
+
+```bash
+vim infra/ansible/inventory/hosts.ini   # set IPs from terraform output
+```
+
+### 3. Configure Ansible variables
+
+```bash
+vim infra/ansible/group_vars/all.yml
+
+cp infra/ansible/group_vars/vault.yml.example infra/ansible/group_vars/vault.yml
+vim infra/ansible/group_vars/vault.yml
+ansible-vault encrypt infra/ansible/group_vars/vault.yml
+```
+
+### 4. Bootstrap everything
+
+```bash
+cd infra/ansible
+ansible-playbook playbooks/bootstrap.yml --ask-vault-pass
+```
+
+This single command:
+- Hardens all nodes (UFW, fail2ban)
+- Installs and configures Postgres on the DB VPS
+- Installs k3s on server node(s)
+- Bootstraps FluxCD — which then pulls this Git repo and deploys all infra + apps
+
+### 5. Create Secrets (not stored in Git)
+
+```bash
+export KUBECONFIG=~/src/portable-dotnet-architecture/kubeconfig
+
+# DB connection string for myapp:
+kubectl create secret generic myapp-db \
+  --from-literal=ConnectionStrings__Main="Host=<postgres-private-ip>;Port=5432;Database=myapp_db;Username=appuser;Password=<pass>" \
+  -n myapp
+
+# Cloudflare tunnel token:
+kubectl create secret generic cloudflare-tunnel-token \
+  --from-literal=token=<your-cloudflare-token> \
+  -n cloudflared
+```
+
+### 6. Verify
+
+```bash
+kubectl get nodes
+flux get all -A          # all resources should be Ready
+kubectl get pods -A
+```
+
+## Directory layout
+
+```
+k3s/
+├── terraform/              ← VPS, network, DNS provisioning
+│   ├── main.tf
+│   ├── variables.tf
+│   ├── outputs.tf
+│   └── terraform.tfvars.example
+├── cloud-init/
+│   └── user-data.yml       ← OS bootstrap (runs on first boot)
+├── infra/ansible/
+│   ├── playbooks/bootstrap.yml
+│   └── roles/
+│       ├── common/         ← UFW, fail2ban
+│       ├── postgres/       ← Postgres install + S3 backup cron
+│       ├── k3s_server/     ← k3s install + etcd S3 snapshot cron
+│       └── flux/           ← Flux CLI + bootstrap
+├── flux/
+│   ├── clusters/production/
+│   │   ├── flux-system/    ← managed by Flux bootstrap
+│   │   ├── infra.yaml      ← deploys infra/ kustomization
+│   │   └── apps.yaml       ← deploys apps/ kustomization (depends on infra)
+│   ├── infra/
+│   │   ├── cert-manager/   ← Let's Encrypt TLS
+│   │   ├── ingress-nginx/  ← Nginx ingress controller
+│   │   └── cloudflared/    ← Cloudflare Tunnel
+│   └── apps/
+│       └── myapp/          ← HelmRelease for your application
+├── helm/
+│   └── myapp/              ← Helm chart (Deployment, Service, Ingress, HPA, PDB)
+└── docs/
+    └── disaster-recovery.md
+```
+
+## Deploying a new app version
+
+```bash
+# Edit the image tag in the HelmRelease:
+vim flux/apps/myapp/helmrelease.yaml   # update image.tag
+
+git add flux/apps/myapp/helmrelease.yaml
+git commit -m "chore: bump myapp to v1.2.3"
+git push
+
+# Flux picks it up within 5 minutes (interval: 5m).
+# To trigger immediately:
+flux reconcile kustomization apps --with-source
+```
+
+## Scaling out (adding a k3s agent node)
+
+```bash
+# In terraform/main.tf, add a hcloud_server for agent nodes.
+# In infra/ansible/roles/k3s_server/tasks/main.yml, install k3s with --server flag.
+# Flux automatically distributes workloads across nodes.
+```
+
+## Disaster recovery
+
+See [docs/disaster-recovery.md](docs/disaster-recovery.md).

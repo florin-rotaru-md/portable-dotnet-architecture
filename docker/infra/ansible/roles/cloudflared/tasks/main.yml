@@ -1,0 +1,55 @@
+---
+- name: Add Cloudflare apt signing key
+  get_url:
+    url:  https://pkg.cloudflare.com/cloudflare-main.gpg
+    dest: /usr/share/keyrings/cloudflare-main.gpg
+    mode: '0644'
+
+- name: Add Cloudflare apt repository
+  apt_repository:
+    repo: "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared {{ ansible_distribution_release }} main"
+    state:    present
+    filename: cloudflared
+
+- name: Install cloudflared
+  apt:
+    name:         cloudflared
+    state:        present
+    update_cache: true
+
+- name: Create cloudflared config directory
+  file:
+    path:  /etc/cloudflared
+    state: directory
+    owner: root
+    group: root
+    mode:  '0755'
+
+- name: Write cloudflared token
+  copy:
+    dest:    /etc/cloudflared/token
+    content: "{{ cloudflare_token }}"
+    owner:   root
+    group:   root
+    mode:    '0600'
+  no_log: true
+
+- name: Install cloudflared systemd service
+  template:
+    src:  cloudflared.service.j2
+    dest: /etc/systemd/system/cloudflared.service
+    mode: '0644'
+  notify: restart cloudflared
+
+- name: Enable and start cloudflared
+  systemd:
+    name:          cloudflared
+    enabled:       true
+    state:         started
+    daemon_reload: true
+
+handlers:
+  - name: restart cloudflared
+    systemd:
+      name:  cloudflared
+      state: restarted

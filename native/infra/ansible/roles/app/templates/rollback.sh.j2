@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# rollback.sh — Instantly switch Nginx back to the previous slot.
+# Does NOT restart the old service (it should still be running).
+# If the old service was already stopped, start it first.
+set -euo pipefail
+
+APP_NAME="{{ app_name }}"
+APP_ROOT="{{ apps_root }}/$APP_NAME"
+SCRIPTS_DIR="$APP_ROOT/scripts"
+RUNTIME_DIR="$APP_ROOT/runtime"
+
+CURRENT_SLOT="$("$SCRIPTS_DIR/current-slot.sh")"
+if [ "$CURRENT_SLOT" = "blue" ]; then
+  PREVIOUS_SLOT="green"
+  PREVIOUS_SERVICE="${APP_NAME}-green"
+else
+  PREVIOUS_SLOT="blue"
+  PREVIOUS_SERVICE="${APP_NAME}-blue"
+fi
+
+echo "Rolling back: $CURRENT_SLOT → $PREVIOUS_SLOT"
+
+# Ensure the previous slot is running
+if ! systemctl is-active --quiet "$PREVIOUS_SERVICE"; then
+  echo "Starting $PREVIOUS_SERVICE..."
+  systemctl start "$PREVIOUS_SERVICE"
+  "$SCRIPTS_DIR/health-check.sh" "http://127.0.0.1:$(cat "$RUNTIME_DIR/port-$PREVIOUS_SLOT" 2>/dev/null || echo 0)" 20 2 || true
+fi
+
+"$SCRIPTS_DIR/switch-nginx.sh" "$PREVIOUS_SLOT"
+
+printf '%s | rollback | slot=%s\n' "$(date -Iseconds)" "$PREVIOUS_SLOT" \
+  >> "$RUNTIME_DIR/deploy-history.log"
+
+echo "✓ Rollback complete — $PREVIOUS_SLOT is live"

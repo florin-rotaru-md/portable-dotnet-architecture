@@ -1,8 +1,0 @@
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: app-api-config
-  namespace: app
-data:
-  ASPNETCORE_ENVIRONMENT: Production
-  ASPNETCORE_URLS: http://+:8080

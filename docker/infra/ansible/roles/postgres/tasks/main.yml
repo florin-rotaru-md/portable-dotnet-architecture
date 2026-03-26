@@ -1,0 +1,85 @@
+---
+- name: Ensure postgres directories exist
+  file:
+    path:  "{{ item }}"
+    state: directory
+    owner: "{{ app_user }}"
+    group: "{{ app_user }}"
+    mode:  '0755'
+  loop:
+    - /opt/postgres
+    - /opt/postgres/backups
+    - /opt/postgres/docker
+
+- name: Render postgres compose file
+  template:
+    src:   compose.postgres.yml.j2
+    dest:  /opt/postgres/docker/compose.postgres.yml
+    owner: "{{ app_user }}"
+    group: "{{ app_user }}"
+    mode:  '0640'
+
+- name: Write postgres root password env file
+  copy:
+    dest:    /opt/postgres/docker/postgres.env
+    content: "POSTGRES_PASSWORD={{ postgres_root_password }}\n"
+    owner:   "{{ app_user }}"
+    group:   "{{ app_user }}"
+    mode:    '0600'
+  no_log: true
+
+- name: Start postgres container
+  community.docker.docker_compose_v2:
+    project_src:    /opt/postgres/docker
+    files:
+      - compose.postgres.yml
+    state:          present
+    pull:           always
+
+- name: Wait for postgres to accept connections
+  community.docker.docker_container_exec:
+    container: postgres
+    command:   pg_isready -U postgres
+  register: pg_ready
+  until:    pg_ready.rc == 0
+  retries:  15
+  delay:    2
+
+- name: Check if app user exists
+  community.docker.docker_container_exec:
+    container: postgres
+    command:   psql -U postgres -tAc "SELECT 1 FROM pg_roles WHERE rolname='{{ postgres_user }}'"
+  register: pg_user_check
+  changed_when: false
+
+- name: Create app user
+  community.docker.docker_container_exec:
+    container: postgres
+    command: >
+      psql -U postgres -c
+      "CREATE USER {{ postgres_user }} WITH PASSWORD '{{ postgres_password }}' CREATEDB"
+  when: pg_user_check.stdout | trim != '1'
+  no_log: true
+
+- name: Create databases for each application
+  community.docker.docker_container_exec:
+    container: postgres
+    command: >
+      psql -U postgres -c
+      "SELECT 1 FROM pg_database WHERE datname='{{ item.db }}'"
+  register: pg_db_checks
+  changed_when: false
+  loop: "{{ applications }}"
+  loop_control:
+    label: "{{ item.db }}"
+
+- name: Create missing databases
+  community.docker.docker_container_exec:
+    container: postgres
+    command: >
+      psql -U postgres -c
+      "CREATE DATABASE {{ item.item.db }} OWNER {{ postgres_user }}"
+  when: item.stdout | trim != '1'
+  loop: "{{ pg_db_checks.results }}"
+  loop_control:
+    label: "{{ item.item.db }}"

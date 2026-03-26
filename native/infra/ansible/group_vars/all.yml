@@ -1,0 +1,29 @@
+---
+# ── App ────────────────────────────────────────────────────────────────────────
+app_user:     deploy
+app_name:     myapp
+app_assembly: MyApp          # matches the Assembly name in your .csproj (no .dll)
+app_domain:   demo.example.com
+
+app_port_blue:  5000
+app_port_green: 5001
+drain_seconds:  30
+
+apps_root:  /opt/apps
+dotnet_version: "10.0"
+
+# ── Postgres ───────────────────────────────────────────────────────────────────
+postgres_version: "16"
+postgres_db:      myapp_db
+postgres_user:    myapp
+# postgres_password comes from vault.yml
+
+# ── Cloudflare (optional) ──────────────────────────────────────────────────────
+use_cloudflared: false
+# cloudflare_token comes from vault.yml when use_cloudflared: true
+
+# ── Firewall ───────────────────────────────────────────────────────────────────
+ufw_allowed_tcp_ports:
+  - "22"
+  - "80"
+  - "443"

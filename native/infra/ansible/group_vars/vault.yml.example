@@ -1,0 +1,8 @@
+---
+# Copy to vault.yml and fill in values.
+# Encrypt with: ansible-vault encrypt vault.yml
+
+postgres_password: "change-me-strong-password"
+
+# Required only when use_cloudflared: true
+# cloudflare_token: "eyJhIjoiABCD..."

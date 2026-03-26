@@ -1,0 +1,11 @@
+# Copy to terraform.tfvars (which is gitignored) and fill in values.
+
+hcloud_token         = "your-hetzner-api-token"
+cloudflare_api_token = "your-cloudflare-api-token"
+cloudflare_zone_id   = "your-zone-id"
+ssh_public_key       = "ssh-ed25519 AAAA..."
+cluster_name         = "prod"
+server_count         = 1
+server_type          = "cx22"
+db_server_type       = "cx22"
+location             = "nbg1"

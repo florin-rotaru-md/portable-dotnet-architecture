@@ -1,0 +1,134 @@
+#!/usr/bin/env bash
+# deploy.sh — Build from Git and deploy via blue/green slot swap.
+#
+# First deploy:
+#   deploy.sh --repo-url https://github.com/org/repo.git \
+#             --branch master \
+#             [--token ghp_xxx] \
+#             --project-path src/MyApp/MyApp.csproj
+#
+# Subsequent deploys (uses cached repo/project):
+#   deploy.sh [--branch master]
+#
+set -euo pipefail
+
+APP_NAME="{{ app_name }}"
+APPS_ROOT="{{ apps_root }}"
+APP_ROOT="$APPS_ROOT/$APP_NAME"
+SCRIPTS_DIR="$APP_ROOT/scripts"
+RUNTIME_DIR="$APP_ROOT/runtime"
+BUILD_DIR="$APP_ROOT/build"
+DRAIN_SECONDS="{{ drain_seconds }}"
+PORT_BLUE="{{ app_port_blue }}"
+PORT_GREEN="{{ app_port_green }}"
+
+REPO_URL=""
+REPO_BRANCH=""
+REPO_TOKEN=""
+PROJECT_PATH=""
+
+# ── Argument parsing ─────────────────────────────────────────────────────────
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --repo-url)     REPO_URL="$2";     shift 2 ;;
+    --branch)       REPO_BRANCH="$2";  shift 2 ;;
+    --token)        REPO_TOKEN="$2";   shift 2 ;;
+    --project-path) PROJECT_PATH="$2"; shift 2 ;;
+    *) echo "Unknown argument: $1" >&2; exit 1 ;;
+  esac
+done
+
+# ── Load / resolve config from cache ─────────────────────────────────────────
+if [ -z "$REPO_URL" ] && [ -f "$RUNTIME_DIR/repo-url" ]; then
+  REPO_URL=$(cat "$RUNTIME_DIR/repo-url")
+fi
+if [ -z "$REPO_URL" ]; then
+  echo "Error: --repo-url is required on first deploy" >&2; exit 1
+fi
+
+if [ -z "$REPO_BRANCH" ]; then
+  REPO_BRANCH=$(cat "$RUNTIME_DIR/repo-branch" 2>/dev/null || echo "master")
+fi
+if [ -z "$PROJECT_PATH" ] && [ -f "$RUNTIME_DIR/project-path" ]; then
+  PROJECT_PATH=$(cat "$RUNTIME_DIR/project-path")
+fi
+if [ -z "$PROJECT_PATH" ]; then
+  echo "Error: --project-path is required on first deploy" >&2; exit 1
+fi
+
+# Persist config (repo URL stored without token)
+echo "$REPO_URL"     > "$RUNTIME_DIR/repo-url"
+echo "$REPO_BRANCH"  > "$RUNTIME_DIR/repo-branch"
+echo "$PROJECT_PATH" > "$RUNTIME_DIR/project-path"
+
+# ── Determine slots ───────────────────────────────────────────────────────────
+CURRENT_SLOT="$("$SCRIPTS_DIR/current-slot.sh")"
+if [ "$CURRENT_SLOT" = "blue" ]; then
+  TARGET_SLOT="green"
+  TARGET_PORT="$PORT_GREEN"
+  TARGET_SERVICE="${APP_NAME}-green"
+  OLD_SERVICE="${APP_NAME}-blue"
+else
+  TARGET_SLOT="blue"
+  TARGET_PORT="$PORT_BLUE"
+  TARGET_SERVICE="${APP_NAME}-blue"
+  OLD_SERVICE="${APP_NAME}-green"
+fi
+
+SLOT_DIR="$APP_ROOT/slots/$TARGET_SLOT"
+
+echo "──────────────────────────────────────"
+echo "App:          $APP_NAME"
+echo "Current slot: $CURRENT_SLOT  →  target: $TARGET_SLOT"
+echo "Branch:       $REPO_BRANCH"
+echo "Project:      $PROJECT_PATH"
+echo "──────────────────────────────────────"
+
+# ── Clone / pull repo ─────────────────────────────────────────────────────────
+if [ -n "$REPO_TOKEN" ]; then
+  AUTH_URL="${REPO_URL/https:\/\//https://${REPO_TOKEN}@}"
+else
+  AUTH_URL="$REPO_URL"
+fi
+
+if [ -d "$BUILD_DIR/.git" ]; then
+  echo "Pulling latest from $REPO_BRANCH..."
+  git -C "$BUILD_DIR" remote set-url origin "$AUTH_URL"
+  git -C "$BUILD_DIR" fetch --depth=1 origin "$REPO_BRANCH"
+  git -C "$BUILD_DIR" reset --hard "origin/$REPO_BRANCH"
+else
+  echo "Cloning $REPO_URL (branch $REPO_BRANCH)..."
+  git clone --branch "$REPO_BRANCH" --depth 1 "$AUTH_URL" "$BUILD_DIR"
+fi
+
+# ── Build ─────────────────────────────────────────────────────────────────────
+echo "Publishing to $TARGET_SLOT slot..."
+systemctl is-active --quiet "$TARGET_SERVICE" && systemctl stop "$TARGET_SERVICE" || true
+find "${SLOT_DIR:?}" -mindepth 1 -delete 2>/dev/null || true
+
+dotnet publish "$BUILD_DIR/$PROJECT_PATH" \
+  -c Release \
+  --self-contained false \
+  -o "$SLOT_DIR/"
+
+# ── Start idle slot ───────────────────────────────────────────────────────────
+echo "Starting $TARGET_SERVICE..."
+systemctl start "$TARGET_SERVICE"
+
+# ── Health check ──────────────────────────────────────────────────────────────
+"$SCRIPTS_DIR/health-check.sh" "http://127.0.0.1:${TARGET_PORT}" 45 2
+
+# ── Switch Nginx ──────────────────────────────────────────────────────────────
+"$SCRIPTS_DIR/switch-nginx.sh" "$TARGET_SLOT"
+
+# ── Drain & stop old slot ─────────────────────────────────────────────────────
+echo "Draining old slot (${DRAIN_SECONDS}s)..."
+sleep "$DRAIN_SECONDS"
+systemctl stop "$OLD_SERVICE"
+
+# ── Log ───────────────────────────────────────────────────────────────────────
+printf '%s | deploy | branch=%s | slot=%s\n' \
+  "$(date -Iseconds)" "$REPO_BRANCH" "$TARGET_SLOT" \
+  >> "$RUNTIME_DIR/deploy-history.log"
+
+echo "✓ Deployment complete — $TARGET_SLOT is live"

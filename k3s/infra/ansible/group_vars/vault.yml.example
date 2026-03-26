@@ -1,0 +1,11 @@
+---
+# Copy to vault.yml and fill in values.
+# Encrypt with: ansible-vault encrypt vault.yml
+
+postgres_password:  "change-me-strong-password"
+
+s3_access_key:      "AKIAIOSFODNN7EXAMPLE"
+s3_secret_key:      "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+
+# For private Git repos used by FluxCD:
+# flux_git_token: "ghp_xxxx"

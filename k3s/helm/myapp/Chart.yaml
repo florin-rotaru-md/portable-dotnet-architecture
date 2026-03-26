@@ -1,0 +1,6 @@
+apiVersion: v2
+name:        myapp
+description: Generic chart for a .NET application with liveness/readiness probes
+type:        application
+version:     0.1.0
+appVersion:  "1.0.0"

@@ -1,0 +1,26 @@
+[Unit]
+Description={{ app_name }} {{ slot }} slot
+After=network.target postgresql.service
+Wants=network.target
+
+[Service]
+Type=exec
+User={{ app_user }}
+Group={{ app_user }}
+WorkingDirectory={{ apps_root }}/{{ app_name }}/slots/{{ slot }}
+ExecStart=/usr/bin/dotnet {{ apps_root }}/{{ app_name }}/slots/{{ slot }}/{{ app_assembly }}.dll
+EnvironmentFile={{ apps_root }}/{{ app_name }}/env/common.env
+EnvironmentFile={{ apps_root }}/{{ app_name }}/env/{{ slot }}.env
+Restart=on-failure
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec={{ drain_seconds | int + 10 }}
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths={{ apps_root }}/{{ app_name }}
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,48 @@
+---
+- name: Install base packages
+  apt:
+    name:
+      - curl
+      - git
+      - wget
+      - unzip
+      - jq
+      - ufw
+      - ca-certificates
+      - gnupg
+      - lsb-release
+      - rsync
+    state: present
+    update_cache: true
+
+- name: Ensure deploy group exists
+  group:
+    name: "{{ app_user }}"
+    state: present
+
+- name: Ensure deploy user exists
+  user:
+    name:     "{{ app_user }}"
+    group:    "{{ app_user }}"
+    shell:    /bin/bash
+    create_home: true
+
+- name: Grant deploy passwordless sudo
+  copy:
+    dest:    /etc/sudoers.d/deploy
+    content: "{{ app_user }} ALL=(ALL) NOPASSWD:ALL\n"
+    owner:   root
+    group:   root
+    mode:    '0440'
+    validate: 'visudo -cf %s'
+
+- name: Allow configured TCP ports through UFW
+  ufw:
+    rule:  allow
+    port:  "{{ item }}"
+    proto: tcp
+  loop: "{{ ufw_allowed_tcp_ports | default([]) }}"
+
+- name: Enable UFW
+  ufw:
+    state: enabled

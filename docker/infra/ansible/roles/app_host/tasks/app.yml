@@ -1,0 +1,103 @@
+---
+- name: Ensure runtime directories exist for {{ app.name }}
+  file:
+    path:  "{{ item }}"
+    state: directory
+    owner: "{{ app_user }}"
+    group: "{{ app_user }}"
+    mode:  '0755'
+  loop:
+    - "{{ apps_root }}/{{ app.name }}"
+    - "{{ apps_root }}/{{ app.name }}/runtime"
+    - "{{ apps_root }}/{{ app.name }}/env"
+    - "{{ apps_root }}/{{ app.name }}/scripts"
+    - "{{ apps_root }}/{{ app.name }}/docker"
+    - "{{ apps_root }}/{{ app.name }}/nginx"
+
+- name: Render compose base file for {{ app.name }}
+  template:
+    src:   compose.base.yml.j2
+    dest:  "{{ apps_root }}/{{ app.name }}/docker/compose.base.yml"
+    owner: "{{ app_user }}"
+    group: "{{ app_user }}"
+    mode:  '0644'
+
+- name: Render compose blue file for {{ app.name }}
+  template:
+    src:   compose.blue.yml.j2
+    dest:  "{{ apps_root }}/{{ app.name }}/docker/compose.blue.yml"
+    owner: "{{ app_user }}"
+    group: "{{ app_user }}"
+    mode:  '0644'
+
+- name: Render compose green file for {{ app.name }}
+  template:
+    src:   compose.green.yml.j2
+    dest:  "{{ apps_root }}/{{ app.name }}/docker/compose.green.yml"
+    owner: "{{ app_user }}"
+    group: "{{ app_user }}"
+    mode:  '0644'
+
+- name: Render runtime scripts for {{ app.name }}
+  template:
+    src:   "{{ item }}"
+    dest:  "{{ apps_root }}/{{ app.name }}/scripts/{{ item | regex_replace('\\.j2$', '') }}"
+    owner: "{{ app_user }}"
+    group: "{{ app_user }}"
+    mode:  '0755'
+  loop:
+    - current-slot.sh.j2
+    - switch-nginx.sh.j2
+    - health-check.sh.j2
+    - deploy.sh.j2
+    - rollback.sh.j2
+
+- name: Initialize active-slot file for {{ app.name }}
+  copy:
+    dest:    "{{ apps_root }}/{{ app.name }}/runtime/active-slot"
+    content: "blue\n"
+    owner:   "{{ app_user }}"
+    group:   "{{ app_user }}"
+    mode:    '0644'
+    force:   false
+
+- name: Initialize active-image file for {{ app.name }}
+  copy:
+    dest:    "{{ apps_root }}/{{ app.name }}/runtime/active-image"
+    content: "{{ app.image_default }}\n"
+    owner:   "{{ app_user }}"
+    group:   "{{ app_user }}"
+    mode:    '0644'
+    force:   false
+
+- name: Write common env file for {{ app.name }}
+  copy:
+    dest: "{{ apps_root }}/{{ app.name }}/env/common.env"
+    content: |
+      ASPNETCORE_URLS=http://0.0.0.0:{{ app.internal_port }}
+      DOTNET_ENVIRONMENT=Production
+      APP_NAME={{ app.name }}
+      ConnectionStrings__Main=Host={{ postgres_host }};Port=5432;Database={{ app.db }};Username={{ postgres_user }};Password={{ postgres_password }}
+    owner: "{{ app_user }}"
+    group: "{{ app_user }}"
+    mode:  '0600'
+    force: false
+  no_log: true
+
+- name: Write blue env file for {{ app.name }}
+  copy:
+    dest:    "{{ apps_root }}/{{ app.name }}/env/blue.env"
+    content: "SLOT_NAME=blue\nAPP_NAME={{ app.name }}\n"
+    owner:   "{{ app_user }}"
+    group:   "{{ app_user }}"
+    mode:    '0600'
+    force:   false
+
+- name: Write green env file for {{ app.name }}
+  copy:
+    dest:    "{{ apps_root }}/{{ app.name }}/env/green.env"
+    content: "SLOT_NAME=green\nAPP_NAME={{ app.name }}\n"
+    owner:   "{{ app_user }}"
+    group:   "{{ app_user }}"
+    mode:    '0600'
+    force:   false

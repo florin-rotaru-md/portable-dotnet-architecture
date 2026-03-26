@@ -1,0 +1,36 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: myapp
+  namespace: myapp
+spec:
+  interval: 5m
+  chart:
+    spec:
+      chart:   ./k3s/helm/myapp
+      version: "*"
+      sourceRef:
+        kind: GitRepository
+        name: flux-system
+        namespace: flux-system
+  # Override values here or in a separate values ConfigMap/Secret
+  values:
+    image:
+      repository: ghcr.io/example/myapp
+      tag:        latest
+    ingress:
+      host: myapp.example.com
+    resources:
+      requests:
+        cpu:    100m
+        memory: 128Mi
+      limits:
+        cpu:    500m
+        memory: 512Mi
+    # DB connection string injected from a Secret (created externally):
+    # kubectl create secret generic myapp-db \
+    #   --from-literal=ConnectionStrings__Main="Host=<pg-ip>;..." \
+    #   -n myapp
+    envFrom:
+      - secretRef:
+          name: myapp-db

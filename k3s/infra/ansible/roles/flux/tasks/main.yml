@@ -1,0 +1,50 @@
+---
+- name: Install flux CLI
+  get_url:
+    url:  "https://github.com/fluxcd/flux2/releases/download/{{ flux_version }}/flux_{{ flux_version | regex_replace('^v','') }}_linux_amd64.tar.gz"
+    dest: /tmp/flux.tar.gz
+    mode: '0644'
+
+- name: Extract flux CLI
+  unarchive:
+    src:        /tmp/flux.tar.gz
+    dest:       /usr/local/bin
+    remote_src: true
+    extra_opts: ["--wildcards", "flux"]
+
+- name: Check if FluxCD is already bootstrapped
+  command: kubectl get namespace flux-system
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: flux_ns
+  failed_when: false
+  changed_when: false
+
+- name: Bootstrap FluxCD (public repo)
+  command: >
+    flux bootstrap git
+    --url={{ flux_git_repo }}
+    --branch={{ flux_git_branch }}
+    --path=k3s/flux/clusters/production
+    --components-extra=image-reflector-controller,image-automation-controller
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  when:
+    - flux_ns.rc != 0
+    - flux_git_token is not defined
+
+- name: Bootstrap FluxCD (private repo)
+  command: >
+    flux bootstrap git
+    --url={{ flux_git_repo }}
+    --branch={{ flux_git_branch }}
+    --path=k3s/flux/clusters/production
+    --username=git
+    --password={{ flux_git_token }}
+    --components-extra=image-reflector-controller,image-automation-controller
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  when:
+    - flux_ns.rc != 0
+    - flux_git_token is defined
+  no_log: true

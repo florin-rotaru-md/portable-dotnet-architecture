@@ -1,0 +1,46 @@
+#cloud-config
+# Minimal cloud-init bootstrap: secure SSH, create ops user, install essentials.
+# Terraform passes variables via templatefile().
+
+hostname: ${hostname}
+fqdn:     ${hostname}
+
+users:
+  - name: ops
+    groups: [sudo, docker]
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    ssh_authorized_keys:
+      - ${ssh_public_key}
+
+ssh_pwauth: false
+
+package_update:  true
+package_upgrade: true
+
+packages:
+  - curl
+  - git
+  - wget
+  - unzip
+  - jq
+  - ufw
+  - ca-certificates
+  - gnupg
+  - lsb-release
+  - fail2ban
+  - htop
+
+runcmd:
+  # Firewall baseline (Ansible will fine-tune)
+  - ufw allow 22/tcp
+  - ufw --force enable
+
+  # Disable root SSH password auth (key-only)
+  - sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
+  - systemctl reload ssh
+
+  # Mark bootstrap complete
+  - touch /var/lib/cloud-init-done
+
+final_message: "cloud-init bootstrap complete on ${hostname}"

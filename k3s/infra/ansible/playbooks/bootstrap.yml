@@ -1,0 +1,28 @@
+---
+# Baseline hardening for all nodes (k3s + postgres)
+- name: Bootstrap all nodes
+  hosts: all
+  become: true
+  roles:
+    - common
+
+# Configure external Postgres VPS
+- name: Configure Postgres host
+  hosts: postgres
+  become: true
+  roles:
+    - postgres
+
+# Install k3s and bootstrap the cluster
+- name: Install k3s server
+  hosts: k3s_server
+  become: true
+  roles:
+    - k3s_server
+
+# Bootstrap FluxCD and point it at this repo
+- name: Bootstrap FluxCD
+  hosts: k3s_server[0]
+  become: false
+  roles:
+    - flux

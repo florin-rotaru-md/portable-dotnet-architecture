@@ -1,0 +1,60 @@
+replicaCount: 2
+
+image:
+  repository: ghcr.io/example/myapp
+  pullPolicy: Always
+  tag: "latest"
+
+imagePullSecrets: []
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+
+ingress:
+  enabled: true
+  className: nginx
+  host: myapp.example.com
+  tls: true            # uses cert-manager ClusterIssuer = letsencrypt
+  clusterIssuer: letsencrypt-prod
+
+resources:
+  requests:
+    cpu:    100m
+    memory: 128Mi
+  limits:
+    cpu:    500m
+    memory: 512Mi
+
+# Horizontal pod autoscaling
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+
+# Pod disruption budget — keep at least 1 pod available during rolling updates
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+env: []
+  # - name: DOTNET_ENVIRONMENT
+  #   value: Production
+
+envFrom: []
+  # - secretRef:
+  #     name: myapp-db
+
+# Health check paths (must be implemented by the app)
+livenessProbe:
+  path: /.well-known/live
+  initialDelaySeconds: 10
+  periodSeconds: 10
+
+readinessProbe:
+  path: /.well-known/ready
+  initialDelaySeconds: 5
+  periodSeconds: 5
+  failureThreshold: 3

@@ -1,0 +1,103 @@
+---
+- name: Add PostgreSQL apt key
+  get_url:
+    url:  https://www.postgresql.org/media/keys/ACCC4CF8.asc
+    dest: /usr/share/keyrings/postgresql.asc
+    mode: '0644'
+
+- name: Add PostgreSQL apt repository
+  apt_repository:
+    repo: "deb [signed-by=/usr/share/keyrings/postgresql.asc] http://apt.postgresql.org/pub/repos/apt {{ ansible_distribution_release }}-pgdg main"
+    state:    present
+    filename: pgdg
+
+- name: Install PostgreSQL
+  apt:
+    name:         "postgresql-{{ postgres_version }}"
+    state:        present
+    update_cache: true
+
+- name: Configure pg_hba.conf
+  template:
+    src:   pg_hba.conf.j2
+    dest:  "/etc/postgresql/{{ postgres_version }}/main/pg_hba.conf"
+    owner: postgres
+    group: postgres
+    mode:  '0640'
+  notify: restart postgresql
+
+- name: Set listen_addresses to cluster private network
+  lineinfile:
+    path:   "/etc/postgresql/{{ postgres_version }}/main/postgresql.conf"
+    regexp: '^#?listen_addresses\s*='
+    line:   "listen_addresses = '127.0.0.1,{{ postgres_private_ip }}'"
+  notify: restart postgresql
+
+- name: Allow k3s nodes to reach Postgres on private network
+  ufw:
+    rule:  allow
+    port:  "5432"
+    proto: tcp
+    src:   "10.0.1.0/24"
+
+- name: Ensure PostgreSQL is enabled and started
+  service:
+    name:    postgresql
+    enabled: true
+    state:   started
+
+- name: Check if app user exists
+  become_user: postgres
+  command: psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='{{ postgres_user }}'"
+  register: pg_user
+  changed_when: false
+
+- name: Create app user
+  become_user: postgres
+  command: >
+    psql -c "CREATE USER {{ postgres_user }}
+             WITH PASSWORD '{{ postgres_password }}' CREATEDB"
+  when:   pg_user.stdout != '1'
+  no_log: true
+
+- name: Check if database exists
+  become_user: postgres
+  command: psql -tAc "SELECT 1 FROM pg_database WHERE datname='{{ postgres_db }}'"
+  register: pg_db
+  changed_when: false
+
+- name: Create database
+  become_user: postgres
+  command: psql -c "CREATE DATABASE {{ postgres_db }} OWNER {{ postgres_user }}"
+  when: pg_db.stdout != '1'
+
+- name: Ensure backup directory exists
+  file:
+    path:  /opt/postgres/backups
+    state: directory
+    owner: postgres
+    group: postgres
+    mode:  '0750'
+
+- name: Install S3 backup cron job
+  cron:
+    name:   "postgres nightly S3 backup"
+    user:   postgres
+    minute: "15"
+    hour:   "2"
+    job: >
+      pg_dump -Fc {{ postgres_db }}
+      > /opt/postgres/backups/{{ postgres_db }}_$(date +\%Y\%m\%d_\%H\%M).dump
+      && AWS_ACCESS_KEY_ID="{{ s3_access_key }}"
+         AWS_SECRET_ACCESS_KEY="{{ s3_secret_key }}"
+         aws s3 sync /opt/postgres/backups
+         s3://{{ s3_bucket }}/postgres/
+         --endpoint-url {{ s3_endpoint }}
+      && find /opt/postgres/backups -name '*.dump' -mtime +{{ backup_retention_days }} -delete
+  no_log: true
+
+handlers:
+  - name: restart postgresql
+    service:
+      name:  postgresql
+      state: restarted

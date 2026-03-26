@@ -1,0 +1,14 @@
+---
+- name: Ensure applications root exists
+  file:
+    path:  "{{ apps_root }}"
+    state: directory
+    owner: "{{ app_user }}"
+    group: "{{ app_user }}"
+    mode:  '0755'
+
+- name: Provision application runtimes
+  include_tasks: app.yml
+  loop: "{{ applications }}"
+  loop_control:
+    loop_var: app
