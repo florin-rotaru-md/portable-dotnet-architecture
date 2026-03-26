@@ -51,7 +51,7 @@ The app demonstrates two patterns:
 
 **Host topology:**
 - `app-20` (192.168.0.20) — Nginx + Docker containers
-- `db-30` (192.168.0.30) — PostgreSQL Docker container + backup cron jobs
+- `db-30` (192.168.0.30) — PostgreSQL + backup cron jobs
 
 **Ansible roles:**
 - `common` — base packages, `deploy` user, UFW firewall
