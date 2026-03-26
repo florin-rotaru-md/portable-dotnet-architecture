@@ -5,7 +5,7 @@ k3s_version:     v1.30.4+k3s1   # pin for reproducibility
 flux_version:    v2.3.0
 
 # ── Postgres (external VPS) ───────────────────────────────────────────────────
-postgres_version:     "16"
+postgres_version:     "18"
 postgres_private_ip:  "10.0.1.10"   # update after terraform output
 postgres_user:        appuser
 postgres_db:          myapp_db

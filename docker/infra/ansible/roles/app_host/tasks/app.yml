@@ -77,7 +77,8 @@
       ASPNETCORE_URLS=http://0.0.0.0:{{ app.internal_port }}
       DOTNET_ENVIRONMENT=Production
       APP_NAME={{ app.name }}
-      ConnectionStrings__Main=Host={{ postgres_host }};Port=5432;Database={{ app.db }};Username={{ postgres_user }};Password={{ postgres_password }}
+      {% for db in app.dbs %}ConnectionStrings__{{ db }}=Host={{ postgres_host }};Port=5432;Database={{ db }};Username={{ postgres_user }};Password={{ postgres_password }}
+      {% endfor %}
     owner: "{{ app_user }}"
     group: "{{ app_user }}"
     mode:  '0600'

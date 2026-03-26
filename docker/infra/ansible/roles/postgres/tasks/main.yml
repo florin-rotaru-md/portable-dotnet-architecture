@@ -66,20 +66,20 @@
     container: postgres
     command: >
       psql -U postgres -c
-      "SELECT 1 FROM pg_database WHERE datname='{{ item.db }}'"
+      "SELECT 1 FROM pg_database WHERE datname='{{ item.1 }}'"
   register: pg_db_checks
   changed_when: false
-  loop: "{{ applications }}"
+  loop: "{{ applications | subelements('dbs') }}"
   loop_control:
-    label: "{{ item.db }}"
+    label: "{{ item.1 }}"
 
 - name: Create missing databases
   community.docker.docker_container_exec:
     container: postgres
     command: >
       psql -U postgres -c
-      "CREATE DATABASE {{ item.item.db }} OWNER {{ postgres_user }}"
+      "CREATE DATABASE {{ item.item.1 }} OWNER {{ postgres_user }}"
   when: item.stdout | trim != '1'
   loop: "{{ pg_db_checks.results }}"
   loop_control:
-    label: "{{ item.item.db }}"
+    label: "{{ item.item.1 }}"
