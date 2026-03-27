@@ -11,7 +11,7 @@ services:
     stop_signal: SIGTERM
     stop_grace_period: 60s
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:{{ app.internal_port }}/.well-known/live || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:{{ app.internal_port }}/.well-known/live || exit 1"]
       interval: 10s
       timeout:  3s
       retries:  5
@@ -31,7 +31,7 @@ services:
     stop_signal: SIGTERM
     stop_grace_period: 60s
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:{{ app.internal_port }}/.well-known/live || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:{{ app.internal_port }}/.well-known/live || exit 1"]
       interval: 10s
       timeout:  3s
       retries:  5
