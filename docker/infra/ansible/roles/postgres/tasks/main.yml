@@ -77,6 +77,12 @@
   when: pg_user_check.stdout | trim != '1'
   no_log: true
 
+- name: Enable postgis extension on template1 (inherited by all new databases)
+  community.docker.docker_container_exec:
+    container: postgres
+    command: psql -U postgres -d template1 -c "CREATE EXTENSION IF NOT EXISTS postgis"
+  changed_when: false
+
 - name: Install backup script
   template:
     src:   pg-backup.sh.j2

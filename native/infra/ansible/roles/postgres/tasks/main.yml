@@ -22,9 +22,11 @@
     state:    present
     filename: pgdg
 
-- name: Install PostgreSQL
+- name: Install PostgreSQL and PostGIS
   apt:
-    name:         "postgresql-{{ postgres_version }}"
+    name:
+      - "postgresql-{{ postgres_version }}"
+      - "postgresql-{{ postgres_version }}-postgis-3"
     state:        present
     update_cache: true
 
@@ -69,6 +71,11 @@
     psql -c "CREATE DATABASE {{ postgres_db }}
              OWNER {{ postgres_user }}"
   when: pg_db_check.stdout != '1'
+
+- name: Enable postgis extension on app database
+  become_user: postgres
+  command: psql -d {{ postgres_db }} -c "CREATE EXTENSION IF NOT EXISTS postgis"
+  changed_when: false
 
 - name: Ensure backup directory exists
   file:

@@ -5,7 +5,8 @@ apps_root:        /opt/apps
 app_network_name: app_net
 
 # ── Postgres (runs as a Docker container on the same host) ─────────────────────
-postgres_version:   "18"
+postgres_version:   "17"
+postgis_version:    "3.5"
 postgres_host:      postgres          # Docker service name / internal DNS
 postgres_user:      appuser
 # postgres_password and postgres_root_password come from vault.yml

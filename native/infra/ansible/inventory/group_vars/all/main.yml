@@ -20,7 +20,7 @@ apps_root:  /opt/apps
 dotnet_version: "10.0"
 
 # ── Postgres ───────────────────────────────────────────────────────────────────
-postgres_version: "18"
+postgres_version: "17"
 postgres_db:      myapp_db
 postgres_user:    myapp
 # postgres_password comes from vault.yml
