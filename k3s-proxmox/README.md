@@ -84,7 +84,8 @@ vim infra/ansible/inventory/hosts.ini   # set IPs from terraform output
 ```bash
 vim infra/ansible/group_vars/all.yml
 
-cp infra/ansible/group_vars/vault.yml.example infra/ansible/group_vars/vault.yml
+cd ~/src/portable-dotnet-architecture/k3s-proxmox/infra/ansible
+cp --update=none group_vars/vault.yml.example group_vars/vault.yml
 vim infra/ansible/group_vars/vault.yml
 ansible-vault encrypt infra/ansible/group_vars/vault.yml
 ```
@@ -106,6 +107,12 @@ test -f ~/.ssh/id_ed25519_ansible || \
 ```yaml
 ansible_ssh_public_key: "ssh-ed25519 AAAA...  ansible-control"
 # or use a Ansible lookup: "{{ lookup('file', '~/.ssh/id_ed25519_ansible.pub') }}"
+```
+
+```bash
+cd ~/src/portable-dotnet-architecture/k3s-proxmox/infra/ansible
+cp --update=none group_vars/vault.yml.example group_vars/vault.yml
+vim infra/ansible/group_vars/vault.yml
 ```
 
 ### 4. Bootstrap

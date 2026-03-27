@@ -42,10 +42,46 @@ test -f ~/.ssh/id_ed25519_ansible || \
 
 **2. Add the public key to `vault.yml`** (see Configure below):
 
+```bash
+cd ~/src/portable-dotnet-architecture/native/infra/ansible
+cp --update=none group_vars/vault.yml.example group_vars/vault.yml
+vim infra/ansible/group_vars/vault.yml
+```
+
 ```yaml
 ansible_ssh_public_key: "ssh-ed25519 AAAA...  ansible-control"
-# or use a Ansible lookup: "{{ lookup('file', '~/.ssh/id_ed25519_ansible.pub') }}"
+# or use a Ansible lookup ansible_ssh_public_key: "{{ lookup('file', '~/.ssh/id_ed25519_ansible.pub') }}"
 ```
+
+## Configure
+
+```bash
+cd ~/src/portable-dotnet-architecture/native
+# Edit inventory with your VPS IP:
+vim infra/ansible/inventory/hosts.ini
+
+# Edit app settings (name, domain, ports, .NET version…):
+vim infra/ansible/group_vars/all.yml
+
+# Fill in secrets:
+cd ~/src/portable-dotnet-architecture/native/infra/ansible
+cp --update=none group_vars/vault.yml.example group_vars/vault.yml
+vim infra/ansible/group_vars/vault.yml
+# Optionally encrypt: ansible-vault encrypt infra/ansible/group_vars/vault.yml
+```
+
+Key variables in `group_vars/all.yml`:
+
+| Variable          | Description                                 |
+|-------------------|---------------------------------------------|
+| `app_name`        | Short identifier, becomes systemd unit name |
+| `app_assembly`    | .NET assembly name (DLL without extension)  |
+| `app_domain`      | Nginx server_name                           |
+| `app_port_blue`   | Port for blue slot (default 5000)           |
+| `app_port_green`  | Port for green slot (default 5001)          |
+| `drain_seconds`   | Nginx drain before stopping old slot        |
+| `use_cloudflared` | `true` to install Cloudflare Tunnel         |
+
 
 **3. First bootstrap** — the `ansible` user doesn't exist yet, so connect as the initial root/admin user:
 
@@ -61,35 +97,6 @@ ansible-playbook playbooks/bootstrap.yml -u root --ask-pass --ask-vault-pass
 ```bash
 ansible-playbook playbooks/bootstrap.yml --ask-vault-pass
 ```
-
----
-
-## Configure
-
-```bash
-# Edit inventory with your VPS IP:
-vim infra/ansible/inventory/hosts.ini
-
-# Edit app settings (name, domain, ports, .NET version…):
-vim infra/ansible/group_vars/all.yml
-
-# Fill in secrets:
-cp infra/ansible/group_vars/vault.yml.example infra/ansible/group_vars/vault.yml
-vim infra/ansible/group_vars/vault.yml
-# Optionally encrypt: ansible-vault encrypt infra/ansible/group_vars/vault.yml
-```
-
-Key variables in `group_vars/all.yml`:
-
-| Variable       | Description                                |
-|----------------|--------------------------------------------|
-| `app_name`     | Short identifier, becomes systemd unit name |
-| `app_assembly` | .NET assembly name (DLL without extension) |
-| `app_domain`   | Nginx server_name                          |
-| `app_port_blue`| Port for blue slot (default 5000)          |
-| `app_port_green`| Port for green slot (default 5001)        |
-| `drain_seconds`| Nginx drain before stopping old slot       |
-| `use_cloudflared` | `true` to install Cloudflare Tunnel    |
 
 ## Bootstrap
 

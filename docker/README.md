@@ -47,9 +47,29 @@ test -f ~/.ssh/id_ed25519_ansible || \
 
 **2. Add the public key to `vault.yml`** (see Configure below):
 
+```bash
+cd ~/src/portable-dotnet-architecture/docker/infra/ansible
+cp --update=none group_vars/vault.yml.example group_vars/vault.yml
+vim group_vars/vault.yml
+```
+
 ```yaml
 ansible_ssh_public_key: "ssh-ed25519 AAAA...  ansible-control"
-# or use a Ansible lookup: "{{ lookup('file', '~/.ssh/id_ed25519_ansible.pub') }}"
+# or use a Ansible lookup ansible_ssh_public_key: "{{ lookup('file', '~/.ssh/id_ed25519_ansible.pub') }}"
+```
+
+## Configure
+
+```bash
+cd ~/src/portable-dotnet-architecture/docker
+vim infra/ansible/inventory/hosts.ini       # VPS IP
+
+vim infra/ansible/group_vars/all.yml        # applications list, ports, etc.
+
+cd ~/src/portable-dotnet-architecture/docker/infra/ansible
+cp --update=none group_vars/vault.yml.example group_vars/vault.yml
+vim group_vars/vault.yml
+# ansible-vault encrypt infra/ansible/group_vars/vault.yml
 ```
 
 **3. First bootstrap** — the `ansible` user doesn't exist yet, so connect as the initial root/admin user:
@@ -67,20 +87,6 @@ ansible-playbook playbooks/bootstrap.yml -u root --ask-pass --ask-vault-pass
 ansible-playbook playbooks/bootstrap.yml --ask-vault-pass
 ```
 
----
-
-## Configure
-
-```bash
-vim infra/ansible/inventory/hosts.ini       # VPS IP
-
-vim infra/ansible/group_vars/all.yml        # applications list, ports, etc.
-
-cp infra/ansible/group_vars/vault.yml.example infra/ansible/group_vars/vault.yml
-vim infra/ansible/group_vars/vault.yml
-# ansible-vault encrypt infra/ansible/group_vars/vault.yml
-```
-
 ### Key variables in `group_vars/all.yml`
 
 | Variable                | Description                                 |
@@ -94,12 +100,13 @@ vim infra/ansible/group_vars/vault.yml
 
 ```yaml
 applications:
-  - name:          myapp               # used for container names, scripts path
-    db:            myapp_db            # database name in postgres
-    server_name:   myapp.example.com   # Nginx server_name
-    blue_port:     18081               # host port for blue container
-    green_port:    18082               # host port for green container
-    internal_port: 8080                # container's ASPNETCORE_URLS port
+  - name:          myapp                # used for container names, scripts path
+    dbs:
+      - myapp_db                        # database names in postgres
+    server_name:   myapp.example.com    # Nginx server_name
+    blue_port:     18081                # host port for blue container
+    green_port:    18082                # host port for green container
+    internal_port: 8080                 # container's ASPNETCORE_URLS port
     image_default: ghcr.io/org/myapp:latest
     drain_seconds: 32
 ```
