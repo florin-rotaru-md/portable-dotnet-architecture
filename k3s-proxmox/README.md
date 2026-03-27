@@ -87,6 +87,10 @@ vim infra/ansible/inventory/group_vars/all.yml
 cd ~/src/portable-dotnet-architecture/k3s-proxmox/infra/ansible
 cp --update=none inventory/group_vars/vault.yml.example inventory/group_vars/vault.yml
 vim infra/ansible/inventory/group_vars/vault.yml
+# required values:
+# postgres_password: "replace-me"
+# s3_access_key: "replace-me"
+# s3_secret_key: "replace-me"
 ansible-vault encrypt infra/ansible/inventory/group_vars/vault.yml
 ```
 

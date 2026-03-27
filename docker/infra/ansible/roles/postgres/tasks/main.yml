@@ -1,4 +1,19 @@
----
+- name: Validate required postgres secrets
+  assert:
+    that:
+      - postgres_root_password is defined
+      - postgres_root_password | string | trim | length > 0
+      - postgres_root_password != 'change-me-root-password'
+      - postgres_password is defined
+      - postgres_password | string | trim | length > 0
+      - postgres_password != 'change-me-app-password'
+    fail_msg: >-
+      Define postgres_root_password and postgres_password in
+      inventory/group_vars/vault.yml before running bootstrap.
+      Start from inventory/group_vars/vault.yml.example and encrypt the file
+      with ansible-vault if needed.
+  no_log: true
+
 - name: Ensure postgres directories exist
   file:
     path:  "{{ item }}"

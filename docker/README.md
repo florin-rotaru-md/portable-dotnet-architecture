@@ -57,6 +57,7 @@ ssh-copy-id -i ~/.ssh/id_ed25519_ansible.pub deploy@<vps-ip>
 cd ~/src/portable-dotnet-architecture/docker/infra/ansible
 cp --update=none inventory/group_vars/vault.yml.example inventory/group_vars/vault.yml
 vim inventory/group_vars/vault.yml
+# set postgres_root_password and postgres_password before bootstrap
 ```
 
 ```yaml
@@ -74,6 +75,9 @@ vim infra/ansible/inventory/group_vars/all.yml         # applications list, port
 cd ~/src/portable-dotnet-architecture/docker/infra/ansible
 cp --update=none inventory/group_vars/vault.yml.example inventory/group_vars/vault.yml
 vim inventory/group_vars/vault.yml
+# required values:
+# postgres_root_password: "replace-me"
+# postgres_password: "replace-me"
 # ansible-vault encrypt infra/ansible/inventory/group_vars/vault.yml
 ```
 

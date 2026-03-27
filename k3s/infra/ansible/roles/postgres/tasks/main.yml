@@ -1,4 +1,22 @@
----
+- name: Validate required postgres and backup secrets
+  assert:
+    that:
+      - postgres_password is defined
+      - postgres_password | string | trim | length > 0
+      - postgres_password != 'change-me-strong-password'
+      - s3_access_key is defined
+      - s3_access_key | string | trim | length > 0
+      - s3_access_key != 'AKIAIOSFODNN7EXAMPLE'
+      - s3_secret_key is defined
+      - s3_secret_key | string | trim | length > 0
+      - s3_secret_key != 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY'
+    fail_msg: >-
+      Define postgres_password, s3_access_key, and s3_secret_key in
+      inventory/group_vars/vault.yml before running bootstrap. Start from
+      inventory/group_vars/vault.yml.example and encrypt the file with
+      ansible-vault if needed.
+  no_log: true
+
 - name: Add PostgreSQL apt key
   get_url:
     url:  https://www.postgresql.org/media/keys/ACCC4CF8.asc

@@ -1,4 +1,15 @@
----
+- name: Validate required postgres secrets
+  assert:
+    that:
+      - postgres_password is defined
+      - postgres_password | string | trim | length > 0
+      - postgres_password != 'change-me-strong-password'
+    fail_msg: >-
+      Define postgres_password in inventory/group_vars/vault.yml before
+      running bootstrap. Start from inventory/group_vars/vault.yml.example and
+      encrypt the file with ansible-vault if needed.
+  no_log: true
+
 - name: Add PostgreSQL apt signing key
   get_url:
     url:  https://www.postgresql.org/media/keys/ACCC4CF8.asc
