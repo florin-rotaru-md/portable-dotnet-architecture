@@ -16,8 +16,7 @@
     src:  upstream-blue.conf.j2
     dest: "/etc/nginx/conf.d/{{ app.name }}-upstream-active.conf"
     mode: '0644'
-  args:
-    creates: "/etc/nginx/conf.d/{{ app.name }}-upstream-active.conf"
+    force: false
 
 - name: Render main site config for {{ app.name }}
   template:
