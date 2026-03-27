@@ -4,8 +4,8 @@
       - cloudflare_token is defined
       - cloudflare_token | string | trim | length > 0
     fail_msg: >-
-      Define cloudflare_token in inventory/group_vars/vault.yml before
-      enabling use_cloudflared. Start from inventory/group_vars/vault.yml.example
+      Define cloudflare_token in inventory/group_vars/all/vault.yml before
+      enabling use_cloudflared. Start from inventory/group_vars/all/vault.yml.example
       and encrypt the file with ansible-vault if needed.
   no_log: true
 

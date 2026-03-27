@@ -68,16 +68,16 @@ vim infra/ansible/inventory/hosts.ini   # set IPs from terraform output
 ### 3. Configure Ansible variables
 
 ```bash
-vim infra/ansible/inventory/group_vars/all.yml
+vim infra/ansible/inventory/group_vars/all/main.yml
 
 cd ~/src/portable-dotnet-architecture/k3s/infra/ansible
-cp --update=none inventory/group_vars/vault.yml.example inventory/group_vars/vault.yml
-vim infra/ansible/inventory/group_vars/vault.yml
+cp --update=none inventory/group_vars/all/vault.yml.example inventory/group_vars/all/vault.yml
+vim infra/ansible/inventory/group_vars/all/vault.yml
 # required values:
 # postgres_password: "replace-me"
 # s3_access_key: "replace-me"
 # s3_secret_key: "replace-me"
-ansible-vault encrypt infra/ansible/inventory/group_vars/vault.yml
+ansible-vault encrypt infra/ansible/inventory/group_vars/all/vault.yml
 ```
 
 #### *(Optional)* Ansible service account — SSH key setup
@@ -107,8 +107,8 @@ ansible_ssh_public_key: "ssh-ed25519 AAAA...  ansible-control"
 
 ```bash
 cd ~/src/portable-dotnet-architecture/k3s/infra/ansible
-cp --update=none inventory/group_vars/vault.yml.example inventory/group_vars/vault.yml
-vim infra/ansible/inventory/group_vars/vault.yml
+cp --update=none inventory/group_vars/all/vault.yml.example inventory/group_vars/all/vault.yml
+vim infra/ansible/inventory/group_vars/all/vault.yml
 ```
 
 ### 4. Bootstrap everything

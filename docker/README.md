@@ -55,8 +55,8 @@ ssh-copy-id -i ~/.ssh/id_ed25519_ansible.pub deploy@<vps-ip>
 
 ```bash
 cd ~/src/portable-dotnet-architecture/docker/infra/ansible
-cp --update=none inventory/group_vars/vault.yml.example inventory/group_vars/vault.yml
-vim inventory/group_vars/vault.yml
+cp --update=none inventory/group_vars/all/vault.yml.example inventory/group_vars/all/vault.yml
+vim inventory/group_vars/all/vault.yml
 # set postgres_root_password and postgres_password before bootstrap
 ```
 
@@ -70,15 +70,15 @@ ansible_ssh_public_key: "{{ lookup('file', '~/.ssh/id_ed25519_ansible.pub') }}"
 cd ~/src/portable-dotnet-architecture/docker
 vim infra/ansible/inventory/hosts.ini                  # VPS IP
 
-vim infra/ansible/inventory/group_vars/all.yml         # applications list, ports, etc.
+vim infra/ansible/inventory/group_vars/all/main.yml    # applications list, ports, etc.
 
 cd ~/src/portable-dotnet-architecture/docker/infra/ansible
-cp --update=none inventory/group_vars/vault.yml.example inventory/group_vars/vault.yml
-vim inventory/group_vars/vault.yml
+cp --update=none inventory/group_vars/all/vault.yml.example inventory/group_vars/all/vault.yml
+vim inventory/group_vars/all/vault.yml
 # required values:
 # postgres_root_password: "replace-me"
 # postgres_password: "replace-me"
-# ansible-vault encrypt infra/ansible/inventory/group_vars/vault.yml
+# ansible-vault encrypt infra/ansible/inventory/group_vars/all/vault.yml
 ```
 
 **Bootstrap — all runs connect as `deploy`:**
@@ -89,7 +89,7 @@ ansible-playbook playbooks/bootstrap.yml
 # With vault: ansible-playbook playbooks/bootstrap.yml --ask-vault-pass
 ```
 
-### Key variables in `inventory/group_vars/all.yml`
+### Key variables in `inventory/group_vars/all/main.yml`
 
 | Variable                | Description                                 |
 |-------------------------|---------------------------------------------|
@@ -131,11 +131,11 @@ URLs.  Everything else stays in the image's `appsettings.json`.
 Reference vault variables for secrets:
 
 ```yaml
-# inventory/group_vars/vault.yml
+# inventory/group_vars/all/vault.yml
 postgres_password: "strong-password"
 smtp_password:     "smtp-secret"
 
-# inventory/group_vars/all.yml  (inside application entry)
+# inventory/group_vars/all/main.yml  (inside application entry)
 appsettings_override:
   ConnectionStrings:
     Users:          "Host=postgres;Port=5432;Database=waa_users;Username=appuser;Password={{ postgres_password }};Pooling=true"
@@ -163,12 +163,12 @@ For public images, including public GHCR images, no token is required for pulls.
 For private images, add credentials in Ansible variables:
 
 ```yaml
-# infra/ansible/inventory/group_vars/vault.yml
+# infra/ansible/inventory/group_vars/all/vault.yml
 ghcr_token: "github_pat_xxx"
 ```
 
 ```yaml
-# infra/ansible/inventory/group_vars/all.yml
+# infra/ansible/inventory/group_vars/all/main.yml
 applications:
   - name: myapp
     image_default: ghcr.io/org/myapp:latest

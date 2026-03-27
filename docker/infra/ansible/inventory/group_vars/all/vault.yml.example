@@ -12,7 +12,7 @@ postgres_password:       "change-me-app-password"    # password for postgres_use
 # cloudflare_token: "eyJhIjoiABCD..."
 
 # ── Application secrets ────────────────────────────────────────────────────────
-# Add variables here and reference them in appsettings_override (all.yml).
+# Add variables here and reference them in appsettings_override (main.yml).
 # Example:
 # smtp_password: "change-me"
 # revolut_api_key: "change-me"

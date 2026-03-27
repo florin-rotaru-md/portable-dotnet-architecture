@@ -12,8 +12,8 @@
       - s3_secret_key != 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY'
     fail_msg: >-
       Define postgres_password, s3_access_key, and s3_secret_key in
-      inventory/group_vars/vault.yml before running bootstrap. Start from
-      inventory/group_vars/vault.yml.example and encrypt the file with
+      inventory/group_vars/all/vault.yml before running bootstrap. Start from
+      inventory/group_vars/all/vault.yml.example and encrypt the file with
       ansible-vault if needed.
   no_log: true
 

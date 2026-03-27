@@ -9,8 +9,8 @@
       - postgres_password != 'change-me-app-password'
     fail_msg: >-
       Define postgres_root_password and postgres_password in
-      inventory/group_vars/vault.yml before running bootstrap.
-      Start from inventory/group_vars/vault.yml.example and encrypt the file
+      inventory/group_vars/all/vault.yml before running bootstrap.
+      Start from inventory/group_vars/all/vault.yml.example and encrypt the file
       with ansible-vault if needed.
   no_log: true
 
