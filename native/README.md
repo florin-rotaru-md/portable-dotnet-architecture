@@ -50,8 +50,8 @@ ssh-copy-id -i ~/.ssh/id_ed25519_ansible.pub root@<vps-ip>
 
 ```bash
 cd ~/src/portable-dotnet-architecture/native/infra/ansible
-cp --update=none group_vars/vault.yml.example group_vars/vault.yml
-vim infra/ansible/group_vars/vault.yml
+cp --update=none inventory/group_vars/vault.yml.example inventory/group_vars/vault.yml
+vim infra/ansible/inventory/group_vars/vault.yml
 ```
 
 ```yaml
@@ -67,16 +67,16 @@ cd ~/src/portable-dotnet-architecture/native
 vim infra/ansible/inventory/hosts.ini
 
 # Edit app settings (name, domain, ports, .NET version…):
-vim infra/ansible/group_vars/all.yml
+vim infra/ansible/inventory/group_vars/all.yml
 
 # Fill in secrets:
 cd ~/src/portable-dotnet-architecture/native/infra/ansible
-cp --update=none group_vars/vault.yml.example group_vars/vault.yml
-vim infra/ansible/group_vars/vault.yml
-# Optionally encrypt: ansible-vault encrypt infra/ansible/group_vars/vault.yml
+cp --update=none inventory/group_vars/vault.yml.example inventory/group_vars/vault.yml
+vim infra/ansible/inventory/group_vars/vault.yml
+# Optionally encrypt: ansible-vault encrypt infra/ansible/inventory/group_vars/vault.yml
 ```
 
-Key variables in `group_vars/all.yml`:
+Key variables in `inventory/group_vars/all.yml`:
 
 | Variable          | Description                                 |
 |-------------------|---------------------------------------------|
@@ -182,6 +182,6 @@ systemctl stop <app>-<active>.service
 
 ## Cloudflare Tunnel (optional)
 
-Set `use_cloudflared: true` in `group_vars/all.yml` and provide `cloudflare_token` in `vault.yml`.
+Set `use_cloudflared: true` in `inventory/group_vars/all.yml` and provide `cloudflare_token` in `vault.yml`.
 The tunnel is installed as a systemd service and starts automatically.
 With a tunnel active, you can remove ports 80/443 from `ufw_allowed_tcp_ports`.
