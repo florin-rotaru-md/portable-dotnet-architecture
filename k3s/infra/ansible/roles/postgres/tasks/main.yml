@@ -95,9 +95,3 @@
          --endpoint-url {{ s3_endpoint }}
       && find /opt/postgres/backups -name '*.dump' -mtime +{{ backup_retention_days }} -delete
   no_log: true
-
-handlers:
-  - name: restart postgresql
-    service:
-      name:  postgresql
-      state: restarted

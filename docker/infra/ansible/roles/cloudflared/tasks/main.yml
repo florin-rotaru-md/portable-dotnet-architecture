@@ -47,9 +47,3 @@
     enabled:       true
     state:         started
     daemon_reload: true
-
-handlers:
-  - name: restart cloudflared
-    systemd:
-      name:  cloudflared
-      state: restarted

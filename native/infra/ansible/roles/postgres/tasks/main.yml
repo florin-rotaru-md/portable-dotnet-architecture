@@ -77,9 +77,3 @@
       pg_dump -Fc {{ postgres_db }}
       > /opt/postgres/backups/{{ postgres_db }}_$(date +\%Y\%m\%d_\%H\%M).dump
       && find /opt/postgres/backups -name '*.dump' -mtime +7 -delete
-
-handlers:
-  - name: restart postgresql
-    service:
-      name:  postgresql
-      state: restarted

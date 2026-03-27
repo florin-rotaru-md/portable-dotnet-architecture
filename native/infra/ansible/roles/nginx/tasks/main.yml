@@ -46,9 +46,3 @@
     name:    nginx
     enabled: true
     state:   started
-
-handlers:
-  - name: reload nginx
-    service:
-      name:  nginx
-      state: reloaded
