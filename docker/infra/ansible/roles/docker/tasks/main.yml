@@ -20,6 +20,9 @@
     groups: docker
     append: true
 
+- name: Reset SSH connection so docker group takes effect immediately
+  meta: reset_connection
+
 - name: Ensure shared Docker network exists
   community.docker.docker_network:
     name:  "{{ app_network_name }}"
