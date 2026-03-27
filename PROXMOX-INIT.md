@@ -345,8 +345,8 @@ lvextend -l +100%FREE /dev/mapper/ubuntu--vg-ubuntu--lv
 ## 11. Generate SSH key on ansible-control
 On ansible-control:
 ``` bash
-test -f ~/.ssh/id_ed25519 || ssh-keygen -t ed25519 -C "ansible-control" -f ~/.ssh/id_ed25519
-cat ~/.ssh/id_ed25519.pub
+test -f ~/.ssh/id_ed25519_ansible || ssh-keygen -t ed25519 -C "ansible-control" -f ~/.ssh/id_ed25519_ansible
+cat ~/.ssh/id_ed25519_ansible.pub
 ```
 
 Copy the public key to both VMs.

@@ -89,10 +89,34 @@ vim infra/ansible/group_vars/vault.yml
 ansible-vault encrypt infra/ansible/group_vars/vault.yml
 ```
 
+#### *(Optional)* Ansible service account — SSH key setup
+
+The `common` role creates a dedicated `ansible` user on every VM with passwordless sudo.
+All playbook runs connect as this user after the initial bootstrap.
+
+**1. Generate a key pair on your control machine** (skip if you already have one):
+
+```bash
+test -f ~/.ssh/id_ed25519_ansible || \
+  ssh-keygen -t ed25519 -C "ansible-control" -f ~/.ssh/id_ed25519_ansible -N ""
+```
+
+**2. Add the public key to `vault.yml`:**
+
+```yaml
+ansible_ssh_public_key: "ssh-ed25519 AAAA...  ansible-control"
+# or use a Ansible lookup: "{{ lookup('file', '~/.ssh/id_ed25519_ansible.pub') }}"
+```
+
 ### 4. Bootstrap
 
 ```bash
 cd infra/ansible
+
+# First run — connect as the cloud-init user provisioned by Terraform (typically root):
+ansible-playbook playbooks/bootstrap.yml -u root --ask-vault-pass
+
+# All subsequent runs — ansible user is set automatically via ansible.cfg + group_vars:
 ansible-playbook playbooks/bootstrap.yml --ask-vault-pass
 ```
 

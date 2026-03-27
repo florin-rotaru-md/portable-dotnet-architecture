@@ -15,6 +15,10 @@ backup_retention_days: 7
 use_cloudflared: false
 # cloudflare_token comes from vault.yml when use_cloudflared: true
 
+# ── Ansible service account ────────────────────────────────────────────────────
+ansible_user: ansible
+# ansible_ssh_public_key comes from vault.yml — paste your controller's public key there
+
 # ── Firewall ───────────────────────────────────────────────────────────────────
 ufw_allowed_tcp_ports:
   - "22"

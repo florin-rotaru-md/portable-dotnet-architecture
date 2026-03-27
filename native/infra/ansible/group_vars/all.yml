@@ -1,4 +1,8 @@
 ---
+# ── Ansible service account ────────────────────────────────────────────────────
+ansible_user: ansible
+# ansible_ssh_public_key comes from vault.yml — paste your controller's public key there
+
 # ── App ────────────────────────────────────────────────────────────────────────
 app_user:     deploy
 app_name:     myapp

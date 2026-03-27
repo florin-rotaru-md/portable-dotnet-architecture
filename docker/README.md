@@ -16,18 +16,58 @@ Postgres runs as a Docker container on the same host with a named volume for per
 
 ```bash
 # 1. On your laptop / control machine:
-sudo apt update && sudo apt upgrade -y
-sudo apt install -y git curl python3 python3-pip python3-venv pipx openssh-client
-mkdir -p ~/.local/bin
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
-pipx ensurepath && pipx install --include-deps ansible
-ansible-galaxy collection install community.docker
+sudo apt update && \
+sudo apt upgrade -y && \
+sudo apt install -y git curl python3 python3-pip python3-venv pipx openssh-client && \
+mkdir -p ~/.local/bin && \
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && \
+export PATH="$HOME/.local/bin:$PATH" && \
+pipx ensurepath && \
+pipx install --include-deps ansible && \
+~/.local/bin/ansible-galaxy collection install community.docker
 
 # 2. Clone this repo
 mkdir -p ~/src && cd ~/src
 git clone https://github.com/<your-org>/portable-dotnet-architecture.git
 cd ~/src/portable-dotnet-architecture/docker
+
 ```
+
+## *(Optional)* Ansible service account — SSH key setup
+
+The `common` role creates a dedicated `ansible` user on the VPS with passwordless sudo.
+All playbook runs connect as this user after the initial bootstrap.
+
+**1. Generate a key pair on your control machine** (skip if you already have one):
+
+```bash
+test -f ~/.ssh/id_ed25519_ansible || \
+  ssh-keygen -t ed25519 -C "ansible-control" -f ~/.ssh/id_ed25519_ansible -N ""
+```
+
+**2. Add the public key to `vault.yml`** (see Configure below):
+
+```yaml
+ansible_ssh_public_key: "ssh-ed25519 AAAA...  ansible-control"
+# or use a Ansible lookup: "{{ lookup('file', '~/.ssh/id_ed25519_ansible.pub') }}"
+```
+
+**3. First bootstrap** — the `ansible` user doesn't exist yet, so connect as the initial root/admin user:
+
+```bash
+cd infra/ansible
+ansible-playbook playbooks/bootstrap.yml -u root --ask-pass --ask-vault-pass
+```
+
+> If the VPS was provisioned with your SSH key for root already, omit `--ask-pass`.
+
+**4. All subsequent runs** — `ansible.cfg` and `group_vars` set `ansible_user: ansible` automatically:
+
+```bash
+ansible-playbook playbooks/bootstrap.yml --ask-vault-pass
+```
+
+---
 
 ## Configure
 

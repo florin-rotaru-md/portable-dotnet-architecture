@@ -24,3 +24,7 @@ backup_retention_days: 30
 flux_git_repo:   https://github.com/your-org/portable-dotnet-architecture
 flux_git_branch: master
 # flux_git_token comes from vault.yml (private repos only)
+
+# ── Ansible service account ────────────────────────────────────────────────────
+ansible_user: ansible
+# ansible_ssh_public_key comes from vault.yml — paste your controller's public key there
