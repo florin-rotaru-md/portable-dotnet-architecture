@@ -12,8 +12,8 @@ case "$TARGET_SLOT" in
   *)     echo "Unknown slot: $TARGET_SLOT" >&2; exit 1 ;;
 esac
 
-cp "$SRC" "/etc/nginx/conf.d/${APP_NAME}-upstream-active.conf"
-nginx -t
-systemctl reload nginx
+sudo cp "$SRC" "/etc/nginx/conf.d/${APP_NAME}-upstream-active.conf"
+sudo nginx -t
+sudo systemctl reload nginx
 printf '%s\n' "$TARGET_SLOT" > "$APP_ROOT/runtime/active-slot"
 echo "Nginx → $TARGET_SLOT"

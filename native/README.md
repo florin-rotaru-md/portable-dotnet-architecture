@@ -89,6 +89,8 @@ Key variables in `inventory/group_vars/all/main.yml`:
 | `app_port_blue`   | Port for blue slot (default 5000)           |
 | `app_port_green`  | Port for green slot (default 5001)          |
 | `drain_seconds`   | Nginx drain before stopping old slot        |
+| `app_repo_url`    | Git repo URL used for the initial deploy    |
+| `app_project_path`| Path to the `.csproj` used for first deploy |
 | `use_cloudflared` | `true` to install Cloudflare Tunnel         |
 
 
@@ -115,11 +117,15 @@ ansible-playbook playbooks/bootstrap.yml
 # With vault: ansible-playbook playbooks/bootstrap.yml --ask-vault-pass
 ```
 
+Bootstrap also performs the initial deploy automatically if `app_repo_url` and `app_project_path` are configured. For private repositories, set `app_repo_token` in `vault.yml` as well.
+
 ## Deploy
 
 After bootstrap, deploy.sh is installed at `/opt/apps/<app_name>/scripts/deploy.sh`.
 
-**First deploy** (provide repo details once — cached for subsequent runs):
+**First deploy** is performed automatically by bootstrap when the repository variables are configured.
+
+**Manual first deploy** (only needed if you intentionally leave those variables empty):
 ```bash
 sudo -u deploy /opt/apps/myapp/scripts/deploy.sh \
   --repo-url     "https://github.com/your-org/your-repo.git" \

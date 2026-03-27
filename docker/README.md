@@ -89,6 +89,8 @@ ansible-playbook playbooks/bootstrap.yml
 # With vault: ansible-playbook playbooks/bootstrap.yml --ask-vault-pass
 ```
 
+Bootstrap also performs the initial deploy automatically for each application using its `image_default`, but only if that application has not been deployed before.
+
 ### Key variables in `inventory/group_vars/all/main.yml`
 
 | Variable                | Description                                 |
@@ -181,10 +183,10 @@ The generated deploy script performs `docker login` before `docker compose pull`
 
 ## Deploy
 
-After bootstrap, each app has its scripts at `/opt/apps/<name>/scripts/`.
+After bootstrap, each app has its scripts at `/opt/apps/<name>/scripts/` and the initial deploy has already been performed from `image_default`.
 
 ```bash
-# Deploy a specific image:
+# Deploy a newer specific image:
 sudo -u deploy /opt/apps/myapp/scripts/deploy.sh ghcr.io/org/myapp:v1.2.3
 
 # Rollback (instant Nginx swap, no container changes):

@@ -10,3 +10,21 @@
     - nginx
     - role: cloudflared
       when: use_cloudflared | bool
+
+  tasks:
+    - name: Check whether initial deploy has already run
+      stat:
+        path: "{{ apps_root }}/{{ app.name }}/runtime/deploy-history.log"
+      register: initial_deploy_status
+      loop: "{{ applications }}"
+      loop_control:
+        loop_var: app
+        label: "{{ app.name }}"
+
+    - name: Run initial deploy for applications that are not live yet
+      command: "{{ apps_root }}/{{ item.item.name }}/scripts/deploy.sh {{ item.item.image_default }}"
+      become_user: "{{ app_user }}"
+      loop: "{{ initial_deploy_status.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"
+      when: not item.stat.exists

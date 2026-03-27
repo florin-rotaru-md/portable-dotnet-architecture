@@ -103,7 +103,7 @@ fi
 
 # ── Build ─────────────────────────────────────────────────────────────────────
 echo "Publishing to $TARGET_SLOT slot..."
-systemctl is-active --quiet "$TARGET_SERVICE" && systemctl stop "$TARGET_SERVICE" || true
+sudo systemctl is-active --quiet "$TARGET_SERVICE" && sudo systemctl stop "$TARGET_SERVICE" || true
 find "${SLOT_DIR:?}" -mindepth 1 -delete 2>/dev/null || true
 
 dotnet publish "$BUILD_DIR/$PROJECT_PATH" \
@@ -113,7 +113,7 @@ dotnet publish "$BUILD_DIR/$PROJECT_PATH" \
 
 # ── Start idle slot ───────────────────────────────────────────────────────────
 echo "Starting $TARGET_SERVICE..."
-systemctl start "$TARGET_SERVICE"
+sudo systemctl start "$TARGET_SERVICE"
 
 # ── Health check ──────────────────────────────────────────────────────────────
 "$SCRIPTS_DIR/health-check.sh" "http://127.0.0.1:${TARGET_PORT}" 45 2
@@ -124,7 +124,7 @@ systemctl start "$TARGET_SERVICE"
 # ── Drain & stop old slot ─────────────────────────────────────────────────────
 echo "Draining old slot (${DRAIN_SECONDS}s)..."
 sleep "$DRAIN_SECONDS"
-systemctl stop "$OLD_SERVICE"
+sudo systemctl stop "$OLD_SERVICE"
 
 # ── Log ───────────────────────────────────────────────────────────────────────
 printf '%s | deploy | branch=%s | slot=%s\n' \

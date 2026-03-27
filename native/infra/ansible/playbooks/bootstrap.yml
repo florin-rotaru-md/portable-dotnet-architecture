@@ -10,3 +10,46 @@
     - app
     - role: cloudflared
       when: use_cloudflared | bool
+
+  tasks:
+    - name: Check whether initial deploy has already run
+      stat:
+        path: "{{ apps_root }}/{{ app_name }}/runtime/deploy-history.log"
+      register: initial_deploy_status
+
+    - name: Run initial deploy without repository token
+      command:
+        argv:
+          - "{{ apps_root }}/{{ app_name }}/scripts/deploy.sh"
+          - --repo-url
+          - "{{ app_repo_url }}"
+          - --branch
+          - "{{ app_repo_branch }}"
+          - --project-path
+          - "{{ app_project_path }}"
+      become_user: "{{ app_user }}"
+      when:
+        - not initial_deploy_status.stat.exists
+        - app_repo_url | length > 0
+        - app_project_path | length > 0
+        - app_repo_token | default('') | length == 0
+
+    - name: Run initial deploy with repository token
+      command:
+        argv:
+          - "{{ apps_root }}/{{ app_name }}/scripts/deploy.sh"
+          - --repo-url
+          - "{{ app_repo_url }}"
+          - --branch
+          - "{{ app_repo_branch }}"
+          - --token
+          - "{{ app_repo_token }}"
+          - --project-path
+          - "{{ app_project_path }}"
+      become_user: "{{ app_user }}"
+      no_log: true
+      when:
+        - not initial_deploy_status.stat.exists
+        - app_repo_url | length > 0
+        - app_project_path | length > 0
+        - app_repo_token | default('') | length > 0

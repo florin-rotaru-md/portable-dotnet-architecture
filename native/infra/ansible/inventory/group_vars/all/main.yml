@@ -12,6 +12,9 @@ app_domain:   demo.example.com
 app_port_blue:  5000
 app_port_green: 5001
 drain_seconds:  30
+app_repo_url:   ""
+app_repo_branch: "master"
+app_project_path: ""
 
 apps_root:  /opt/apps
 dotnet_version: "10.0"

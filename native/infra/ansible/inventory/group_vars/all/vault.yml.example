@@ -4,5 +4,8 @@
 
 postgres_password: "change-me-strong-password"
 
+# Required only for private Git repositories used by the first auto-deploy
+# app_repo_token: "ghp_xxx"
+
 # Required only when use_cloudflared: true
 # cloudflare_token: "eyJhIjoiABCD..."
