@@ -47,6 +47,7 @@
 - name: Start postgres container
   community.docker.docker_compose_v2:
     project_src:    /opt/postgres/docker
+    project_name:   postgres
     files:
       - compose.postgres.yml
     state:          present

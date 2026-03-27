@@ -9,6 +9,7 @@ RUNTIME_ROOT="{{ apps_root }}/{{ app.name }}/runtime"
 DOCKER_ROOT="{{ apps_root }}/{{ app.name }}/docker"
 SCRIPTS_ROOT="{{ apps_root }}/{{ app.name }}/scripts"
 ENV_ROOT="{{ apps_root }}/{{ app.name }}/env"
+COMPOSE_PROJECT="{{ app.name | regex_replace('[^a-zA-Z0-9_-]', '_') }}"
 
 if [ -f "$ENV_ROOT/registry.env" ]; then
   set -a
@@ -46,11 +47,13 @@ echo "Image:        $APP_IMAGE"
 echo "──────────────────────────────────────"
 
 docker compose \
+  -p "$COMPOSE_PROJECT" \
   -f "$DOCKER_ROOT/compose.base.yml" \
   -f "$DOCKER_ROOT/compose.${TARGET_SLOT}.yml" \
   pull "$TARGET_SERVICE" || true
 
 docker compose \
+  -p "$COMPOSE_PROJECT" \
   -f "$DOCKER_ROOT/compose.base.yml" \
   -f "$DOCKER_ROOT/compose.${TARGET_SLOT}.yml" \
   up -d "$TARGET_SERVICE"
@@ -63,6 +66,7 @@ echo "Draining (${DRAIN_SECONDS}s)..."
 sleep "$DRAIN_SECONDS"
 
 docker compose \
+  -p "$COMPOSE_PROJECT" \
   -f "$DOCKER_ROOT/compose.base.yml" \
   -f "$DOCKER_ROOT/compose.${CURRENT_SLOT}.yml" \
   stop "$OLD_SERVICE"
