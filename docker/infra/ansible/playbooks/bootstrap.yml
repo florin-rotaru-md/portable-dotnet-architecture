@@ -8,6 +8,5 @@
     - postgres
     - app_host
     - nginx
-    - backup
     - role: cloudflared
       when: use_cloudflared | bool
