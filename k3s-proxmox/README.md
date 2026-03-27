@@ -102,6 +102,12 @@ test -f ~/.ssh/id_ed25519_ansible || \
   ssh-keygen -t ed25519 -C "ansible-control" -f ~/.ssh/id_ed25519_ansible -N ""
 ```
 
+**Copy the public key to the target VPS** (so Ansible can connect):
+
+```bash
+ssh-copy-id -i ~/.ssh/id_ed25519_ansible.pub root@<vps-ip>
+```
+
 **2. Add the public key to `vault.yml`:**
 
 ```yaml
