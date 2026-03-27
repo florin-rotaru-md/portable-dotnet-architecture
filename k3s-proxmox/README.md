@@ -149,6 +149,24 @@ kubectl create secret generic cloudflare-tunnel-token \
   -n cloudflared
 ```
 
+If the application image is private, create an image pull secret in the same namespace and reference it from `k3s/flux/apps/myapp/helmrelease.yaml`:
+
+```bash
+kubectl create secret docker-registry ghcr-creds \
+  --docker-server=ghcr.io \
+  --docker-username=<github-username> \
+  --docker-password=<github_pat> \
+  -n myapp
+```
+
+```yaml
+values:
+  imagePullSecrets:
+    - name: ghcr-creds
+```
+
+Public images do not need this secret.
+
 ### 6. Verify
 
 ```bash

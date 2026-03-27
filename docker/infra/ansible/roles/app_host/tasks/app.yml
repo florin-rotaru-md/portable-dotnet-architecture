@@ -85,6 +85,18 @@
     force: false
   no_log: true
 
+- name: Write optional registry auth env file for {{ app.name }}
+  copy:
+    dest: "{{ apps_root }}/{{ app.name }}/env/registry.env"
+    content: |
+      REGISTRY_SERVER={{ app.registry_server | default('') }}
+      REGISTRY_USERNAME={{ app.registry_username | default('') }}
+      REGISTRY_PASSWORD={{ app.registry_password | default('') }}
+    owner: "{{ app_user }}"
+    group: "{{ app_user }}"
+    mode:  '0600'
+  no_log: true
+
 - name: Write blue env file for {{ app.name }}
   copy:
     dest:    "{{ apps_root }}/{{ app.name }}/env/blue.env"

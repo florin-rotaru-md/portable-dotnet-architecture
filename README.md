@@ -73,3 +73,5 @@ You can start with `native/`, migrate to `docker/` by containerising the app
 when you need autoscaling or want full GitOps.
 Use `k3s-proxmox/` instead of `k3s/` when you prefer on-prem hardware over cloud VPS.
 The two k3s setups share Ansible roles, Flux configs, and Helm charts.
+
+Public registries work without extra credentials. If you use private images (including private GHCR repositories), configure registry credentials explicitly in the selected setup.

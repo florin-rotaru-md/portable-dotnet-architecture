@@ -5,5 +5,8 @@
 postgres_root_password: "change-me-root-password"   # POSTGRES_PASSWORD for the postgres container
 postgres_password:       "change-me-app-password"    # password for postgres_user
 
+# Required only for private container registries (for example private GHCR images)
+# ghcr_token: "github_pat_xxx"
+
 # Required only when use_cloudflared: true
 # cloudflare_token: "eyJhIjoiABCD..."

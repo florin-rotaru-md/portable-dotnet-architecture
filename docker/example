@@ -1,3 +1,34 @@
+
+sudo apt update && \
+sudo apt upgrade -y && \
+sudo apt install -y git curl python3 python3-pip python3-venv pipx openssh-client && \
+mkdir -p ~/.local/bin && \
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && \
+export PATH="$HOME/.local/bin:$PATH" && \
+pipx ensurepath && \
+pipx install --include-deps ansible && \
+~/.local/bin/ansible-galaxy collection install community.docker
+
+test -f ~/.ssh/id_ed25519_ansible || \
+  ssh-keygen -t ed25519 -C "ansible-control" -f ~/.ssh/id_ed25519_ansible -N ""
+
+mkdir -p ~/src && cd ~/src && \
+git clone https://github.com/florin-rotaru-md/portable-dotnet-architecture
+  
+cat << 'EOF' > ~/src/portable-dotnet-architecture/docker/infra/ansible/group_vars/vault.yml
+ansible_ssh_public_key:  "{{ lookup('file', '~/.ssh/id_ed25519_ansible.pub') }}"
+
+postgres_root_password:  "postgres"    # POSTGRES_PASSWORD for the postgres container
+postgres_password:       "postgres"    # password for postgres_user
+
+ghcr_token:              "github_pat_xxx"
+
+# Required only when use_cloudflared: true
+# cloudflare_token: "eyJhIjoiABCD..."
+EOF
+
+
+cat << 'EOF' > ~/src/portable-dotnet-architecture/docker/infra/ansible/group_vars/vault.yml
 ---
 # ── Infrastructure ─────────────────────────────────────────────────────────────
 app_user:         deploy
@@ -7,7 +38,7 @@ app_network_name: app_net
 # ── Postgres (runs as a Docker container on the same host) ─────────────────────
 postgres_version:   "18"
 postgres_host:      postgres          # Docker service name / internal DNS
-postgres_user:      appuser
+postgres_user:      postgres
 # postgres_password and postgres_root_password come from vault.yml
 backup_retention_days: 7
 
@@ -56,3 +87,6 @@ applications:
   #   registry_username: your-github-username
   #   registry_password: "{{ ghcr_token }}"
   #   drain_seconds: 32
+EOF
+
+

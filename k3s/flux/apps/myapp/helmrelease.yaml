@@ -18,6 +18,9 @@ spec:
     image:
       repository: ghcr.io/example/myapp
       tag:        latest
+    # Uncomment when the image is private and you created a docker-registry Secret.
+    # imagePullSecrets:
+    #   - name: ghcr-creds
     ingress:
       host: myapp.example.com
     resources:
@@ -30,6 +33,12 @@ spec:
     # DB connection string injected from a Secret (created externally):
     # kubectl create secret generic myapp-db \
     #   --from-literal=ConnectionStrings__Main="Host=<pg-ip>;..." \
+    #   -n myapp
+    # Private GHCR example:
+    # kubectl create secret docker-registry ghcr-creds \
+    #   --docker-server=ghcr.io \
+    #   --docker-username=<github-username> \
+    #   --docker-password=<github_pat> \
     #   -n myapp
     envFrom:
       - secretRef:

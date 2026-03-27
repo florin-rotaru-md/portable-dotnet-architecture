@@ -108,8 +108,35 @@ applications:
     green_port:    18082                # host port for green container
     internal_port: 8080                 # container's ASPNETCORE_URLS port
     image_default: ghcr.io/org/myapp:latest
+    # Only for private registries/images:
+    # registry_server: ghcr.io
+    # registry_username: your-github-username
+    # registry_password: "{{ ghcr_token }}"
     drain_seconds: 32
 ```
+
+### Container registry authentication
+
+For public images, including public GHCR images, no token is required for pulls.
+
+For private images, add credentials in Ansible variables:
+
+```yaml
+# infra/ansible/group_vars/vault.yml
+ghcr_token: "github_pat_xxx"
+```
+
+```yaml
+# infra/ansible/group_vars/all.yml
+applications:
+  - name: myapp
+    image_default: ghcr.io/org/myapp:latest
+    registry_server: ghcr.io
+    registry_username: your-github-username
+    registry_password: "{{ ghcr_token }}"
+```
+
+The generated deploy script performs `docker login` before `docker compose pull` only when all three values are present.
 
 ## Bootstrap
 
@@ -130,6 +157,8 @@ sudo -u deploy /opt/apps/myapp/scripts/deploy.sh ghcr.io/org/myapp:v1.2.3
 # Rollback (instant Nginx swap, no container changes):
 sudo -u deploy /opt/apps/myapp/scripts/rollback.sh
 ```
+
+If the target image is private, the host must already have the registry credentials configured via Ansible as shown above.
 
 ## Deployment sequence
 
