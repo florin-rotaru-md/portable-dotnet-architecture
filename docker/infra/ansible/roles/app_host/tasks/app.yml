@@ -10,6 +10,7 @@
     - "{{ apps_root }}/{{ app.name }}"
     - "{{ apps_root }}/{{ app.name }}/runtime"
     - "{{ apps_root }}/{{ app.name }}/env"
+    - "{{ apps_root }}/{{ app.name }}/config"
     - "{{ apps_root }}/{{ app.name }}/scripts"
     - "{{ apps_root }}/{{ app.name }}/docker"
     - "{{ apps_root }}/{{ app.name }}/nginx"
@@ -77,12 +78,19 @@
       ASPNETCORE_URLS=http://0.0.0.0:{{ app.internal_port }}
       DOTNET_ENVIRONMENT=Production
       APP_NAME={{ app.name }}
-      {% for db in app.dbs %}ConnectionStrings__{{ db }}=Host={{ postgres_host }};Port=5432;Database={{ db }};Username={{ postgres_user }};Password={{ postgres_password }}
-      {% endfor %}
     owner: "{{ app_user }}"
     group: "{{ app_user }}"
     mode:  '0600'
     force: false
+
+- name: Write appsettings.Production.json for {{ app.name }}
+  copy:
+    dest:    "{{ apps_root }}/{{ app.name }}/config/appsettings.Production.json"
+    content: "{{ app.appsettings_override | default({}) | to_nice_json }}\n"
+    owner:   "{{ app_user }}"
+    group:   "{{ app_user }}"
+    mode:    '0600'
+    force:   false
   no_log: true
 
 - name: Write optional registry auth env file for {{ app.name }}

@@ -44,6 +44,23 @@ applications:
     # registry_password: "{{ ghcr_token }}"
     drain_seconds: 32
 
+    # ── appsettings.Production.json override ────────────────────────────────
+    # This dict is rendered as appsettings.Production.json and mounted
+    # read-only into the container.  .NET merges it on top of the
+    # appsettings.json baked into the image (DOTNET_ENVIRONMENT=Production).
+    # Put connection strings, secrets, and env-specific URLs here.
+    # Secrets (passwords, API keys) should reference vault.yml variables.
+    appsettings_override:
+      ConnectionStrings:
+        App:            "Host={{ postgres_host }};Port=5432;Database=myapp_db;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
+      #   Users:          "Host={{ postgres_host }};Port=5432;Database=myapp_users;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
+      #   DataProtection: "Host={{ postgres_host }};Port=5432;Database=myapp_dp;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
+      # FileStorage:
+      #   BaseDirectory: "/data/files"
+      # UiClient:
+      #   Urls:
+      #     SignInWithToken: "https://www.example.com/auth/sign-in"
+
   # - name:          anotherapp
   #   dbs:
   #     - anotherapp_db
@@ -56,3 +73,6 @@ applications:
   #   registry_username: your-github-username
   #   registry_password: "{{ ghcr_token }}"
   #   drain_seconds: 32
+  #   appsettings_override:
+  #     ConnectionStrings:
+  #       App: "Host={{ postgres_host }};Port=5432;Database=anotherapp_db;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"

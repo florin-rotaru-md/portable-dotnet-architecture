@@ -102,18 +102,56 @@ ansible-playbook playbooks/bootstrap.yml --ask-vault-pass
 applications:
   - name:          myapp                # used for container names, scripts path
     dbs:
-      - myapp_db                        # database names in postgres
+      - myapp_db                        # database names to create in postgres
     server_name:   myapp.example.com    # Nginx server_name
     blue_port:     18081                # host port for blue container
     green_port:    18082                # host port for green container
     internal_port: 8080                 # container's ASPNETCORE_URLS port
     image_default: ghcr.io/org/myapp:latest
-    # Only for private registries/images:
-    # registry_server: ghcr.io
-    # registry_username: your-github-username
-    # registry_password: "{{ ghcr_token }}"
     drain_seconds: 32
+    appsettings_override:               # → appsettings.Production.json (see below)
+      ConnectionStrings:
+        App: "Host=postgres;Port=5432;Database=myapp_db;Username=appuser;Password={{ postgres_password }};Pooling=true"
 ```
+
+### Application configuration (`appsettings_override`)
+
+The `appsettings_override` dictionary is rendered as `appsettings.Production.json` and
+mounted read-only into the container at `/app/appsettings.Production.json`.
+
+.NET automatically merges it on top of the `appsettings.json` baked into the Docker
+image when `DOTNET_ENVIRONMENT=Production` (set via `common.env`).
+
+Put **only the values that differ per environment** here — connection strings, secrets,
+URLs.  Everything else stays in the image's `appsettings.json`.
+
+Reference vault variables for secrets:
+
+```yaml
+# group_vars/vault.yml
+postgres_password: "strong-password"
+smtp_password:     "smtp-secret"
+
+# group_vars/all.yml  (inside application entry)
+appsettings_override:
+  ConnectionStrings:
+    Users:          "Host=postgres;Port=5432;Database=waa_users;Username=appuser;Password={{ postgres_password }};Pooling=true"
+    DataProtection: "Host=postgres;Port=5432;Database=waa_dp;Username=appuser;Password={{ postgres_password }};Pooling=true"
+    App:            "Host=postgres;Port=5432;Database=waa;Username=appuser;Password={{ postgres_password }};Pooling=true"
+  FileStorage:
+    BaseDirectory: "/data/files"
+  Email:
+    Agents:
+      DEFAULT:
+        Smtp:
+          Authentication:
+            Password: "{{ smtp_password }}"
+```
+
+> **Why not `.env` with `ConnectionStrings__Users=...`?**  
+> Environment variables work for flat settings, but deeply nested configs like
+> `Email__Agents__DEFAULT__Smtp__Authentication__Password` become unreadable.
+> A mounted JSON file keeps the original structure and is easier to audit.
 
 ### Container registry authentication
 
@@ -182,12 +220,14 @@ docker compose stop <app>-<active>
 ```
 /opt/apps/
   <app>/
+    config/
+      appsettings.Production.json  ← mounted read-only into container
     docker/
       compose.base.yml
       compose.blue.yml
       compose.green.yml
     env/
-      common.env        ← DB connection string, ASPNETCORE_URLS
+      common.env        ← ASPNETCORE_URLS, DOTNET_ENVIRONMENT
       blue.env          ← SLOT_NAME=blue
       green.env         ← SLOT_NAME=green
     nginx/

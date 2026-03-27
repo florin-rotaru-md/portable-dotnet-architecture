@@ -74,6 +74,9 @@ applications:
     # registry_username: your-github-username
     # registry_password: "{{ ghcr_token }}"
     drain_seconds: 32
+    appsettings_override:
+      ConnectionStrings:
+        App: "Host={{ postgres_host }};Port=5432;Database=myapp_db;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
 
   # - name:          anotherapp
   #   dbs:
@@ -87,6 +90,9 @@ applications:
   #   registry_username: your-github-username
   #   registry_password: "{{ ghcr_token }}"
   #   drain_seconds: 32
+  #   appsettings_override:
+  #     ConnectionStrings:
+  #       App: "Host={{ postgres_host }};Port=5432;Database=anotherapp_db;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
 EOF
 
 
