@@ -47,30 +47,9 @@
   ufw:
     state: enabled
 
-- name: Ensure ansible group exists
-  group:
-    name:  ansible
-    state: present
-
-- name: Ensure ansible user exists
-  user:
-    name:        ansible
-    group:       ansible
-    shell:       /bin/bash
-    create_home: true
-
-- name: Grant ansible user passwordless sudo
-  copy:
-    dest:     /etc/sudoers.d/ansible
-    content:  "ansible ALL=(ALL) NOPASSWD:ALL\n"
-    owner:    root
-    group:    root
-    mode:     '0440'
-    validate: 'visudo -cf %s'
-
-- name: Set up ansible SSH authorized key
+- name: Set up SSH authorized key for {{ app_user }}
   authorized_key:
-    user:  ansible
+    user:  "{{ app_user }}"
     state: present
     key:   "{{ ansible_ssh_public_key }}"
   when: ansible_ssh_public_key is defined

@@ -33,10 +33,10 @@ cd ~/src/portable-dotnet-architecture/docker
 
 ```
 
-## *(Optional)* Ansible service account — SSH key setup
+## SSH key setup
 
-The `common` role creates a dedicated `ansible` user on the VPS with passwordless sudo.
-All playbook runs connect as this user after the initial bootstrap.
+The `common` role ensures the controller's public key is in `deploy`'s `authorized_keys`,
+making all Ansible runs key-based from the start.
 
 **1. Generate a key pair on your control machine** (skip if you already have one):
 
@@ -48,7 +48,7 @@ test -f ~/.ssh/id_ed25519_ansible || \
 **Copy the public key to the target VPS** (so Ansible can connect):
 
 ```bash
-ssh-copy-id -i ~/.ssh/id_ed25519_ansible.pub root@<vps-ip>
+ssh-copy-id -i ~/.ssh/id_ed25519_ansible.pub deploy@<vps-ip>
 ```
 
 **2. Add the public key to `vault.yml`** (see Configure below):
@@ -60,8 +60,7 @@ vim group_vars/vault.yml
 ```
 
 ```yaml
-ansible_ssh_public_key: "ssh-ed25519 AAAA...  ansible-control"
-# or use a Ansible lookup ansible_ssh_public_key: "{{ lookup('file', '~/.ssh/id_ed25519_ansible.pub') }}"
+ansible_ssh_public_key: "{{ lookup('file', '~/.ssh/id_ed25519_ansible.pub') }}"
 ```
 
 ## Configure
@@ -78,19 +77,12 @@ vim group_vars/vault.yml
 # ansible-vault encrypt infra/ansible/group_vars/vault.yml
 ```
 
-**3. First bootstrap** — the `ansible` user doesn't exist yet, so connect as the initial root/admin user:
+**Bootstrap — all runs connect as `deploy`:**
 
 ```bash
 cd infra/ansible
-ansible-playbook playbooks/bootstrap.yml -u root --ask-pass --ask-vault-pass
-```
-
-> If the VPS was provisioned with your SSH key for root already, omit `--ask-pass`.
-
-**4. All subsequent runs** — `ansible.cfg` and `group_vars` set `ansible_user: ansible` automatically:
-
-```bash
-ansible-playbook playbooks/bootstrap.yml --ask-vault-pass
+ansible-playbook playbooks/bootstrap.yml
+# With vault: ansible-playbook playbooks/bootstrap.yml --ask-vault-pass
 ```
 
 ### Key variables in `group_vars/all.yml`
@@ -182,14 +174,6 @@ applications:
 ```
 
 The generated deploy script performs `docker login` before `docker compose pull` only when all three values are present.
-
-## Bootstrap
-
-```bash
-cd infra/ansible
-ansible-playbook playbooks/bootstrap.yml
-# With vault: ansible-playbook playbooks/bootstrap.yml --ask-vault-pass
-```
 
 ## Deploy
 
