@@ -101,8 +101,6 @@ ansible-playbook playbooks/bootstrap.yml --ask-vault-pass
 ```yaml
 applications:
   - name:          myapp                # used for container names, scripts path
-    dbs:
-      - myapp_db                        # database names to create in postgres
     server_name:   myapp.example.com    # Nginx server_name
     blue_port:     18081                # host port for blue container
     green_port:    18082                # host port for green container
@@ -113,6 +111,9 @@ applications:
       ConnectionStrings:
         App: "Host=postgres;Port=5432;Database=myapp_db;Username=appuser;Password={{ postgres_password }};Pooling=true"
 ```
+
+> Databases are **not** pre-created by Ansible — .NET EF Core creates them
+> automatically on first migration. The `postgres_user` has `CREATEDB` privilege.
 
 ### Application configuration (`appsettings_override`)
 
@@ -248,21 +249,28 @@ docker compose stop <app>-<active>
   docker/
     compose.postgres.yml
     postgres.env        ← root password (0600)
-  backups/              ← nightly pg_dump -Fc files
-  backup-db.sh
-  backup.log
+  backups/              ← nightly per-database .sql.gz files
+  scripts/
+    pg-backup.sh        ← auto-discovers all user databases
 ```
 
-## Postgres persistence
+## Postgres backup
 
-Data lives in Docker named volume `postgres_data`. To inspect or back up manually:
+A cron job runs nightly at 02:30, dumping every user database individually as
+`<dbname>_<timestamp>.sql.gz` under `/opt/postgres/backups/`.
+Old backups are pruned after `backup_retention_days` (default 7).
+
+Databases are **not** pre-created — .NET EF Core handles that via migrations.
+The backup script auto-discovers all non-system databases, so new databases
+are included automatically.
 
 ```bash
-# Manual backup of all databases:
-/opt/postgres/backup-db.sh
+# Manual backup:
+/opt/postgres/scripts/pg-backup.sh
 
 # Restore a database:
-docker exec -i postgres pg_restore -U appuser -d myapp_db < /opt/postgres/backups/myapp_db-20240101-020015.dump
+gunzip -c /opt/postgres/backups/myapp_db_20240101-020030.sql.gz \
+  | docker exec -i postgres psql -U postgres -d myapp_db
 ```
 
 ## Cloudflare Tunnel (optional)

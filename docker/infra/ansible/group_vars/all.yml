@@ -32,8 +32,6 @@ ufw_allowed_tcp_ports:
 # and put registry_password in vault.yml (for example: "{{ ghcr_token }}").
 applications:
   - name:          myapp
-    dbs:
-      - myapp_db
     server_name:   myapp.example.com
     blue_port:     18081
     green_port:    18082
@@ -62,8 +60,6 @@ applications:
       #     SignInWithToken: "https://www.example.com/auth/sign-in"
 
   # - name:          anotherapp
-  #   dbs:
-  #     - anotherapp_db
   #   server_name:   anotherapp.example.com
   #   blue_port:     18091
   #   green_port:    18092

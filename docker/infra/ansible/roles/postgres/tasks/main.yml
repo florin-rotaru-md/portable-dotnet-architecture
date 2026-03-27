@@ -10,6 +10,7 @@
     - /opt/postgres
     - /opt/postgres/backups
     - /opt/postgres/docker
+    - /opt/postgres/scripts
 
 - name: Render postgres compose file
   template:
@@ -61,25 +62,18 @@
   when: pg_user_check.stdout | trim != '1'
   no_log: true
 
-- name: Create databases for each application
-  community.docker.docker_container_exec:
-    container: postgres
-    command: >
-      psql -U postgres -c
-      "SELECT 1 FROM pg_database WHERE datname='{{ item.1 }}'"
-  register: pg_db_checks
-  changed_when: false
-  loop: "{{ applications | subelements('dbs') }}"
-  loop_control:
-    label: "{{ item.1 }}"
+- name: Install backup script
+  template:
+    src:   pg-backup.sh.j2
+    dest:  /opt/postgres/scripts/pg-backup.sh
+    owner: "{{ app_user }}"
+    group: "{{ app_user }}"
+    mode:  '0755'
 
-- name: Create missing databases
-  community.docker.docker_container_exec:
-    container: postgres
-    command: >
-      psql -U postgres -c
-      "CREATE DATABASE {{ item.item.1 }} OWNER {{ postgres_user }}"
-  when: item.stdout | trim != '1'
-  loop: "{{ pg_db_checks.results }}"
-  loop_control:
-    label: "{{ item.item.1 }}"
+- name: Schedule nightly backup cron job
+  cron:
+    name:   "postgres backup all databases"
+    minute: "30"
+    hour:   "2"
+    user:   "{{ app_user }}"
+    job:    "/opt/postgres/scripts/pg-backup.sh >> /opt/postgres/backups/cron.log 2>&1"

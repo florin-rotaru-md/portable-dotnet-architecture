@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Nightly backup — dumps every user database individually, then cleans up old backups.
+set -euo pipefail
+
+BACKUP_DIR="/opt/postgres/backups"
+RETENTION_DAYS="{{ backup_retention_days }}"
+STAMP="$(date +%Y%m%d-%H%M%S)"
+
+# List all non-template, non-system databases
+DATABASES=$(docker exec postgres \
+  psql -U postgres -tAc \
+  "SELECT datname FROM pg_database WHERE datistemplate = false AND datname NOT IN ('postgres')")
+
+for DB in $DATABASES; do
+  DEST="${BACKUP_DIR}/${DB}_${STAMP}.sql.gz"
+  echo "[$(date -Iseconds)] Backing up ${DB} → ${DEST}"
+  docker exec postgres pg_dump -U postgres --no-owner --no-acl "$DB" \
+    | gzip > "$DEST"
+  chmod 600 "$DEST"
+done
+
+# Prune backups older than retention period
+find "$BACKUP_DIR" -name "*.sql.gz" -mtime +"$RETENTION_DAYS" -delete
+
+echo "[$(date -Iseconds)] Backup complete — $(echo "$DATABASES" | wc -w) database(s)"
