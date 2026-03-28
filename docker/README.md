@@ -35,8 +35,9 @@ cd ~/src/portable-dotnet-architecture/docker
 
 ## SSH key setup
 
-The `common` role ensures the controller's public key is in `deploy`'s `authorized_keys`,
-making all Ansible runs key-based from the start.
+The `common` role ensures the controller's public key is in `deploy`'s `authorized_keys`.
+For a brand-new VPS, the first run should connect as your initial admin/root user;
+subsequent runs can connect as `deploy`.
 
 **1. Generate a key pair on your control machine** (skip if you already have one):
 
@@ -48,7 +49,7 @@ test -f ~/.ssh/id_ed25519_ansible || \
 **Copy the public key to the target VPS** (so Ansible can connect):
 
 ```bash
-ssh-copy-id -i ~/.ssh/id_ed25519_ansible.pub deploy@<vps-ip>
+ssh-copy-id -i ~/.ssh/id_ed25519_ansible.pub root@<vps-ip>
 ```
 
 **2. Add the public key to `vault.yml`** (see Configure below):
@@ -78,13 +79,21 @@ vim inventory/group_vars/all/vault.yml
 # required values:
 # postgres_root_password: "replace-me"
 # postgres_password: "replace-me"
-# ansible-vault encrypt infra/ansible/inventory/group_vars/all/vault.yml
+# ansible-vault encrypt inventory/group_vars/all/vault.yml
 ```
 
-**Bootstrap — all runs connect as `deploy`:**
+**Bootstrap**
+
+**First run** (if `deploy` does not exist yet):
 
 ```bash
 cd infra/ansible
+ansible-playbook playbooks/bootstrap.yml -u root --ask-vault-pass
+```
+
+**Subsequent runs** (`ansible.cfg` + inventory default to `deploy`):
+
+```bash
 ansible-playbook playbooks/bootstrap.yml
 # With vault: ansible-playbook playbooks/bootstrap.yml --ask-vault-pass
 ```

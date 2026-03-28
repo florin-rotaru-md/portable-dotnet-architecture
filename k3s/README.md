@@ -72,18 +72,18 @@ vim infra/ansible/inventory/group_vars/all/main.yml
 
 cd ~/src/portable-dotnet-architecture/k3s/infra/ansible
 cp --update=none inventory/group_vars/all/vault.yml.example inventory/group_vars/all/vault.yml
-vim infra/ansible/inventory/group_vars/all/vault.yml
+vim inventory/group_vars/all/vault.yml
 # required values:
 # postgres_password: "replace-me"
 # s3_access_key: "replace-me"
 # s3_secret_key: "replace-me"
-ansible-vault encrypt infra/ansible/inventory/group_vars/all/vault.yml
+ansible-vault encrypt inventory/group_vars/all/vault.yml
 ```
 
 #### *(Optional)* Ansible service account — SSH key setup
 
-The `common` role creates a dedicated `ansible` user on every node with passwordless sudo.
-All playbook runs connect as this user after the initial bootstrap.
+Cloud-init creates a dedicated `ops` user on every node.
+The `common` role can install your controller key into that account via `ansible_ssh_public_key`.
 
 **1. Generate a key pair on your control machine** (skip if you already have one):
 
@@ -108,7 +108,7 @@ ansible_ssh_public_key: "ssh-ed25519 AAAA...  ansible-control"
 ```bash
 cd ~/src/portable-dotnet-architecture/k3s/infra/ansible
 cp --update=none inventory/group_vars/all/vault.yml.example inventory/group_vars/all/vault.yml
-vim infra/ansible/inventory/group_vars/all/vault.yml
+vim inventory/group_vars/all/vault.yml
 ```
 
 ### 4. Bootstrap everything
@@ -119,7 +119,7 @@ cd infra/ansible
 # First run — connect as the cloud-init user (root or ubuntu, as provisioned by Terraform):
 ansible-playbook playbooks/bootstrap.yml -u root --ask-vault-pass
 
-# All subsequent runs — ansible user is set automatically via ansible.cfg + group_vars:
+# All subsequent runs — ops user is set automatically via ansible.cfg + group_vars:
 ansible-playbook playbooks/bootstrap.yml --ask-vault-pass
 ```
 

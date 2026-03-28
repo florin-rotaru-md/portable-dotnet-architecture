@@ -30,7 +30,7 @@ cd ~/src/portable-dotnet-architecture/native
 
 ## *(Optional)* Ansible service account — SSH key setup
 
-The `common` role creates a dedicated `ansible` user on the VPS with passwordless sudo.
+The `common` role creates a dedicated `deploy` user on the VPS with passwordless sudo.
 All playbook runs connect as this user after the initial bootstrap.
 
 **1. Generate a key pair on your control machine** (skip if you already have one):
@@ -51,12 +51,12 @@ ssh-copy-id -i ~/.ssh/id_ed25519_ansible.pub root@<vps-ip>
 ```bash
 cd ~/src/portable-dotnet-architecture/native/infra/ansible
 cp --update=none inventory/group_vars/all/vault.yml.example inventory/group_vars/all/vault.yml
-vim infra/ansible/inventory/group_vars/all/vault.yml
+vim inventory/group_vars/all/vault.yml
 ```
 
 ```yaml
 ansible_ssh_public_key: "ssh-ed25519 AAAA...  ansible-control"
-# or use a Ansible lookup ansible_ssh_public_key: "{{ lookup('file', '~/.ssh/id_ed25519_ansible.pub') }}"
+# or use an Ansible lookup ansible_ssh_public_key: "{{ lookup('file', '~/.ssh/id_ed25519_ansible.pub') }}"
 ```
 
 ## Configure
@@ -72,11 +72,11 @@ vim infra/ansible/inventory/group_vars/all/main.yml
 # Fill in secrets:
 cd ~/src/portable-dotnet-architecture/native/infra/ansible
 cp --update=none inventory/group_vars/all/vault.yml.example inventory/group_vars/all/vault.yml
-vim infra/ansible/inventory/group_vars/all/vault.yml
+vim inventory/group_vars/all/vault.yml
 # required values:
 # postgres_password: "replace-me"
 # cloudflare_token: "replace-me"   # only when use_cloudflared: true
-# Optionally encrypt: ansible-vault encrypt infra/ansible/inventory/group_vars/all/vault.yml
+# Optionally encrypt: ansible-vault encrypt inventory/group_vars/all/vault.yml
 ```
 
 Key variables in `inventory/group_vars/all/main.yml`:
@@ -94,7 +94,7 @@ Key variables in `inventory/group_vars/all/main.yml`:
 | `use_cloudflared` | `true` to install Cloudflare Tunnel         |
 
 
-**3. First bootstrap** — the `ansible` user doesn't exist yet, so connect as the initial root/admin user:
+**3. First bootstrap** — the `deploy` user doesn't exist yet, so connect as the initial root/admin user:
 
 ```bash
 cd infra/ansible
@@ -103,7 +103,7 @@ ansible-playbook playbooks/bootstrap.yml -u root --ask-pass --ask-vault-pass
 
 > If the VPS was provisioned with your SSH key for root already, omit `--ask-pass`.
 
-**4. All subsequent runs** — `ansible.cfg` and `group_vars` set `ansible_user: ansible` automatically:
+**4. All subsequent runs** — `ansible.cfg` and `group_vars` set `ansible_user: deploy` automatically:
 
 ```bash
 ansible-playbook playbooks/bootstrap.yml --ask-vault-pass
