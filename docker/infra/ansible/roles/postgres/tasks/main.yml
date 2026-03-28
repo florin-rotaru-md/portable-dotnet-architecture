@@ -58,9 +58,12 @@
     container: postgres
     command:   pg_isready -U postgres
   register: pg_ready
-  until:    pg_ready.rc == 0
+  # docker_container_exec result shape differs across collection versions;
+  # rely on pg_isready text instead of rc for compatibility.
+  until:    (pg_ready.stdout | default('')) is search('accepting connections')
   retries:  15
   delay:    2
+  changed_when: false
 
 - name: Check if app user exists
   community.docker.docker_container_exec:
