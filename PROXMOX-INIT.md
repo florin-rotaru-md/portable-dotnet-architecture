@@ -362,3 +362,23 @@ Test SSH:
 ssh deploy@192.168.0.20 hostname
 ssh deploy@192.168.0.30 hostname
 ```
+
+
+
+USB backup & restore
+``` bash
+lsblk
+```
+
+NAME                               MAJ:MIN RM   SIZE RO TYPE MOUNTPOINTS
+sdb                                  8:16   0   1.7T  0 disk
+├─sdb1                               8:17   0   128M  0 part
+└─sdb2                               8:18   0   1.7T  0 part
+
+mkdir /mnt/usb-backup
+mount /dev/sdb2 /mnt/usb-backup
+
+vzdump 1021 --storage usb-backup --mode snapshot
+qmrestore /mnt/usb/dump/vzdump-qemu-1021-*.vma.zst 1021
+
+umount /mnt/usb-backup
