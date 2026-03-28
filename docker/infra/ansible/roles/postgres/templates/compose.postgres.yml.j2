@@ -5,8 +5,10 @@ services:
     restart: unless-stopped
     env_file:
       - /opt/postgres/docker/postgres.env
+    environment:
+      PGDATA: /var/lib/postgresql/data
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql
       - /opt/postgres/backups:/backups
     networks:
       - {{ app_network_name }}

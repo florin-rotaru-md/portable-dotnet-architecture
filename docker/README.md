@@ -109,6 +109,10 @@ Bootstrap also performs the initial deploy automatically for each application us
 | `backup_retention_days` | Days to keep nightly dumps (default 7)                  |
 | `use_cloudflared`       | `true` to install Cloudflare Tunnel                     |
 
+> PostgreSQL 18+ note: upstream `postgis/postgis` changed default `VOLUME`
+> path to `/var/lib/postgresql`. The compose template in this repo already
+> mounts this path and sets `PGDATA=/var/lib/postgresql/data` for compatibility.
+
 ### Application definition
 
 ```yaml
