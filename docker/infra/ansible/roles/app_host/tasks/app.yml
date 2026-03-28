@@ -52,6 +52,9 @@
     - health-check.sh.j2
     - deploy.sh.j2
     - rollback.sh.j2
+  vars:
+    app_health_max_attempts: "{{ app.health_max_attempts | default(health_max_attempts | default(16)) }}"
+    app_health_interval_seconds: "{{ app.health_interval_seconds | default(health_interval_seconds | default(4)) }}"
 
 - name: Initialize active-slot file for {{ app.name }}
   copy:

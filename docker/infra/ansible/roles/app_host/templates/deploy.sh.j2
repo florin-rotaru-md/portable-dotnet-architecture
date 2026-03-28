@@ -58,7 +58,7 @@ docker compose \
   -f "$DOCKER_ROOT/compose.${TARGET_SLOT}.yml" \
   up -d "$TARGET_SERVICE"
 
-"$SCRIPTS_ROOT/health-check.sh" "http://127.0.0.1:${TARGET_PORT}" 45 2
+"$SCRIPTS_ROOT/health-check.sh" "http://127.0.0.1:${TARGET_PORT}" "{{ app_health_max_attempts }}" "{{ app_health_interval_seconds }}"
 
 "$SCRIPTS_ROOT/switch-nginx.sh" "$TARGET_SLOT"
 

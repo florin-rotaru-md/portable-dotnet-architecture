@@ -56,6 +56,8 @@ cat << 'EOF' > ~/src/portable-dotnet-architecture/docker/infra/ansible/inventory
 app_user:         deploy
 apps_root:        /opt/apps
 app_network_name: app_net
+health_max_attempts: 16
+health_interval_seconds: 4
 
 # ── Postgres (runs as a Docker container on the same host) ─────────────────────
 postgres_version:   "18"
@@ -90,6 +92,9 @@ applications:
     green_port:    18082
     internal_port: 8080
     image_default: ghcr.io/florin-rotaru-md/waa-server:latest
+    # Optional per-app override:
+    # health_max_attempts: 16
+    # health_interval_seconds: 4
     registry_server: ghcr.io
     registry_username: florin-rotaru-md
     registry_password: "{{ ghcr_token }}"

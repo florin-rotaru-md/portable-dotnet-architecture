@@ -71,12 +71,18 @@ ufw_allowed_tcp_ports:
   - "443"
 
 # ── Native multi-app mode (recommended) ───────────────────────────────────────
+health_max_attempts: 16
+health_interval_seconds: 4
+
 applications:
   - name:          api.waa.ro
     assembly:      Waa.Server
     domain:        api.waa.ro
     port_blue:     5000
     port_green:    5001
+    # Optional per-app override:
+    # health_max_attempts: 16
+    # health_interval_seconds: 4
     drain_seconds: 30
     repo_url:      "https://github.com/florin-rotaru-md/Statics.git"
     repo_branch:   "master"

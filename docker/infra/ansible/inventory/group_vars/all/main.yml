@@ -3,6 +3,9 @@
 app_user:         deploy
 apps_root:        /opt/apps
 app_network_name: app_net
+health_max_attempts: 16
+health_interval_seconds: 4
+# Global defaults used for all apps unless overridden per-app in applications[].
 
 # ── Postgres (runs as a Docker container on the same host) ─────────────────────
 postgres_version:   "18"
@@ -38,6 +41,9 @@ applications:
     green_port:    18082
     internal_port: 8080
     image_default: ghcr.io/example/myapp:latest
+    # Optional per-app override:
+    # health_max_attempts: 16
+    # health_interval_seconds: 4
     # registry_server: ghcr.io
     # registry_username: your-github-username
     # registry_password: "{{ ghcr_token }}"
@@ -66,6 +72,8 @@ applications:
   #   green_port:    18092
   #   internal_port: 8080
   #   image_default: ghcr.io/example/anotherapp:latest
+  #   health_max_attempts: 16
+  #   health_interval_seconds: 4
   #   registry_server: ghcr.io
   #   registry_username: your-github-username
   #   registry_password: "{{ ghcr_token }}"

@@ -97,9 +97,9 @@
     app_port_blue: "{{ current_app.port_blue }}"
     app_port_green: "{{ current_app.port_green }}"
     drain_seconds: "{{ current_app.drain_seconds }}"
-    app_health_path: "{{ current_app.health_path | default('/.well-known/ready') }}"
-    app_health_max_attempts: "{{ current_app.health_max_attempts | default(90) }}"
-    app_health_interval_seconds: "{{ current_app.health_interval_seconds | default(2) }}"
+    app_health_path: "{{ current_app.health_path | default(health_path | default('/.well-known/ready')) }}"
+    app_health_max_attempts: "{{ current_app.health_max_attempts | default(health_max_attempts | default(16)) }}"
+    app_health_interval_seconds: "{{ current_app.health_interval_seconds | default(health_interval_seconds | default(4)) }}"
 
 - name: Install systemd service for blue slot
   template:

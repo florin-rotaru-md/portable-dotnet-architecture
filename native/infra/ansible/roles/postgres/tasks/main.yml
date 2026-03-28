@@ -71,6 +71,18 @@
   when: pg_user_check.stdout != '1'
   no_log: true
 
+- name: Ensure app DB user password and attributes
+  command:
+    argv:
+      - runuser
+      - -u
+      - postgres
+      - --
+      - psql
+      - -c
+      - "ALTER ROLE {{ postgres_user }} WITH LOGIN CREATEDB PASSWORD '{{ postgres_password }}'"
+  no_log: true
+
 - name: Enable postgis extension on template1 (inherited by new databases)
   command:
     argv:

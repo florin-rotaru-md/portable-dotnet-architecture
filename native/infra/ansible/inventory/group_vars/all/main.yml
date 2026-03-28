@@ -5,12 +5,19 @@ ansible_user: deploy
 
 # ── Apps (required) ───────────────────────────────────────────────────────────
 app_user:     deploy
+health_max_attempts: 16
+health_interval_seconds: 4
+# Global defaults used for all apps unless overridden per-app in applications[].
+
 applications:
   - name:         myapp
     assembly:     MyApp
     domain:       demo.example.com
     port_blue:    5000
     port_green:   5001
+    # Optional per-app override:
+    # health_max_attempts: 16
+    # health_interval_seconds: 4
     drain_seconds: 30
     repo_url:     ""
     repo_branch:  "master"

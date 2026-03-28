@@ -4,8 +4,8 @@
 set -euo pipefail
 
 BASE_URL="${1:?Usage: health-check.sh <base_url> [max_attempts] [interval] [path]}"
-MAX="${2:-45}"
-INTERVAL="${3:-2}"
+MAX="${2:-16}"
+INTERVAL="${3:-4}"
 PATH_SUFFIX="${4:-/.well-known/ready}"
 
 echo "Health-checking ${BASE_URL}${PATH_SUFFIX} (max ${MAX}×${INTERVAL}s)..."
