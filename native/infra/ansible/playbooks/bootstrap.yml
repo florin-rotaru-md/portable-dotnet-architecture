@@ -75,24 +75,34 @@
       loop_control:
         label: "{{ item.name }}"
 
-    - name: Run initial deploy (token required)
-      command:
-        argv:
-          - "{{ apps_root }}/{{ item.item.name }}/scripts/deploy.sh"
-          - --repo-url
-          - "{{ item.item.repo_url | default('') }}"
-          - --branch
-          - "{{ item.item.repo_branch | default('master') }}"
-          - --project-path
-          - "{{ item.item.project_path | default('') }}"
-      environment:
-        APP_REPO_TOKEN: "{{ item.item.repo_token }}"
-      become_user: "{{ app_user }}"
-      no_log: true
+    - name: Build initial deploy app list
+      set_fact:
+        initial_deploy_apps: "{{ (initial_deploy_apps | default([])) + [item.item.name] }}"
       loop: "{{ initial_deploy_status.results }}"
       loop_control:
         label: "{{ item.item.name }}"
       when:
         - not item.stat.exists
-        - item.item.repo_url | default('') | length > 0
-        - item.item.project_path | default('') | length > 0
+
+    - name: Run initial deploy (token required)
+      command:
+        argv:
+          - "{{ apps_root }}/{{ app_cfg.name }}/scripts/deploy.sh"
+          - --repo-url
+          - "{{ app_cfg.repo_url | default('') }}"
+          - --branch
+          - "{{ app_cfg.repo_branch | default('master') }}"
+          - --project-path
+          - "{{ app_cfg.project_path | default('') }}"
+      environment:
+        APP_REPO_TOKEN: "{{ app_cfg.repo_token }}"
+      become_user: "{{ app_user }}"
+      loop: "{{ initial_deploy_apps | default([]) }}"
+      loop_control:
+        label: "{{ item }}"
+      vars:
+        app_cfg: "{{ (native_apps | selectattr('name', 'equalto', item) | list | first) }}"
+      when:
+        - app_cfg is defined
+        - app_cfg.repo_url | default('') | length > 0
+        - app_cfg.project_path | default('') | length > 0
