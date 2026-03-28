@@ -1,0 +1,124 @@
+---
+- name: Ensure app directory tree exists
+  file:
+    path:  "{{ item }}"
+    state: directory
+    owner: "{{ app_user }}"
+    group: "{{ app_user }}"
+    mode:  '0755'
+  loop:
+    - "{{ apps_root }}/{{ current_app.name }}"
+    - "{{ apps_root }}/{{ current_app.name }}/slots/blue"
+    - "{{ apps_root }}/{{ current_app.name }}/slots/green"
+    - "{{ apps_root }}/{{ current_app.name }}/build"
+    - "{{ apps_root }}/{{ current_app.name }}/env"
+    - "{{ apps_root }}/{{ current_app.name }}/scripts"
+    - "{{ apps_root }}/{{ current_app.name }}/nginx"
+    - "{{ apps_root }}/{{ current_app.name }}/runtime"
+
+- name: Render common env file
+  template:
+    src:   config.env.j2
+    dest:  "{{ apps_root }}/{{ current_app.name }}/env/common.env"
+    owner: "{{ app_user }}"
+    group: "{{ app_user }}"
+    mode:  '0600'
+    force: false
+  vars:
+    app_name: "{{ current_app.name }}"
+    postgres_db: "{{ current_app.postgres_db | default(postgres_db) }}"
+    app_env: "{{ current_app.env | default({}) }}"
+
+- name: Render blue env file
+  copy:
+    dest:    "{{ apps_root }}/{{ current_app.name }}/env/blue.env"
+    content: "SLOT_NAME=blue\nASPNETCORE_URLS=http://127.0.0.1:{{ current_app.port_blue | default(app_port_blue) }}\n"
+    owner:   "{{ app_user }}"
+    group:   "{{ app_user }}"
+    mode:    '0600'
+    force:   false
+
+- name: Render green env file
+  copy:
+    dest:    "{{ apps_root }}/{{ current_app.name }}/env/green.env"
+    content: "SLOT_NAME=green\nASPNETCORE_URLS=http://127.0.0.1:{{ current_app.port_green | default(app_port_green) }}\n"
+    owner:   "{{ app_user }}"
+    group:   "{{ app_user }}"
+    mode:    '0600'
+    force:   false
+
+- name: Persist slot port metadata
+  copy:
+    dest:    "{{ apps_root }}/{{ current_app.name }}/runtime/port-{{ item.slot }}"
+    content: "{{ item.port }}\n"
+    owner:   "{{ app_user }}"
+    group:   "{{ app_user }}"
+    mode:    '0644'
+    force:   false
+  loop:
+    - { slot: 'blue',  port: "{{ current_app.port_blue | default(app_port_blue) }}" }
+    - { slot: 'green', port: "{{ current_app.port_green | default(app_port_green) }}" }
+
+- name: Initialize active-slot file
+  copy:
+    dest:  "{{ apps_root }}/{{ current_app.name }}/runtime/active-slot"
+    content: "blue\n"
+    owner:  "{{ app_user }}"
+    group:  "{{ app_user }}"
+    mode:   '0644'
+    force:  false
+
+- name: Render runtime scripts
+  template:
+    src:   "{{ item }}"
+    dest:  "{{ apps_root }}/{{ current_app.name }}/scripts/{{ item | regex_replace('\\.j2$', '') }}"
+    owner: "{{ app_user }}"
+    group: "{{ app_user }}"
+    mode:  '0755'
+  loop:
+    - current-slot.sh.j2
+    - switch-nginx.sh.j2
+    - health-check.sh.j2
+    - deploy.sh.j2
+    - rollback.sh.j2
+  vars:
+    app_name: "{{ current_app.name }}"
+    app_assembly: "{{ current_app.assembly | default(app_assembly) }}"
+    app_port_blue: "{{ current_app.port_blue | default(app_port_blue) }}"
+    app_port_green: "{{ current_app.port_green | default(app_port_green) }}"
+    drain_seconds: "{{ current_app.drain_seconds | default(drain_seconds) }}"
+
+- name: Install systemd service for blue slot
+  template:
+    src:  app-slot.service.j2
+    dest: "/etc/systemd/system/{{ current_app.name }}-blue.service"
+    mode: '0644'
+  vars:
+    app_name: "{{ current_app.name }}"
+    app_assembly: "{{ current_app.assembly | default(app_assembly) }}"
+    drain_seconds: "{{ current_app.drain_seconds | default(drain_seconds) }}"
+    slot:      blue
+    slot_port: "{{ current_app.port_blue | default(app_port_blue) }}"
+  notify: reload systemd
+
+- name: Install systemd service for green slot
+  template:
+    src:  app-slot.service.j2
+    dest: "/etc/systemd/system/{{ current_app.name }}-green.service"
+    mode: '0644'
+  vars:
+    app_name: "{{ current_app.name }}"
+    app_assembly: "{{ current_app.assembly | default(app_assembly) }}"
+    drain_seconds: "{{ current_app.drain_seconds | default(drain_seconds) }}"
+    slot:      green
+    slot_port: "{{ current_app.port_green | default(app_port_green) }}"
+  notify: reload systemd
+
+- name: Enable (but do not start) slot services
+  systemd:
+    name:    "{{ current_app.name }}-{{ item }}.service"
+    enabled: true
+    daemon_reload: true
+  loop:
+    - blue
+    - green

@@ -1,6 +1,6 @@
-# Setup 1 — Native .NET on a single VPS
+# Setup 1 — Native .NET on a VPS (single or multi-app)
 
-Single Ubuntu VPS. No Docker. Application compiled and run directly as systemd services.
+Single Ubuntu VPS. No Docker. Applications are compiled and run directly as systemd services.
 Blue/green deployment via source build (`dotnet publish`) and Nginx upstream swap.
 
 ## What gets installed
@@ -83,6 +83,7 @@ Key variables in `inventory/group_vars/all/main.yml`:
 
 | Variable          | Description                                 |
 |-------------------|---------------------------------------------|
+| `applications`    | List of native apps (recommended multi-app mode) |
 | `app_name`        | Short identifier, becomes systemd unit name |
 | `app_assembly`    | .NET assembly name (DLL without extension)  |
 | `app_domain`      | Nginx server_name                           |
@@ -92,6 +93,33 @@ Key variables in `inventory/group_vars/all/main.yml`:
 | `app_repo_url`    | Git repo URL used for the initial deploy    |
 | `app_project_path`| Path to the `.csproj` used for first deploy |
 | `use_cloudflared` | `true` to install Cloudflare Tunnel         |
+
+`applications` example:
+
+```yaml
+applications:
+  - name: myapp
+    assembly: MyApp
+    domain: myapp.example.com
+    port_blue: 5000
+    port_green: 5001
+    drain_seconds: 30
+    repo_url: "https://github.com/your-org/myapp.git"
+    repo_branch: "master"
+    project_path: "src/MyApp/MyApp.csproj"
+    postgres_db: myapp_db
+
+  - name: anotherapp
+    assembly: AnotherApp
+    domain: anotherapp.example.com
+    port_blue: 5010
+    port_green: 5011
+    repo_url: "https://github.com/your-org/anotherapp.git"
+    project_path: "src/AnotherApp/AnotherApp.csproj"
+    postgres_db: anotherapp_db
+```
+
+When `applications` is empty, legacy single-app variables (`app_name`, `app_assembly`, etc.) are used.
 
 
 **3. First bootstrap** — the `deploy` user doesn't exist yet, so connect as the initial root/admin user:
@@ -121,7 +149,7 @@ Bootstrap also performs the initial deploy automatically if `app_repo_url` and `
 
 ## Deploy
 
-After bootstrap, deploy.sh is installed at `/opt/apps/<app_name>/scripts/deploy.sh`.
+After bootstrap, each app has its own deploy script at `/opt/apps/<app_name>/scripts/deploy.sh`.
 
 **First deploy** is performed automatically by bootstrap when the repository variables are configured.
 

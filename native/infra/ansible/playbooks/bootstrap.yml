@@ -2,6 +2,74 @@
 - name: Bootstrap single-app VPS (native .NET)
   hosts: app
   become: true
+  pre_tasks:
+    - name: Build application definitions (multi-app or legacy single-app)
+      set_fact:
+        native_apps: >-
+          {{
+            applications
+            if (applications is defined and applications | length > 0)
+            else [
+              {
+                'name': app_name,
+                'assembly': app_assembly,
+                'domain': app_domain,
+                'port_blue': app_port_blue,
+                'port_green': app_port_green,
+                'drain_seconds': drain_seconds,
+                'repo_url': app_repo_url,
+                'repo_branch': app_repo_branch,
+                'repo_token': app_repo_token | default(''),
+                'project_path': app_project_path,
+                'postgres_db': postgres_db
+              }
+            ]
+          }}
+
+    - name: Validate application definitions
+      assert:
+        that:
+          - item.name is defined
+          - item.name | string | trim | length > 0
+          - item.assembly is defined
+          - item.assembly | string | trim | length > 0
+          - item.domain is defined
+          - item.domain | string | trim | length > 0
+          - item.port_blue is defined
+          - item.port_green is defined
+          - (item.port_blue | int) > 0
+          - (item.port_green | int) > 0
+          - (item.port_blue | int) != (item.port_green | int)
+      loop: "{{ native_apps }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Collect all slot ports
+      set_fact:
+        native_all_ports: "{{ (native_all_ports | default([])) + [item.port_blue | int, item.port_green | int] }}"
+      loop: "{{ native_apps }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Ensure all slot ports are unique across applications
+      assert:
+        that:
+          - native_all_ports | length == (native_all_ports | unique | length)
+        fail_msg: >-
+          Duplicate ports detected across applications. Ensure every app uses unique
+          blue/green ports.
+
+    - name: Build list of application databases
+      set_fact:
+        postgres_databases: "{{ (postgres_databases | default([])) + [item.postgres_db | default(postgres_db)] }}"
+      loop: "{{ native_apps }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Deduplicate application databases
+      set_fact:
+        postgres_databases: "{{ postgres_databases | unique }}"
+
   roles:
     - common
     - dotnet
@@ -14,42 +82,51 @@
   tasks:
     - name: Check whether initial deploy has already run
       stat:
-        path: "{{ apps_root }}/{{ app_name }}/runtime/deploy-history.log"
+        path: "{{ apps_root }}/{{ item.name }}/runtime/deploy-history.log"
       register: initial_deploy_status
+      loop: "{{ native_apps }}"
+      loop_control:
+        label: "{{ item.name }}"
 
     - name: Run initial deploy without repository token
       command:
         argv:
-          - "{{ apps_root }}/{{ app_name }}/scripts/deploy.sh"
+          - "{{ apps_root }}/{{ item.item.name }}/scripts/deploy.sh"
           - --repo-url
-          - "{{ app_repo_url }}"
+          - "{{ item.item.repo_url | default('') }}"
           - --branch
-          - "{{ app_repo_branch }}"
+          - "{{ item.item.repo_branch | default('master') }}"
           - --project-path
-          - "{{ app_project_path }}"
+          - "{{ item.item.project_path | default('') }}"
       become_user: "{{ app_user }}"
+      loop: "{{ initial_deploy_status.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"
       when:
-        - not initial_deploy_status.stat.exists
-        - app_repo_url | length > 0
-        - app_project_path | length > 0
-        - app_repo_token | default('') | length == 0
+        - not item.stat.exists
+        - item.item.repo_url | default('') | length > 0
+        - item.item.project_path | default('') | length > 0
+        - item.item.repo_token | default('') | length == 0
 
     - name: Run initial deploy with repository token
       command:
         argv:
-          - "{{ apps_root }}/{{ app_name }}/scripts/deploy.sh"
+          - "{{ apps_root }}/{{ item.item.name }}/scripts/deploy.sh"
           - --repo-url
-          - "{{ app_repo_url }}"
+          - "{{ item.item.repo_url | default('') }}"
           - --branch
-          - "{{ app_repo_branch }}"
+          - "{{ item.item.repo_branch | default('master') }}"
           - --token
-          - "{{ app_repo_token }}"
+          - "{{ item.item.repo_token }}"
           - --project-path
-          - "{{ app_project_path }}"
+          - "{{ item.item.project_path | default('') }}"
       become_user: "{{ app_user }}"
       no_log: true
+      loop: "{{ initial_deploy_status.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"
       when:
-        - not initial_deploy_status.stat.exists
-        - app_repo_url | length > 0
-        - app_project_path | length > 0
-        - app_repo_token | default('') | length > 0
+        - not item.stat.exists
+        - item.item.repo_url | default('') | length > 0
+        - item.item.project_path | default('') | length > 0
+        - item.item.repo_token | default('') | length > 0

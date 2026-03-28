@@ -1,13 +1,15 @@
+on local pc
+---
 ssh-keygen -R 192.168.0.22
 
-target:
+on target vm:
 ---
 > /home/deploy/.ssh/authorized_keys
 
 echo 'deploy ALL=(ALL) NOPASSWD: ALL' | sudo tee /etc/sudoers.d/deploy
 sudo chmod 440 /etc/sudoers.d/deploy
 
-control:
+on control vm:
 ---
 sudo apt update && \
 sudo apt upgrade -y && \

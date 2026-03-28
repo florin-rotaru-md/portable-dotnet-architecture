@@ -45,6 +45,10 @@
     enabled: true
     state:   started
 
+- name: Determine target PostgreSQL databases
+  set_fact:
+    postgres_target_databases: "{{ postgres_databases | default([postgres_db]) | unique }}"
+
 - name: Check if app DB user exists
   become_user: postgres
   command: psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='{{ postgres_user }}'"
@@ -61,20 +65,29 @@
 
 - name: Check if app database exists
   become_user: postgres
-  command: psql -tAc "SELECT 1 FROM pg_database WHERE datname='{{ postgres_db }}'"
+  command: psql -tAc "SELECT 1 FROM pg_database WHERE datname='{{ item }}'"
+  loop: "{{ postgres_target_databases }}"
+  loop_control:
+    label: "{{ item }}"
   register: pg_db_check
   changed_when: false
 
 - name: Create app database
   become_user: postgres
   command: >
-    psql -c "CREATE DATABASE {{ postgres_db }}
+    psql -c "CREATE DATABASE {{ item.item }}
              OWNER {{ postgres_user }}"
-  when: pg_db_check.stdout != '1'
+  loop: "{{ pg_db_check.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: item.stdout != '1'
 
 - name: Enable postgis extension on app database
   become_user: postgres
-  command: psql -d {{ postgres_db }} -c "CREATE EXTENSION IF NOT EXISTS postgis"
+  command: psql -d {{ item }} -c "CREATE EXTENSION IF NOT EXISTS postgis"
+  loop: "{{ postgres_target_databases }}"
+  loop_control:
+    label: "{{ item }}"
   changed_when: false
 
 - name: Ensure backup directory exists
@@ -92,6 +105,7 @@
     minute: "15"
     hour:   "2"
     job:    >
-      pg_dump -Fc {{ postgres_db }}
-      > /opt/postgres/backups/{{ postgres_db }}_$(date +\%Y\%m\%d_\%H\%M).dump
+      for db in {{ postgres_target_databases | join(' ') }}; do
+      pg_dump -Fc "$db" > /opt/postgres/backups/${db}_$(date +\%Y\%m\%d_\%H\%M).dump;
+      done
       && find /opt/postgres/backups -name '*.dump' -mtime +7 -delete

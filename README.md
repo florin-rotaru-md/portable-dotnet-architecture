@@ -1,19 +1,19 @@
 # portable-dotnet-architecture
 
 Incremental reference architecture for deploying .NET (and other) services on a plain Ubuntu VPS.
-Three self-contained setups — pick the one that matches your constraints and grow into the next
+Four self-contained setups — pick the one that matches your constraints and grow into the next
 when you need to.
 
 ## Setups
 
 | Folder     | When to use                                          | Key tools                              |
 |------------|------------------------------------------------------|----------------------------------------|
-| [`native/`](native/) | Single app, no Docker, minimal overhead | Ansible, systemd, Nginx, Postgres (native) |
+| [`native/`](native/) | Single or multiple apps, no Docker, minimal overhead | Ansible, systemd, Nginx, Postgres (native) |
 | [`docker/`](docker/) | Multiple apps, Docker-based, intermediate complexity | Ansible, Docker Compose, Nginx, Postgres (container) |
 | [`k3s/`](k3s/)       | Horizontal scaling, GitOps, full IaC on cloud VPS | Terraform (Hetzner), Ansible, k3s, FluxCD, Helm |
 | [`k3s-proxmox/`](k3s-proxmox/) | Same as `k3s/` but on self-hosted Proxmox | Terraform (bpg/proxmox), Ansible, k3s, FluxCD, Helm |
 
-`native/` and `docker/` now perform the first application deploy during bootstrap when the required application source or image settings are configured. `k3s/` and `k3s-proxmox/` continue to deploy applications through FluxCD from Git.
+`native/` and `docker/` now perform the first application deploy during bootstrap when the required application source or image settings are configured. `native/` supports both legacy single-app variables and multi-app `applications` definitions. `k3s/` and `k3s-proxmox/` continue to deploy applications through FluxCD from Git.
 
 ## Minimal bootstrap (all setups)
 
@@ -49,7 +49,7 @@ cd ~/src/portable-dotnet-architecture/k3s      # setup 3
 - **Cloudflare Tunnel**: optional in all setups; removes need to expose ports 80/443 publicly
 
 For setup-specific bootstrap inputs:
-- `native/` needs `app_repo_url` and `app_project_path` for automatic first deploy, plus `app_repo_token` only for private repos.
+- `native/` supports multi-app via `applications` (recommended); each app can define `repo_url` and `project_path` for automatic first deploy. Legacy single-app variables (`app_repo_url`, `app_project_path`) are still supported.
 - `docker/` needs `image_default` for each application, plus registry credentials only for private images.
 
 ## Application contract
@@ -63,13 +63,14 @@ GET /.well-known/ready  → 200 (startup complete, not draining)
 ```
 
 See [`native/`](native/README.md) for a reference .NET 10 implementation.
+For a complete end-to-end command walkthrough, see [`native/example`](native/example).
 
 ## Incremental path
 
 ```
 native  ──►  docker  ──►  k3s  ──►  k3s-proxmox
   ↑             ↑            ↑             ↑
-single app   multi-app   cloud GitOps   on-prem GitOps
+native multi-app   docker multi-app   cloud GitOps   on-prem GitOps
 no Docker    Compose      Hetzner VPS   self-hosted Proxmox
 manual CI    manual CI    IaC+FluxCD    IaC+FluxCD (no public IPs)
 ```

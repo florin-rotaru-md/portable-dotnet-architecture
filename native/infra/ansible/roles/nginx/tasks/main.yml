@@ -10,31 +10,12 @@
     path:  /etc/nginx/sites-enabled/default
     state: absent
 
-- name: Render upstream blue config
-  template:
-    src:  upstream-blue.conf.j2
-    dest: "/opt/apps/{{ app_name }}/nginx/upstream-blue.conf"
-    mode: '0644'
-
-- name: Render upstream green config
-  template:
-    src:  upstream-green.conf.j2
-    dest: "/opt/apps/{{ app_name }}/nginx/upstream-green.conf"
-    mode: '0644'
-
-- name: Render active upstream config (initially blue)
-  template:
-    src:  upstream-blue.conf.j2
-    dest: "/etc/nginx/conf.d/{{ app_name }}-upstream-active.conf"
-    mode: '0644'
-    force: false
-
-- name: Render site config
-  template:
-    src:  site.conf.j2
-    dest: "/etc/nginx/conf.d/{{ app_name }}.conf"
-    mode: '0644'
-  notify: reload nginx
+- name: Render Nginx configs for native app instances
+  include_tasks: nginx_instance.yml
+  loop: "{{ native_apps }}"
+  loop_control:
+    loop_var: current_app
+    label: "{{ current_app.name }}"
 
 - name: Validate nginx config
   command: nginx -t

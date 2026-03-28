@@ -16,6 +16,23 @@ app_repo_url:   ""
 app_repo_branch: "master"
 app_project_path: ""
 
+# Multi-app mode (recommended): add one entry per native app.
+# If this list is empty, the legacy single-app variables above are used.
+applications:
+  - name:         myapp
+    assembly:     MyApp
+    domain:       demo.example.com
+    port_blue:    5000
+    port_green:   5001
+    drain_seconds: 30
+    repo_url:     ""
+    repo_branch:  "master"
+    project_path: ""
+    postgres_db:  myapp_db
+    # repo_token: "{{ app_repo_token }}"
+    # env:
+    #   SomeSetting__Nested__Value: "example"
+
 apps_root:  /opt/apps
 dotnet_version: "10.0"
 

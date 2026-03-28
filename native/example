@@ -1,13 +1,15 @@
+on local pc
+---
 ssh-keygen -R 192.168.0.21
 
-target:
+on target vm:
 ---
 > /home/deploy/.ssh/authorized_keys
 
 echo 'deploy ALL=(ALL) NOPASSWD: ALL' | sudo tee /etc/sudoers.d/deploy
 sudo chmod 440 /etc/sudoers.d/deploy
 
-control:
+on control vm:
 ---
 sudo apt update && \
 sudo apt upgrade -y && \
@@ -16,11 +18,10 @@ mkdir -p ~/.local/bin && \
 echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && \
 export PATH="$HOME/.local/bin:$PATH" && \
 pipx ensurepath && \
-pipx install --include-deps ansible && \
-~/.local/bin/ansible-galaxy collection install community.docker
+pipx install --include-deps ansible
 
 test -f ~/.ssh/id_ed25519_ansible || \
-  ssh-keygen -t ed25519 -C "ansible-control" -f ~/.ssh/id_ed25519_ansible -N ""
+	ssh-keygen -t ed25519 -C "ansible-control" -f ~/.ssh/id_ed25519_ansible -N ""
 
 chmod 700 /home/deploy/.ssh && \
 chmod 600 /home/deploy/.ssh/authorized_keys && \
@@ -35,79 +36,106 @@ git clone https://github.com/florin-rotaru-md/portable-dotnet-architecture
 cat << 'EOF' > ~/src/portable-dotnet-architecture/native/infra/ansible/inventory/group_vars/all/vault.yml
 ansible_ssh_public_key:  "{{ lookup('file', '~/.ssh/id_ed25519_ansible.pub') }}"
 
-postgres_root_password:  "postgres"    # POSTGRES_PASSWORD for the postgres container
-postgres_password:       "postgres"    # password for postgres_user
+postgres_password: "postgres"
 
-# Required only for private GHCR images.
-# ghcr_token:            "github_pat_..."
-ghcr_token:              "ghp_..."
+# Optional for private repos used in first auto-deploy:
+app_repo_token: "ghp_..."
 
 # Required only when use_cloudflared: true
 # cloudflare_token: "eyJhIjoiABCD..."
-
 EOF
 
 
 cat << 'EOF' > ~/src/portable-dotnet-architecture/native/infra/ansible/inventory/group_vars/all/main.yml
 ---
-# ── Infrastructure ─────────────────────────────────────────────────────────────
-app_user:         deploy
-apps_root:        /opt/apps
-app_network_name: app_net
+# ── Ansible service account ────────────────────────────────────────────────────
+ansible_user: deploy
 
-# ── Postgres (runs as a Docker container on the same host) ─────────────────────
-postgres_version:   "17"
-postgres_host:      postgres          # Docker service name / internal DNS
-postgres_user:      postgres
-# postgres_password and postgres_root_password come from vault.yml
-backup_retention_days: 7
+# ── Infrastructure ─────────────────────────────────────────────────────────────
+app_user:     deploy
+apps_root:    /opt/apps
+dotnet_version: "10.0"
+
+# ── Postgres ───────────────────────────────────────────────────────────────────
+postgres_version: "17"
+postgres_user:    myapp
 
 # ── Cloudflare (optional) ──────────────────────────────────────────────────────
 use_cloudflared: false
-# cloudflare_token comes from vault.yml when use_cloudflared: true
-
-# ── Ansible service account ────────────────────────────────────────────────────
-ansible_user: deploy
-# ansible_ssh_public_key comes from vault.yml — paste your controller's public key there
 
 # ── Firewall ───────────────────────────────────────────────────────────────────
 ufw_allowed_tcp_ports:
-  - "22"
-  - "80"
-  - "443"
+	- "22"
+	- "80"
+	- "443"
 
-# ── Applications ───────────────────────────────────────────────────────────────
-# Add one entry per application.
-# For public GHCR images, image_default is enough.
-# For private images, also set registry_server / registry_username here
-# and put registry_password in vault.yml (for example: "{{ ghcr_token }}").
+# ── Legacy single-app fallback (kept for compatibility) ──────────────────────
+app_name:         myapp
+app_assembly:     MyApp
+app_domain:       api.example.com
+app_port_blue:    5000
+app_port_green:   5001
+drain_seconds:    30
+app_repo_url:     ""
+app_repo_branch:  "master"
+app_project_path: ""
+postgres_db:      myapp_db
+
+# ── Native multi-app mode (recommended) ───────────────────────────────────────
 applications:
-  - name:          api.waa.ro
-    server_name:   api.waa.ro
-    blue_port:     18081
-    green_port:    18082
-    internal_port: 8080
-    image_default: ghcr.io/florin-rotaru-md/waa-server:latest
-    registry_server: ghcr.io
-    registry_username: florin-rotaru-md
-    registry_password: "{{ ghcr_token }}"
-    drain_seconds: 32
+	- name:         api.example.com
+		assembly:     MyApp.Api
+		domain:       api.example.com
+		port_blue:    5000
+		port_green:   5001
+		drain_seconds: 30
+		repo_url:     "https://github.com/florin-rotaru-md/myapp-api.git"
+		repo_branch:  "master"
+		project_path: "src/MyApp.Api/MyApp.Api.csproj"
+		postgres_db:  myapp_api_db
+		repo_token:   "{{ app_repo_token }}"
+		env:
+			ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
 
-    # ── appsettings.Production.json override ────────────────────────────────
-    # This dict is rendered as appsettings.Production.json and mounted
-    # read-only into the container.  .NET merges it on top of the
-    # appsettings.json baked into the image (DOTNET_ENVIRONMENT=Production).
-    # Put connection strings, secrets, and env-specific URLs here.
-    # Secrets (passwords, API keys) should reference vault.yml variables.
-    appsettings_override:
-      ConnectionStrings:
-        App:            "Host={{ postgres_host }};Port=5432;Database=waa_ro_app;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
-        Users:          "Host={{ postgres_host }};Port=5432;Database=waa_ro_users;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
-        DataProtection: "Host={{ postgres_host }};Port=5432;Database=waa_ro_dp;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
-      # FileStorage:
-      #   BaseDirectory: "/data/files"
-      # UiClient:
-      #   Urls:
-      #     SignInWithToken: "https://www.example.com/auth/sign-in"
-
+	- name:         admin.example.com
+		assembly:     MyApp.Admin
+		domain:       admin.example.com
+		port_blue:    5010
+		port_green:   5011
+		drain_seconds: 30
+		repo_url:     "https://github.com/florin-rotaru-md/myapp-admin.git"
+		repo_branch:  "master"
+		project_path: "src/MyApp.Admin/MyApp.Admin.csproj"
+		postgres_db:  myapp_admin_db
+		repo_token:   "{{ app_repo_token }}"
 EOF
+
+
+cat << 'EOF' > ~/src/portable-dotnet-architecture/native/infra/ansible/inventory/hosts.ini
+[app]
+192.168.0.21 ansible_user=deploy ansible_private_key_file=~/.ssh/id_ed25519_ansible
+
+# Example with SSH key:
+# 1.2.3.4 ansible_user=deploy ansible_private_key_file=~/.ssh/id_ed25519_ansible
+EOF
+
+
+# First bootstrap on a fresh VM can be done as root if deploy is missing:
+cd ~/src/portable-dotnet-architecture/native/infra/ansible && \
+ansible-playbook playbooks/bootstrap.yml -u root --ask-vault-pass
+
+# Normal path (deploy user exists and key auth works):
+cd ~/src/portable-dotnet-architecture/native/infra/ansible && \
+ansible-playbook playbooks/bootstrap.yml
+
+# If vault.yml is encrypted:
+# ansible-playbook playbooks/bootstrap.yml --ask-vault-pass
+
+# Bootstrap performs first deploy automatically for every app that has repo_url + project_path.
+# Manual deploy examples:
+# sudo -u deploy /opt/apps/api.example.com/scripts/deploy.sh
+# sudo -u deploy /opt/apps/admin.example.com/scripts/deploy.sh
+
+# Manual rollback examples:
+# sudo -u deploy /opt/apps/api.example.com/scripts/rollback.sh
+# sudo -u deploy /opt/apps/admin.example.com/scripts/rollback.sh
