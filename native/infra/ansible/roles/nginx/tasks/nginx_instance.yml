@@ -1,4 +1,12 @@
 ---
+- name: Ensure app nginx directory exists
+  file:
+    path: "{{ apps_root }}/{{ current_app.name }}/nginx"
+    state: directory
+    owner: "{{ app_user }}"
+    group: "{{ app_user }}"
+    mode: '0755'
+
 - name: Render upstream blue config
   template:
     src:  upstream-blue.conf.j2
