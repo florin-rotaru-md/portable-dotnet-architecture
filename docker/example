@@ -60,8 +60,7 @@ health_max_attempts: 16
 health_interval_seconds: 4
 
 # ── Postgres (runs as a Docker container on the same host) ─────────────────────
-postgres_version:   "18"
-postgis_major_version: "3"
+postgres_image:     "postgis/postgis:18-3.6"
 postgres_host:      postgres          # Docker service name / internal DNS
 postgres_user:      postgres
 # postgres_password and postgres_root_password come from vault.yml

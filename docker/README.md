@@ -102,12 +102,12 @@ Bootstrap also performs the initial deploy automatically for each application us
 
 ### Key variables in `inventory/group_vars/all/main.yml`
 
-| Variable                | Description                                 |
-|-------------------------|---------------------------------------------|
-| `applications`          | List of app definitions (see below)         |
-| `postgres_version`      | Postgres image tag (default `18`)           |
-| `backup_retention_days` | Days to keep nightly dumps (default 7)      |
-| `use_cloudflared`       | `true` to install Cloudflare Tunnel         |
+| Variable                | Description                                             |
+|-------------------------|---------------------------------------------------------|
+| `applications`          | List of app definitions (see below)                     |
+| `postgres_image`        | Full Postgres image (default `postgis/postgis:18-3.6`)  |
+| `backup_retention_days` | Days to keep nightly dumps (default 7)                  |
+| `use_cloudflared`       | `true` to install Cloudflare Tunnel                     |
 
 ### Application definition
 
