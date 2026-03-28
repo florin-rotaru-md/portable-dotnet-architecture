@@ -9,7 +9,7 @@ health_interval_seconds: 4
 
 # ── Postgres (runs as a Docker container on the same host) ─────────────────────
 postgres_version:   "18"
-postgis_version:    "3.5"
+postgis_major_version: "3"
 postgres_host:      postgres          # Docker service name / internal DNS
 postgres_user:      appuser
 # postgres_password and postgres_root_password come from vault.yml

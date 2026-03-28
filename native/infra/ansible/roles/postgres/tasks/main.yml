@@ -26,7 +26,7 @@
   apt:
     name:
       - "postgresql-{{ postgres_version }}"
-      - "postgresql-{{ postgres_version }}-postgis-3"
+      - "postgresql-{{ postgres_version }}-postgis-{{ postgis_major_version }}"
     state:        present
     update_cache: true
 

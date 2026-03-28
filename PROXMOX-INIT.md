@@ -337,8 +337,8 @@ look for lvm type ex
   └─ubuntu--vg-ubuntu--lv 252:0    0   15G  0 lvm  /
 
 ``` bash
-growpart /dev/sda 3
-pvresize /dev/sda3
+growpart /dev/sda 3 && \
+pvresize /dev/sda3 && \
 lvextend -l +100%FREE /dev/mapper/ubuntu--vg-ubuntu--lv
 ```
 

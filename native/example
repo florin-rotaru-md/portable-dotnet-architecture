@@ -58,6 +58,7 @@ dotnet_version: "10.0"
 
 # ── Postgres ───────────────────────────────────────────────────────────────────
 postgres_version: "18"
+postgis_major_version: "3"
 postgres_user:    postgres
 backup_retention_days: 7
 

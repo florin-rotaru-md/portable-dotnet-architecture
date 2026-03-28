@@ -34,6 +34,7 @@ dotnet_version: "10.0"
 
 # ── Postgres ───────────────────────────────────────────────────────────────────
 postgres_version: "18"
+postgis_major_version: "3"
 postgres_user:    myapp
 backup_retention_days: 7
 # postgres_password comes from vault.yml

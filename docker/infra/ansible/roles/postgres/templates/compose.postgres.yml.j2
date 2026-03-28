@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgis/postgis:{{ postgres_version }}-{{ postgis_version }}-alpine
+    image: postgis/postgis:{{ postgres_version }}-{{ postgis_major_version }}-alpine
     container_name: postgres
     restart: unless-stopped
     env_file:
