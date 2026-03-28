@@ -1,18 +1,19 @@
 #!/usr/bin/env bash
-# health-check.sh <base_url> [max_attempts] [interval_seconds]
-# Polls /.well-known/ready until 200 OK or exhausted.
+# health-check.sh <base_url> [max_attempts] [interval_seconds] [path]
+# Polls target path until 200 OK or exhausted.
 set -euo pipefail
 
-BASE_URL="${1:?Usage: health-check.sh <base_url> [max_attempts] [interval]}"
+BASE_URL="${1:?Usage: health-check.sh <base_url> [max_attempts] [interval] [path]}"
 MAX="${2:-45}"
 INTERVAL="${3:-2}"
+PATH_SUFFIX="${4:-/.well-known/ready}"
 
-echo "Health-checking $BASE_URL/.well-known/ready (max ${MAX}×${INTERVAL}s)..."
+echo "Health-checking ${BASE_URL}${PATH_SUFFIX} (max ${MAX}×${INTERVAL}s)..."
 
 for i in $(seq 1 "$MAX"); do
   code=$(curl -s -o /dev/null -w "%{http_code}" \
     --connect-timeout 2 --max-time 3 \
-    "${BASE_URL}/.well-known/ready" 2>/dev/null || echo "000")
+    "${BASE_URL}${PATH_SUFFIX}" 2>/dev/null || echo "000")
   if [ "$code" = "200" ]; then
     echo "  ✓ Ready after ${i} attempt(s)"
     exit 0

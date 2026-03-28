@@ -21,6 +21,9 @@ BUILD_DIR="$APP_ROOT/build"
 DRAIN_SECONDS="{{ drain_seconds }}"
 PORT_BLUE="{{ app_port_blue }}"
 PORT_GREEN="{{ app_port_green }}"
+HEALTH_PATH="{{ app_health_path }}"
+HEALTH_MAX_ATTEMPTS="{{ app_health_max_attempts }}"
+HEALTH_INTERVAL_SECONDS="{{ app_health_interval_seconds }}"
 
 REPO_URL=""
 REPO_BRANCH=""
@@ -77,6 +80,14 @@ fi
 
 SLOT_DIR="$APP_ROOT/slots/$TARGET_SLOT"
 
+print_service_diagnostics() {
+  local svc="$1"
+  echo "Service diagnostics for ${svc}:" >&2
+  sudo systemctl --no-pager --full status "$svc" >&2 || true
+  echo "Last 200 journal lines for ${svc}:" >&2
+  sudo journalctl -u "$svc" -n 200 --no-pager >&2 || true
+}
+
 echo "──────────────────────────────────────"
 echo "App:          $APP_NAME"
 echo "Current slot: $CURRENT_SLOT  →  target: $TARGET_SLOT"
@@ -84,27 +95,31 @@ echo "Branch:       $REPO_BRANCH"
 echo "Project:      $PROJECT_PATH"
 echo "──────────────────────────────────────"
 
-# ── Clone / pull repo ─────────────────────────────────────────────────────────
-AUTH_URL="$REPO_URL"
-GIT_AUTH_ARGS=()
-
-if [ -n "$REPO_TOKEN" ]; then
-  if [[ "$REPO_URL" == https://github.com/* ]]; then
-    GH_BASIC_AUTH=$(printf 'x-access-token:%s' "$REPO_TOKEN" | base64 | tr -d '\n')
-    GIT_AUTH_ARGS=(-c "http.https://github.com/.extraheader=AUTHORIZATION: basic ${GH_BASIC_AUTH}")
-  else
-    AUTH_URL="${REPO_URL/https:\/\//https://${REPO_TOKEN}@}"
-  fi
+# ── Clone / pull repo (private GitHub repo; token required) ──────────────────
+if [ -z "$REPO_TOKEN" ]; then
+  echo "Error: GitHub token is required for repository deploys. Set APP_REPO_TOKEN or pass --token." >&2
+  exit 1
 fi
+
+if [[ "$REPO_URL" != https://github.com/* ]]; then
+  echo "Error: only https://github.com/... repository URLs are supported in private-token mode." >&2
+  exit 1
+fi
+
+GH_BASIC_AUTH=$(printf 'x-access-token:%s' "$REPO_TOKEN" | base64 | tr -d '\n')
+
+git_with_auth() {
+  git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic ${GH_BASIC_AUTH}" "$@"
+}
 
 if [ -d "$BUILD_DIR/.git" ]; then
   echo "Pulling latest from $REPO_BRANCH..."
   git -C "$BUILD_DIR" remote set-url origin "$REPO_URL"
-  git "${GIT_AUTH_ARGS[@]}" -C "$BUILD_DIR" fetch --depth=1 origin "$REPO_BRANCH"
+  git_with_auth -C "$BUILD_DIR" fetch --depth=1 origin "$REPO_BRANCH"
   git -C "$BUILD_DIR" reset --hard "origin/$REPO_BRANCH"
 else
   echo "Cloning $REPO_URL (branch $REPO_BRANCH)..."
-  git "${GIT_AUTH_ARGS[@]}" clone --branch "$REPO_BRANCH" --depth 1 "$AUTH_URL" "$BUILD_DIR"
+  git_with_auth clone --branch "$REPO_BRANCH" --depth 1 "$REPO_URL" "$BUILD_DIR"
 fi
 
 if [ ! -f "$BUILD_DIR/$PROJECT_PATH" ]; then
@@ -136,8 +151,17 @@ fi
 echo "Starting $TARGET_SERVICE..."
 sudo systemctl start "$TARGET_SERVICE"
 
+if ! sudo systemctl is-active --quiet "$TARGET_SERVICE"; then
+  echo "Error: ${TARGET_SERVICE} did not become active after start." >&2
+  print_service_diagnostics "$TARGET_SERVICE"
+  exit 1
+fi
+
 # ── Health check ──────────────────────────────────────────────────────────────
-"$SCRIPTS_DIR/health-check.sh" "http://127.0.0.1:${TARGET_PORT}" 45 2
+if ! "$SCRIPTS_DIR/health-check.sh" "http://127.0.0.1:${TARGET_PORT}" "$HEALTH_MAX_ATTEMPTS" "$HEALTH_INTERVAL_SECONDS" "$HEALTH_PATH"; then
+  print_service_diagnostics "$TARGET_SERVICE"
+  exit 1
+fi
 
 # ── Switch Nginx ──────────────────────────────────────────────────────────────
 "$SCRIPTS_DIR/switch-nginx.sh" "$TARGET_SLOT"

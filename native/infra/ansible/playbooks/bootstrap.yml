@@ -32,11 +32,12 @@
           - (item.port_blue | int) > 0
           - (item.port_green | int) > 0
           - (item.port_blue | int) != (item.port_green | int)
+          - item.repo_url | default('') | length == 0 or (item.repo_token | default('') | string | trim | length > 0)
           - item.repo_token is not defined or (item.repo_token | string | trim | length == 0) or (item.repo_token | string | trim != 'ghp_...')
         fail_msg: >-
           Invalid application configuration for {{ item.name }}. Verify required fields,
-          ports, and repository credentials. If repository is public, remove repo_token.
-          If repository is private, set a real token in vault.yml (not placeholder ghp_...).
+          ports, and repository credentials. For repository-based auto-deploy,
+          set a real GitHub token in vault.yml (not placeholder ghp_...).
       loop: "{{ native_apps }}"
       loop_control:
         label: "{{ item.name }}"
@@ -74,27 +75,7 @@
       loop_control:
         label: "{{ item.name }}"
 
-    - name: Run initial deploy without repository token
-      command:
-        argv:
-          - "{{ apps_root }}/{{ item.item.name }}/scripts/deploy.sh"
-          - --repo-url
-          - "{{ item.item.repo_url | default('') }}"
-          - --branch
-          - "{{ item.item.repo_branch | default('master') }}"
-          - --project-path
-          - "{{ item.item.project_path | default('') }}"
-      become_user: "{{ app_user }}"
-      loop: "{{ initial_deploy_status.results }}"
-      loop_control:
-        label: "{{ item.item.name }}"
-      when:
-        - not item.stat.exists
-        - item.item.repo_url | default('') | length > 0
-        - item.item.project_path | default('') | length > 0
-        - item.item.repo_token | default('') | length == 0
-
-    - name: Run initial deploy with repository token
+    - name: Run initial deploy (token required)
       command:
         argv:
           - "{{ apps_root }}/{{ item.item.name }}/scripts/deploy.sh"
@@ -107,6 +88,7 @@
       environment:
         APP_REPO_TOKEN: "{{ item.item.repo_token }}"
       become_user: "{{ app_user }}"
+      no_log: true
       loop: "{{ initial_deploy_status.results }}"
       loop_control:
         label: "{{ item.item.name }}"
@@ -114,4 +96,3 @@
         - not item.stat.exists
         - item.item.repo_url | default('') | length > 0
         - item.item.project_path | default('') | length > 0
-        - item.item.repo_token | default('') | length > 0
