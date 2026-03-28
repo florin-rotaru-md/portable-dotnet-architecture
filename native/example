@@ -1,4 +1,4 @@
-ssh-keygen -R 192.168.0.22
+ssh-keygen -R 192.168.0.21
 
 target:
 ---
@@ -26,13 +26,13 @@ chmod 700 /home/deploy/.ssh && \
 chmod 600 /home/deploy/.ssh/authorized_keys && \
 chown -R deploy:deploy /home/deploy/.ssh
 
-ssh-copy-id -i ~/.ssh/id_ed25519_ansible.pub deploy@192.168.0.22
+ssh-copy-id -i ~/.ssh/id_ed25519_ansible.pub deploy@192.168.0.21
 
 mkdir -p ~/src && cd ~/src && \
 git clone https://github.com/florin-rotaru-md/portable-dotnet-architecture
 
 
-cat << 'EOF' > ~/src/portable-dotnet-architecture/docker/infra/ansible/inventory/group_vars/all/vault.yml
+cat << 'EOF' > ~/src/portable-dotnet-architecture/native/infra/ansible/inventory/group_vars/all/vault.yml
 ansible_ssh_public_key:  "{{ lookup('file', '~/.ssh/id_ed25519_ansible.pub') }}"
 
 postgres_root_password:  "postgres"    # POSTGRES_PASSWORD for the postgres container
@@ -48,7 +48,7 @@ ghcr_token:              "ghp_..."
 EOF
 
 
-cat << 'EOF' > ~/src/portable-dotnet-architecture/docker/infra/ansible/inventory/group_vars/all/main.yml
+cat << 'EOF' > ~/src/portable-dotnet-architecture/native/infra/ansible/inventory/group_vars/all/main.yml
 ---
 # ── Infrastructure ─────────────────────────────────────────────────────────────
 app_user:         deploy
@@ -111,24 +111,3 @@ applications:
       #     SignInWithToken: "https://www.example.com/auth/sign-in"
 
 EOF
-
-
-cat << 'EOF' > ~/src/portable-dotnet-architecture/docker/infra/ansible/inventory/hosts.ini
-[app]
-192.168.0.22 ansible_user=deploy ansible_private_key_file=~/.ssh/id_ed25519_ansible
-
-# Example with SSH key:
-# 1.2.3.4 ansible_user=root ansible_private_key_file=~/.ssh/id_ed25519_ansible
-
-EOF
-
-
-cd ~/src/portable-dotnet-architecture/docker/infra/ansible && \
-ansible-playbook playbooks/bootstrap.yml
-
-# If you encrypted inventory/group_vars/all/vault.yml with ansible-vault, use:
-# ansible-playbook playbooks/bootstrap.yml --ask-vault-pass
-
-# The bootstrap playbook also performs the first deploy automatically using image_default.
-# Run deploy.sh only for later image updates, for example:
-# sudo -u deploy /opt/apps/api.waa.ro/scripts/deploy.sh ghcr.io/florin-rotaru-md/waa-server:latest
