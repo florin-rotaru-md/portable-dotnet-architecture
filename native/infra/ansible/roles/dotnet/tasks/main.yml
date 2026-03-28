@@ -9,8 +9,8 @@
   apt_repository:
     repo: >-
       deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft.asc]
-      https://packages.microsoft.com/repos/microsoft-ubuntu-{{ ansible_distribution_release }}-prod
-      {{ ansible_distribution_release }} main
+      https://packages.microsoft.com/repos/microsoft-ubuntu-{{ ansible_facts['distribution_release'] }}-prod
+      {{ ansible_facts['distribution_release'] }} main
     state:    present
     filename: microsoft
   ignore_errors: true   # fall back to packages.microsoft.com/ubuntu if distro-specific repo missing
@@ -23,7 +23,7 @@
       jammy main
     state:    present
     filename: microsoft-ubuntu
-  when: ansible_distribution_release not in ['jammy', 'noble']
+  when: ansible_facts['distribution_release'] not in ['jammy', 'noble']
 
 - name: Install .NET SDK
   apt:

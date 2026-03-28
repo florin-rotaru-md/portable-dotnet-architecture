@@ -58,7 +58,7 @@ apps_root:    /opt/apps
 dotnet_version: "10.0"
 
 # ── Postgres ───────────────────────────────────────────────────────────────────
-postgres_version: "17"
+postgres_version: "18"
 postgres_user:    postgres
 backup_retention_days: 7
 
@@ -91,9 +91,9 @@ applications:
     # Secrets (passwords, API keys) should reference vault.yml variables.
     appsettings_override:
       ConnectionStrings:
-        App:            "Host={{ postgres_host }};Port=5432;Database=waa_ro_app;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
-        Users:          "Host={{ postgres_host }};Port=5432;Database=waa_ro_users;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
-        DataProtection: "Host={{ postgres_host }};Port=5432;Database=waa_ro_dp;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
+        App:            "Host=127.0.0.1;Port=5432;Database=waa_ro_app;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
+        Users:          "Host=127.0.0.1;Port=5432;Database=waa_ro_users;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
+        DataProtection: "Host=127.0.0.1;Port=5432;Database=waa_ro_dp;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
       # FileStorage:
       #   BaseDirectory: "/data/files"
       # UiClient:
