@@ -24,7 +24,7 @@ PORT_GREEN="{{ app_port_green }}"
 
 REPO_URL=""
 REPO_BRANCH=""
-REPO_TOKEN=""
+REPO_TOKEN="${APP_REPO_TOKEN:-}"
 PROJECT_PATH=""
 
 # ── Argument parsing ─────────────────────────────────────────────────────────
@@ -85,20 +85,34 @@ echo "Project:      $PROJECT_PATH"
 echo "──────────────────────────────────────"
 
 # ── Clone / pull repo ─────────────────────────────────────────────────────────
+AUTH_URL="$REPO_URL"
+GIT_AUTH_ARGS=()
+
 if [ -n "$REPO_TOKEN" ]; then
-  AUTH_URL="${REPO_URL/https:\/\//https://${REPO_TOKEN}@}"
-else
-  AUTH_URL="$REPO_URL"
+  if [[ "$REPO_URL" == https://github.com/* ]]; then
+    GH_BASIC_AUTH=$(printf 'x-access-token:%s' "$REPO_TOKEN" | base64 | tr -d '\n')
+    GIT_AUTH_ARGS=(-c "http.https://github.com/.extraheader=AUTHORIZATION: basic ${GH_BASIC_AUTH}")
+  else
+    AUTH_URL="${REPO_URL/https:\/\//https://${REPO_TOKEN}@}"
+  fi
 fi
 
 if [ -d "$BUILD_DIR/.git" ]; then
   echo "Pulling latest from $REPO_BRANCH..."
-  git -C "$BUILD_DIR" remote set-url origin "$AUTH_URL"
-  git -C "$BUILD_DIR" fetch --depth=1 origin "$REPO_BRANCH"
+  git -C "$BUILD_DIR" remote set-url origin "$REPO_URL"
+  git "${GIT_AUTH_ARGS[@]}" -C "$BUILD_DIR" fetch --depth=1 origin "$REPO_BRANCH"
   git -C "$BUILD_DIR" reset --hard "origin/$REPO_BRANCH"
 else
   echo "Cloning $REPO_URL (branch $REPO_BRANCH)..."
-  git clone --branch "$REPO_BRANCH" --depth 1 "$AUTH_URL" "$BUILD_DIR"
+  git "${GIT_AUTH_ARGS[@]}" clone --branch "$REPO_BRANCH" --depth 1 "$AUTH_URL" "$BUILD_DIR"
+fi
+
+if [ ! -f "$BUILD_DIR/$PROJECT_PATH" ]; then
+  echo "Error: project path '$PROJECT_PATH' was not found in repository '$REPO_URL' (branch '$REPO_BRANCH')." >&2
+  echo "Repository root: $BUILD_DIR" >&2
+  echo "Top-level entries:" >&2
+  find "$BUILD_DIR" -mindepth 1 -maxdepth 2 -type d | sed "s|$BUILD_DIR/||" | head -n 30 >&2 || true
+  exit 1
 fi
 
 # ── Build ─────────────────────────────────────────────────────────────────────

@@ -40,7 +40,7 @@ postgres_password: "postgres"
 
 # Optional for private repos used in first auto-deploy.
 # If your repos are public, you can remove repo_token from applications and this var.
-app_repo_token: "ghp_..."
+# app_repo_token: "ghp_real_token_here"
 
 # Required only when use_cloudflared: true
 # cloudflare_token: "eyJhIjoiABCD..."
@@ -82,7 +82,7 @@ applications:
     repo_url:      "https://github.com/florin-rotaru-md/Statics.git"
     repo_branch:   "master"
     project_path:  "Apps/Waa/Waa.Server/Waa.Server.csproj"
-    repo_token:    "{{ app_repo_token }}"
+    # repo_token:    "{{ app_repo_token }}"   # only for private repo
     # ── appsettings.Production.json override ────────────────────────────────
     # This dict is rendered as appsettings.Production.json and mounted
     # read-only into the container.  .NET merges it on top of the
@@ -111,7 +111,7 @@ applications:
 #     repo_url:      "https://github.com/florin-rotaru-md/waa-server.git"
 #     repo_branch:   "master"
 #     project_path:  "src/Waa.Admin/Waa.Admin.csproj"
-#     repo_token:    "{{ app_repo_token }}"
+#     repo_token:    "{{ app_repo_token }}"   # only for private repo
 #     appsettings_override:
 #       ConnectionStrings:
 #         Main: "Host=127.0.0.1;Port=5432;Database=waa_ro_admin;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"

@@ -32,6 +32,11 @@
           - (item.port_blue | int) > 0
           - (item.port_green | int) > 0
           - (item.port_blue | int) != (item.port_green | int)
+          - item.repo_token is not defined or (item.repo_token | string | trim | length == 0) or (item.repo_token | string | trim != 'ghp_...')
+        fail_msg: >-
+          Invalid application configuration for {{ item.name }}. Verify required fields,
+          ports, and repository credentials. If repository is public, remove repo_token.
+          If repository is private, set a real token in vault.yml (not placeholder ghp_...).
       loop: "{{ native_apps }}"
       loop_control:
         label: "{{ item.name }}"
@@ -97,12 +102,11 @@
           - "{{ item.item.repo_url | default('') }}"
           - --branch
           - "{{ item.item.repo_branch | default('master') }}"
-          - --token
-          - "{{ item.item.repo_token }}"
           - --project-path
           - "{{ item.item.project_path | default('') }}"
+      environment:
+        APP_REPO_TOKEN: "{{ item.item.repo_token }}"
       become_user: "{{ app_user }}"
-      no_log: true
       loop: "{{ initial_deploy_status.results }}"
       loop_control:
         label: "{{ item.item.name }}"
