@@ -84,7 +84,7 @@ applications:
     # Optional per-app override:
     # health_max_attempts: 16
     # health_interval_seconds: 4
-    drain_seconds: 30
+    drain_seconds: 32
     repo_url:      "https://github.com/florin-rotaru-md/statics.git"
     repo_branch:   "master"
     project_path:  "Apps/Waa/Waa.Server/Waa.Server.csproj"
