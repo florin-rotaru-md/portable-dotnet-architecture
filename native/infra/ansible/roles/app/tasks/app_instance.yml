@@ -26,13 +26,13 @@
     force: false
   vars:
     app_name: "{{ current_app.name }}"
-    postgres_db: "{{ current_app.postgres_db | default(postgres_db) }}"
+    postgres_db: "{{ current_app.postgres_db }}"
     app_env: "{{ current_app.env | default({}) }}"
 
 - name: Render blue env file
   copy:
     dest:    "{{ apps_root }}/{{ current_app.name }}/env/blue.env"
-    content: "SLOT_NAME=blue\nASPNETCORE_URLS=http://127.0.0.1:{{ current_app.port_blue | default(app_port_blue) }}\n"
+    content: "SLOT_NAME=blue\nASPNETCORE_URLS=http://127.0.0.1:{{ current_app.port_blue }}\n"
     owner:   "{{ app_user }}"
     group:   "{{ app_user }}"
     mode:    '0600'
@@ -41,7 +41,7 @@
 - name: Render green env file
   copy:
     dest:    "{{ apps_root }}/{{ current_app.name }}/env/green.env"
-    content: "SLOT_NAME=green\nASPNETCORE_URLS=http://127.0.0.1:{{ current_app.port_green | default(app_port_green) }}\n"
+    content: "SLOT_NAME=green\nASPNETCORE_URLS=http://127.0.0.1:{{ current_app.port_green }}\n"
     owner:   "{{ app_user }}"
     group:   "{{ app_user }}"
     mode:    '0600'
@@ -56,8 +56,8 @@
     mode:    '0644'
     force:   false
   loop:
-    - { slot: 'blue',  port: "{{ current_app.port_blue | default(app_port_blue) }}" }
-    - { slot: 'green', port: "{{ current_app.port_green | default(app_port_green) }}" }
+    - { slot: 'blue',  port: "{{ current_app.port_blue }}" }
+    - { slot: 'green', port: "{{ current_app.port_green }}" }
 
 - name: Initialize active-slot file
   copy:
@@ -83,10 +83,10 @@
     - rollback.sh.j2
   vars:
     app_name: "{{ current_app.name }}"
-    app_assembly: "{{ current_app.assembly | default(app_assembly) }}"
-    app_port_blue: "{{ current_app.port_blue | default(app_port_blue) }}"
-    app_port_green: "{{ current_app.port_green | default(app_port_green) }}"
-    drain_seconds: "{{ current_app.drain_seconds | default(drain_seconds) }}"
+    app_assembly: "{{ current_app.assembly }}"
+    app_port_blue: "{{ current_app.port_blue }}"
+    app_port_green: "{{ current_app.port_green }}"
+    drain_seconds: "{{ current_app.drain_seconds }}"
 
 - name: Install systemd service for blue slot
   template:
@@ -95,10 +95,10 @@
     mode: '0644'
   vars:
     app_name: "{{ current_app.name }}"
-    app_assembly: "{{ current_app.assembly | default(app_assembly) }}"
-    drain_seconds: "{{ current_app.drain_seconds | default(drain_seconds) }}"
+    app_assembly: "{{ current_app.assembly }}"
+    drain_seconds: "{{ current_app.drain_seconds }}"
     slot:      blue
-    slot_port: "{{ current_app.port_blue | default(app_port_blue) }}"
+    slot_port: "{{ current_app.port_blue }}"
   notify: reload systemd
 
 - name: Install systemd service for green slot
@@ -108,10 +108,10 @@
     mode: '0644'
   vars:
     app_name: "{{ current_app.name }}"
-    app_assembly: "{{ current_app.assembly | default(app_assembly) }}"
-    drain_seconds: "{{ current_app.drain_seconds | default(drain_seconds) }}"
+    app_assembly: "{{ current_app.assembly }}"
+    drain_seconds: "{{ current_app.drain_seconds }}"
     slot:      green
-    slot_port: "{{ current_app.port_green | default(app_port_green) }}"
+    slot_port: "{{ current_app.port_green }}"
   notify: reload systemd
 
 - name: Enable (but do not start) slot services

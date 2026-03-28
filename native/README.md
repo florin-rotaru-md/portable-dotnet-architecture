@@ -1,4 +1,4 @@
-# Setup 1 — Native .NET on a VPS (single or multi-app)
+# Setup 1 — Native .NET multi-app on a VPS
 
 Single Ubuntu VPS. No Docker. Applications are compiled and run directly as systemd services.
 Blue/green deployment via source build (`dotnet publish`) and Nginx upstream swap.
@@ -83,15 +83,16 @@ Key variables in `inventory/group_vars/all/main.yml`:
 
 | Variable          | Description                                 |
 |-------------------|---------------------------------------------|
-| `applications`    | List of native apps (recommended multi-app mode) |
-| `app_name`        | Short identifier, becomes systemd unit name |
-| `app_assembly`    | .NET assembly name (DLL without extension)  |
-| `app_domain`      | Nginx server_name                           |
-| `app_port_blue`   | Port for blue slot (default 5000)           |
-| `app_port_green`  | Port for green slot (default 5001)          |
+| `applications`    | List of native apps (required)              |
+| `name`            | App identifier (systemd/nginx/runtime paths) |
+| `assembly`        | .NET assembly name (DLL without extension)  |
+| `domain`          | Nginx `server_name`                         |
+| `port_blue`       | Port for blue slot                          |
+| `port_green`      | Port for green slot                         |
 | `drain_seconds`   | Nginx drain before stopping old slot        |
-| `app_repo_url`    | Git repo URL used for the initial deploy    |
-| `app_project_path`| Path to the `.csproj` used for first deploy |
+| `repo_url`        | Git repo URL used for initial deploy        |
+| `project_path`    | Path to the `.csproj` used for first deploy |
+| `postgres_db`     | Dedicated database name for that app        |
 | `use_cloudflared` | `true` to install Cloudflare Tunnel         |
 
 `applications` example:
@@ -119,9 +120,6 @@ applications:
     postgres_db: anotherapp_db
 ```
 
-When `applications` is empty, legacy single-app variables (`app_name`, `app_assembly`, etc.) are used.
-
-
 **3. First bootstrap** — the `deploy` user doesn't exist yet, so connect as the initial root/admin user:
 
 ```bash
@@ -145,7 +143,7 @@ ansible-playbook playbooks/bootstrap.yml
 # With vault: ansible-playbook playbooks/bootstrap.yml --ask-vault-pass
 ```
 
-Bootstrap also performs the initial deploy automatically if `app_repo_url` and `app_project_path` are configured. For private repositories, set `app_repo_token` in `vault.yml` as well.
+Bootstrap also performs the initial deploy automatically for each entry in `applications` where `repo_url` and `project_path` are configured. For private repositories, set `repo_token` (for that app) and store the secret in `vault.yml`.
 
 ## Deploy
 

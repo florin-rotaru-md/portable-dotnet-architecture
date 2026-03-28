@@ -3,21 +3,8 @@
 ansible_user: deploy
 # ansible_ssh_public_key comes from vault.yml — paste your controller's public key there
 
-# ── App ────────────────────────────────────────────────────────────────────────
+# ── Apps (required) ───────────────────────────────────────────────────────────
 app_user:     deploy
-app_name:     myapp
-app_assembly: MyApp          # matches the Assembly name in your .csproj (no .dll)
-app_domain:   demo.example.com
-
-app_port_blue:  5000
-app_port_green: 5001
-drain_seconds:  30
-app_repo_url:   ""
-app_repo_branch: "master"
-app_project_path: ""
-
-# Multi-app mode (recommended): add one entry per native app.
-# If this list is empty, the legacy single-app variables above are used.
 applications:
   - name:         myapp
     assembly:     MyApp
@@ -38,7 +25,6 @@ dotnet_version: "10.0"
 
 # ── Postgres ───────────────────────────────────────────────────────────────────
 postgres_version: "17"
-postgres_db:      myapp_db
 postgres_user:    myapp
 # postgres_password comes from vault.yml
 

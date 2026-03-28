@@ -21,7 +21,7 @@ pipx ensurepath && \
 pipx install --include-deps ansible
 
 test -f ~/.ssh/id_ed25519_ansible || \
-	ssh-keygen -t ed25519 -C "ansible-control" -f ~/.ssh/id_ed25519_ansible -N ""
+  ssh-keygen -t ed25519 -C "ansible-control" -f ~/.ssh/id_ed25519_ansible -N ""
 
 chmod 700 /home/deploy/.ssh && \
 chmod 600 /home/deploy/.ssh/authorized_keys && \
@@ -38,7 +38,8 @@ ansible_ssh_public_key:  "{{ lookup('file', '~/.ssh/id_ed25519_ansible.pub') }}"
 
 postgres_password: "postgres"
 
-# Optional for private repos used in first auto-deploy:
+# Optional for private repos used in first auto-deploy.
+# If your repos are public, you can remove repo_token from applications and this var.
 app_repo_token: "ghp_..."
 
 # Required only when use_cloudflared: true
@@ -58,56 +59,44 @@ dotnet_version: "10.0"
 
 # ── Postgres ───────────────────────────────────────────────────────────────────
 postgres_version: "17"
-postgres_user:    myapp
+postgres_user:    postgres
 
 # ── Cloudflare (optional) ──────────────────────────────────────────────────────
 use_cloudflared: false
 
 # ── Firewall ───────────────────────────────────────────────────────────────────
 ufw_allowed_tcp_ports:
-	- "22"
-	- "80"
-	- "443"
-
-# ── Legacy single-app fallback (kept for compatibility) ──────────────────────
-app_name:         myapp
-app_assembly:     MyApp
-app_domain:       api.example.com
-app_port_blue:    5000
-app_port_green:   5001
-drain_seconds:    30
-app_repo_url:     ""
-app_repo_branch:  "master"
-app_project_path: ""
-postgres_db:      myapp_db
+  - "22"
+  - "80"
+  - "443"
 
 # ── Native multi-app mode (recommended) ───────────────────────────────────────
 applications:
-	- name:         api.example.com
-		assembly:     MyApp.Api
-		domain:       api.example.com
-		port_blue:    5000
-		port_green:   5001
-		drain_seconds: 30
-		repo_url:     "https://github.com/florin-rotaru-md/myapp-api.git"
-		repo_branch:  "master"
-		project_path: "src/MyApp.Api/MyApp.Api.csproj"
-		postgres_db:  myapp_api_db
-		repo_token:   "{{ app_repo_token }}"
-		env:
-			ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
+  - name:          api.waa.ro
+    assembly:      Waa.Api
+    domain:        api.waa.ro
+    port_blue:     5000
+    port_green:    5001
+    drain_seconds: 30
+    repo_url:      "https://github.com/florin-rotaru-md/waa-server.git"
+    repo_branch:   "master"
+    project_path:  "src/Waa.Api/Waa.Api.csproj"
+    postgres_db:   waa_ro_app
+    repo_token:    "{{ app_repo_token }}"
+    env:
+      ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
 
-	- name:         admin.example.com
-		assembly:     MyApp.Admin
-		domain:       admin.example.com
-		port_blue:    5010
-		port_green:   5011
-		drain_seconds: 30
-		repo_url:     "https://github.com/florin-rotaru-md/myapp-admin.git"
-		repo_branch:  "master"
-		project_path: "src/MyApp.Admin/MyApp.Admin.csproj"
-		postgres_db:  myapp_admin_db
-		repo_token:   "{{ app_repo_token }}"
+#   - name:          admin.waa.ro
+#     assembly:      Waa.Admin
+#     domain:        admin.waa.ro
+#     port_blue:     5010
+#     port_green:    5011
+#     drain_seconds: 30
+#     repo_url:      "https://github.com/florin-rotaru-md/waa-server.git"
+#     repo_branch:   "master"
+#     project_path:  "src/Waa.Admin/Waa.Admin.csproj"
+#     postgres_db:   waa_ro_admin
+#     repo_token:    "{{ app_repo_token }}"
 EOF
 
 
@@ -133,9 +122,9 @@ ansible-playbook playbooks/bootstrap.yml
 
 # Bootstrap performs first deploy automatically for every app that has repo_url + project_path.
 # Manual deploy examples:
-# sudo -u deploy /opt/apps/api.example.com/scripts/deploy.sh
-# sudo -u deploy /opt/apps/admin.example.com/scripts/deploy.sh
+# sudo -u deploy /opt/apps/api.waa.ro/scripts/deploy.sh
+# sudo -u deploy /opt/apps/admin.waa.ro/scripts/deploy.sh
 
 # Manual rollback examples:
-# sudo -u deploy /opt/apps/api.example.com/scripts/rollback.sh
-# sudo -u deploy /opt/apps/admin.example.com/scripts/rollback.sh
+# sudo -u deploy /opt/apps/api.waa.ro/scripts/rollback.sh
+# sudo -u deploy /opt/apps/admin.waa.ro/scripts/rollback.sh

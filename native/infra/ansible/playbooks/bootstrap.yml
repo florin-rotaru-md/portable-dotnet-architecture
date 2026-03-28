@@ -1,30 +1,20 @@
 ---
-- name: Bootstrap single-app VPS (native .NET)
+- name: Bootstrap native multi-app VPS (.NET)
   hosts: app
   become: true
   pre_tasks:
-    - name: Build application definitions (multi-app or legacy single-app)
+    - name: Ensure applications are defined
+      assert:
+        that:
+          - applications is defined
+          - applications | length > 0
+        fail_msg: >-
+          Define at least one application in inventory/group_vars/all/main.yml under
+          the applications list.
+
+    - name: Build application definitions
       set_fact:
-        native_apps: >-
-          {{
-            applications
-            if (applications is defined and applications | length > 0)
-            else [
-              {
-                'name': app_name,
-                'assembly': app_assembly,
-                'domain': app_domain,
-                'port_blue': app_port_blue,
-                'port_green': app_port_green,
-                'drain_seconds': drain_seconds,
-                'repo_url': app_repo_url,
-                'repo_branch': app_repo_branch,
-                'repo_token': app_repo_token | default(''),
-                'project_path': app_project_path,
-                'postgres_db': postgres_db
-              }
-            ]
-          }}
+        native_apps: "{{ applications }}"
 
     - name: Validate application definitions
       assert:
@@ -37,6 +27,10 @@
           - item.domain | string | trim | length > 0
           - item.port_blue is defined
           - item.port_green is defined
+          - item.drain_seconds is defined
+          - (item.drain_seconds | int) > 0
+          - item.postgres_db is defined
+          - item.postgres_db | string | trim | length > 0
           - (item.port_blue | int) > 0
           - (item.port_green | int) > 0
           - (item.port_blue | int) != (item.port_green | int)
@@ -61,7 +55,7 @@
 
     - name: Build list of application databases
       set_fact:
-        postgres_databases: "{{ (postgres_databases | default([])) + [item.postgres_db | default(postgres_db)] }}"
+        postgres_databases: "{{ (postgres_databases | default([])) + [item.postgres_db] }}"
       loop: "{{ native_apps }}"
       loop_control:
         label: "{{ item.name }}"

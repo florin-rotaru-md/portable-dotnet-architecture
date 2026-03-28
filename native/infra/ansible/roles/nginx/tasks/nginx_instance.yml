@@ -6,7 +6,7 @@
     mode: '0644'
   vars:
     app_name: "{{ current_app.name }}"
-    app_port_blue: "{{ current_app.port_blue | default(app_port_blue) }}"
+    app_port_blue: "{{ current_app.port_blue }}"
 
 - name: Render upstream green config
   template:
@@ -15,7 +15,7 @@
     mode: '0644'
   vars:
     app_name: "{{ current_app.name }}"
-    app_port_green: "{{ current_app.port_green | default(app_port_green) }}"
+    app_port_green: "{{ current_app.port_green }}"
 
 - name: Render active upstream config (initially blue)
   template:
@@ -25,7 +25,7 @@
     force: false
   vars:
     app_name: "{{ current_app.name }}"
-    app_port_blue: "{{ current_app.port_blue | default(app_port_blue) }}"
+    app_port_blue: "{{ current_app.port_blue }}"
 
 - name: Render site config
   template:
@@ -34,5 +34,5 @@
     mode: '0644'
   vars:
     app_name: "{{ current_app.name }}"
-    app_domain: "{{ current_app.domain | default(app_domain) }}"
+    app_domain: "{{ current_app.domain }}"
   notify: reload nginx

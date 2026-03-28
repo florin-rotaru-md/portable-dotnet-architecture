@@ -13,7 +13,7 @@ when you need to.
 | [`k3s/`](k3s/)       | Horizontal scaling, GitOps, full IaC on cloud VPS | Terraform (Hetzner), Ansible, k3s, FluxCD, Helm |
 | [`k3s-proxmox/`](k3s-proxmox/) | Same as `k3s/` but on self-hosted Proxmox | Terraform (bpg/proxmox), Ansible, k3s, FluxCD, Helm |
 
-`native/` and `docker/` now perform the first application deploy during bootstrap when the required application source or image settings are configured. `native/` supports both legacy single-app variables and multi-app `applications` definitions. `k3s/` and `k3s-proxmox/` continue to deploy applications through FluxCD from Git.
+`native/` and `docker/` now perform the first application deploy during bootstrap when the required application source or image settings are configured. `native/` uses a multi-app `applications` definition. `k3s/` and `k3s-proxmox/` continue to deploy applications through FluxCD from Git.
 
 ## Minimal bootstrap (all setups)
 
@@ -49,7 +49,7 @@ cd ~/src/portable-dotnet-architecture/k3s      # setup 3
 - **Cloudflare Tunnel**: optional in all setups; removes need to expose ports 80/443 publicly
 
 For setup-specific bootstrap inputs:
-- `native/` supports multi-app via `applications` (recommended); each app can define `repo_url` and `project_path` for automatic first deploy. Legacy single-app variables (`app_repo_url`, `app_project_path`) are still supported.
+- `native/` uses multi-app via `applications`; each app can define `repo_url` and `project_path` for automatic first deploy.
 - `docker/` needs `image_default` for each application, plus registry credentials only for private images.
 
 ## Application contract
