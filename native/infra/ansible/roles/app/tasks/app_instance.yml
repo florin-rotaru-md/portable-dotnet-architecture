@@ -93,7 +93,7 @@
     - rollback.sh.j2
   vars:
     app_name: "{{ current_app.name }}"
-    app_assembly: "{{ current_app.assembly }}"
+    app_assembly: "{{ current_app.runtime_assembly | default(((current_app.project_path | default('') | basename | regex_replace('\\.csproj$', '')) if (current_app.project_path | default('') | length > 0) else current_app.assembly)) }}"
     app_port_blue: "{{ current_app.port_blue }}"
     app_port_green: "{{ current_app.port_green }}"
     drain_seconds: "{{ current_app.drain_seconds }}"
@@ -108,7 +108,7 @@
     mode: '0644'
   vars:
     app_name: "{{ current_app.name }}"
-    app_assembly: "{{ current_app.assembly }}"
+    app_assembly: "{{ current_app.runtime_assembly | default(((current_app.project_path | default('') | basename | regex_replace('\\.csproj$', '')) if (current_app.project_path | default('') | length > 0) else current_app.assembly)) }}"
     drain_seconds: "{{ current_app.drain_seconds }}"
     slot:      blue
     slot_port: "{{ current_app.port_blue }}"
@@ -121,7 +121,7 @@
     mode: '0644'
   vars:
     app_name: "{{ current_app.name }}"
-    app_assembly: "{{ current_app.assembly }}"
+    app_assembly: "{{ current_app.runtime_assembly | default(((current_app.project_path | default('') | basename | regex_replace('\\.csproj$', '')) if (current_app.project_path | default('') | length > 0) else current_app.assembly)) }}"
     drain_seconds: "{{ current_app.drain_seconds }}"
     slot:      green
     slot_port: "{{ current_app.port_green }}"
