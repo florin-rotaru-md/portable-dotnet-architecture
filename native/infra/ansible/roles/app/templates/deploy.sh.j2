@@ -141,10 +141,10 @@ dotnet publish "$BUILD_DIR/$PROJECT_PATH" \
   -o "$SLOT_DIR/"
 
 # Inject per-app production overrides after publish.
-if [ -f "$APP_ROOT/config/appsettings.Production.json" ]; then
-  cp "$APP_ROOT/config/appsettings.Production.json" "$SLOT_DIR/appsettings.Production.json"
-  chown {{ app_user }}:{{ app_user }} "$SLOT_DIR/appsettings.Production.json"
-  chmod 600 "$SLOT_DIR/appsettings.Production.json"
+if [ -f "$APP_ROOT/config/appsettings.override.json" ]; then
+  cp "$APP_ROOT/config/appsettings.override.json" "$SLOT_DIR/appsettings.override.json"
+  chown {{ app_user }}:{{ app_user }} "$SLOT_DIR/appsettings.override.json"
+  chmod 600 "$SLOT_DIR/appsettings.override.json"
 fi
 
 # ── Start idle slot ───────────────────────────────────────────────────────────

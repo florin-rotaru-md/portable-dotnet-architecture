@@ -29,9 +29,9 @@
     app_name: "{{ current_app.name }}"
     app_env: "{{ current_app.env | default({}) }}"
 
-- name: Write appsettings.Production.json for {{ current_app.name }}
+- name: Write appsettings.override.json for {{ current_app.name }}
   copy:
-    dest:    "{{ apps_root }}/{{ current_app.name }}/config/appsettings.Production.json"
+    dest:    "{{ apps_root }}/{{ current_app.name }}/config/appsettings.override.json"
     content: "{{ current_app.appsettings_override | default({}) | to_nice_json }}\n"
     owner:   "{{ app_user }}"
     group:   "{{ app_user }}"

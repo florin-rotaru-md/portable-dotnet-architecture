@@ -92,7 +92,7 @@ Key variables in `inventory/group_vars/all/main.yml`:
 | `drain_seconds`   | Nginx drain before stopping old slot        |
 | `repo_url`        | Git repo URL used for initial deploy        |
 | `project_path`    | Path to the `.csproj` used for first deploy |
-| `appsettings_override` | Per-app `appsettings.Production.json` merge values |
+| `appsettings_override` | Per-app `appsettings.override.json` merge values |
 | `use_cloudflared` | `true` to install Cloudflare Tunnel         |
 
 `applications` example:
@@ -209,7 +209,7 @@ systemctl stop <app>-<active>.service
     blue.env    ← SLOT_NAME + ASPNETCORE_URLS for blue
     green.env   ← SLOT_NAME + ASPNETCORE_URLS for green
   config/
-    appsettings.Production.json  ← rendered from appsettings_override and copied on deploy
+    appsettings.override.json  ← rendered from appsettings_override and copied on deploy
   nginx/
     upstream-blue.conf
     upstream-green.conf

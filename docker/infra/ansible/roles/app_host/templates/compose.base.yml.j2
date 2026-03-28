@@ -7,7 +7,7 @@ services:
       - {{ apps_root }}/{{ app.name }}/env/common.env
       - {{ apps_root }}/{{ app.name }}/env/blue.env
     volumes:
-      - {{ apps_root }}/{{ app.name }}/config/appsettings.Production.json:/app/appsettings.Production.json:ro
+      - {{ apps_root }}/{{ app.name }}/config/appsettings.override.json:/app/appsettings.override.json:ro
     stop_signal: SIGTERM
     stop_grace_period: 60s
     healthcheck:
@@ -27,7 +27,7 @@ services:
       - {{ apps_root }}/{{ app.name }}/env/common.env
       - {{ apps_root }}/{{ app.name }}/env/green.env
     volumes:
-      - {{ apps_root }}/{{ app.name }}/config/appsettings.Production.json:/app/appsettings.Production.json:ro
+      - {{ apps_root }}/{{ app.name }}/config/appsettings.override.json:/app/appsettings.override.json:ro
     stop_signal: SIGTERM
     stop_grace_period: 60s
     healthcheck:

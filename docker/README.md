@@ -124,7 +124,7 @@ applications:
     internal_port: 8080                 # container's ASPNETCORE_URLS port
     image_default: ghcr.io/org/myapp:latest
     drain_seconds: 32
-    appsettings_override:               # → appsettings.Production.json (see below)
+    appsettings_override:               # → appsettings.override.json (see below)
       ConnectionStrings:
         App: "Host=postgres;Port=5432;Database=myapp_db;Username=appuser;Password={{ postgres_password }};Pooling=true"
 ```
@@ -134,8 +134,8 @@ applications:
 
 ### Application configuration (`appsettings_override`)
 
-The `appsettings_override` dictionary is rendered as `appsettings.Production.json` and
-mounted read-only into the container at `/app/appsettings.Production.json`.
+The `appsettings_override` dictionary is rendered as `appsettings.override.json` and
+mounted read-only into the container at `/app/appsettings.override.json`.
 
 .NET automatically merges it on top of the `appsettings.json` baked into the Docker
 image when `DOTNET_ENVIRONMENT=Production` (set via `common.env`).
@@ -231,7 +231,7 @@ docker compose stop <app>-<active>
 /opt/apps/
   <app>/
     config/
-      appsettings.Production.json  ← mounted read-only into container
+      appsettings.override.json  ← mounted read-only into container
     docker/
       compose.base.yml
       compose.blue.yml

@@ -48,8 +48,8 @@ applications:
     # registry_password: "{{ ghcr_token }}"
     drain_seconds: 32
 
-    # ── appsettings.Production.json override ────────────────────────────────
-    # This dict is rendered as appsettings.Production.json and mounted
+    # ── appsettings.override.json override ────────────────────────────────
+    # This dict is rendered as appsettings.override.json and mounted
     # read-only into the container.  .NET merges it on top of the
     # appsettings.json baked into the image (DOTNET_ENVIRONMENT=Production).
     # Put connection strings, secrets, and env-specific URLs here.

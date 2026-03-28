@@ -86,9 +86,9 @@
     mode:  '0600'
     force: false
 
-- name: Write appsettings.Production.json for {{ app.name }}
+- name: Write appsettings.override.json for {{ app.name }}
   copy:
-    dest:    "{{ apps_root }}/{{ app.name }}/config/appsettings.Production.json"
+    dest:    "{{ apps_root }}/{{ app.name }}/config/appsettings.override.json"
     content: "{{ app.appsettings_override | default({}) | to_nice_json }}\n"
     owner:   "{{ app_user }}"
     group:   "{{ app_user }}"
