@@ -76,19 +76,28 @@ flux reconcile kustomization apps --with-source
    ansible-playbook playbooks/bootstrap.yml --limit postgres
    ```
 
-3. **Restore the latest dump from S3**:
+3. **Restore each database from S3**:
+
+   Backups are named `<dbname>_YYYYMMDD-HHMMSS.dump` and cover every non-system database.
+
    ```bash
-   # On the new Postgres VPS:
-   aws s3 cp s3://<bucket>/postgres/<db>_latest.dump /tmp/restore.dump \
+   # On the new Postgres VPS — sync backups locally first:
+   AWS_ACCESS_KEY_ID=<key> AWS_SECRET_ACCESS_KEY=<secret> \
+     aws s3 sync s3://<bucket>/postgres/ /opt/postgres/backups/ \
      --endpoint-url <s3_endpoint>
 
-   pg_restore -U postgres -d myapp_db /tmp/restore.dump
+   # List available dumps:
+   ls /opt/postgres/backups/
+
+   # Restore each database (create it first, then restore):
+   sudo -u postgres createdb <dbname>
+   sudo -u postgres pg_restore -d <dbname> /opt/postgres/backups/<dbname>_<timestamp>.dump
    ```
 
 4. **Update the k3s Secret** with the new DB host IP:
    ```bash
    kubectl create secret generic myapp-db \
-     --from-literal=ConnectionStrings__Main="Host=<new-pg-ip>;Port=5432;Database=myapp_db;Username=appuser;Password=<pass>" \
+     --from-literal=ConnectionStrings__Main="Host=<new-pg-ip>;Port=5432;Database=<dbname>;Username=appuser;Password=<pass>" \
      -n myapp \
      --dry-run=client -o yaml | kubectl apply -f -
    ```

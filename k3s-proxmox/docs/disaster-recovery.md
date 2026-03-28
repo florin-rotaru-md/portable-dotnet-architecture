@@ -59,10 +59,14 @@ terraform apply
 # Bootstrap:
 ansible-playbook playbooks/bootstrap.yml --limit postgres
 
-# Restore from S3:
-aws s3 cp s3://<bucket>/postgres/<db>_latest.dump /tmp/restore.dump \
+# Restore from S3 (sync all dumps first):
+AWS_ACCESS_KEY_ID=<key> AWS_SECRET_ACCESS_KEY=<secret> \
+  aws s3 sync s3://<bucket>/postgres/ /opt/postgres/backups/ \
   --endpoint-url <s3_endpoint>
-sudo -u postgres pg_restore -d myapp_db /tmp/restore.dump
+
+# Restore each database:
+sudo -u postgres createdb <dbname>
+sudo -u postgres pg_restore -d <dbname> /opt/postgres/backups/<dbname>_<timestamp>.dump
 
 # Update k3s Secret:
 kubectl create secret generic myapp-db \

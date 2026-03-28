@@ -29,8 +29,6 @@
           - item.port_green is defined
           - item.drain_seconds is defined
           - (item.drain_seconds | int) > 0
-          - item.postgres_db is defined
-          - item.postgres_db | string | trim | length > 0
           - (item.port_blue | int) > 0
           - (item.port_green | int) > 0
           - (item.port_blue | int) != (item.port_green | int)
@@ -52,17 +50,6 @@
         fail_msg: >-
           Duplicate ports detected across applications. Ensure every app uses unique
           blue/green ports.
-
-    - name: Build list of application databases
-      set_fact:
-        postgres_databases: "{{ (postgres_databases | default([])) + [item.postgres_db] }}"
-      loop: "{{ native_apps }}"
-      loop_control:
-        label: "{{ item.name }}"
-
-    - name: Deduplicate application databases
-      set_fact:
-        postgres_databases: "{{ postgres_databases | unique }}"
 
   roles:
     - common

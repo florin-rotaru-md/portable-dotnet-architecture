@@ -60,6 +60,7 @@ dotnet_version: "10.0"
 # ── Postgres ───────────────────────────────────────────────────────────────────
 postgres_version: "17"
 postgres_user:    postgres
+backup_retention_days: 7
 
 # ── Cloudflare (optional) ──────────────────────────────────────────────────────
 use_cloudflared: false
@@ -78,11 +79,26 @@ applications:
     port_blue:     5000
     port_green:    5001
     drain_seconds: 30
-    repo_url:      "https://github.com/florin-rotaru-md/waa-server.git"
+    repo_url:      "https://github.com/florin-rotaru-md/Statics.git"
     repo_branch:   "master"
-    project_path:  "src/Waa.Api/Waa.Api.csproj"
-    postgres_db:   waa_ro_app
+    project_path:  "Apps/Waa/Waa.Server/Waa.Server.csproj"
     repo_token:    "{{ app_repo_token }}"
+    # ── appsettings.Production.json override ────────────────────────────────
+    # This dict is rendered as appsettings.Production.json and mounted
+    # read-only into the container.  .NET merges it on top of the
+    # appsettings.json baked into the image (DOTNET_ENVIRONMENT=Production).
+    # Put connection strings, secrets, and env-specific URLs here.
+    # Secrets (passwords, API keys) should reference vault.yml variables.
+    appsettings_override:
+      ConnectionStrings:
+        App:            "Host={{ postgres_host }};Port=5432;Database=waa_ro_app;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
+        Users:          "Host={{ postgres_host }};Port=5432;Database=waa_ro_users;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
+        DataProtection: "Host={{ postgres_host }};Port=5432;Database=waa_ro_dp;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
+      # FileStorage:
+      #   BaseDirectory: "/data/files"
+      # UiClient:
+      #   Urls:
+      #     SignInWithToken: "https://www.example.com/auth/sign-in"
     env:
       ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
 
@@ -95,8 +111,10 @@ applications:
 #     repo_url:      "https://github.com/florin-rotaru-md/waa-server.git"
 #     repo_branch:   "master"
 #     project_path:  "src/Waa.Admin/Waa.Admin.csproj"
-#     postgres_db:   waa_ro_admin
 #     repo_token:    "{{ app_repo_token }}"
+#     appsettings_override:
+#       ConnectionStrings:
+#         Main: "Host=127.0.0.1;Port=5432;Database=waa_ro_admin;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
 EOF
 
 

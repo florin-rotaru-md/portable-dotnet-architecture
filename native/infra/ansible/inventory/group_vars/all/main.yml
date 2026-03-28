@@ -15,8 +15,10 @@ applications:
     repo_url:     ""
     repo_branch:  "master"
     project_path: ""
-    postgres_db:  myapp_db
     # repo_token: "{{ app_repo_token }}"
+    # appsettings_override:
+    #   ConnectionStrings:
+    #     Main: "Host=127.0.0.1;Port=5432;Database=myapp_db;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
     # env:
     #   SomeSetting__Nested__Value: "example"
 
@@ -26,6 +28,7 @@ dotnet_version: "10.0"
 # ── Postgres ───────────────────────────────────────────────────────────────────
 postgres_version: "17"
 postgres_user:    myapp
+backup_retention_days: 7
 # postgres_password comes from vault.yml
 
 # ── Cloudflare (optional) ──────────────────────────────────────────────────────

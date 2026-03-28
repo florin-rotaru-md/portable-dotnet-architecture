@@ -8,7 +8,6 @@ flux_version: v2.3.0
 postgres_version:    "17"
 postgres_private_ip: "10.10.0.50"   # internal bridge IP of the Postgres VM
 postgres_user:       appuser
-postgres_db:         myapp_db
 # postgres_password comes from vault.yml
 
 # ── S3-compatible backup ───────────────────────────────────────────────────────

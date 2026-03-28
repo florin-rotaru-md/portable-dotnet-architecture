@@ -49,7 +49,7 @@ cd ~/src/portable-dotnet-architecture/k3s      # setup 3
 - **Cloudflare Tunnel**: optional in all setups; removes need to expose ports 80/443 publicly
 
 For setup-specific bootstrap inputs:
-- `native/` uses multi-app via `applications`; each app can define `repo_url` and `project_path` for automatic first deploy.
+- `native/` uses multi-app via `applications`; each app can define `repo_url` and `project_path` for automatic first deploy, plus `appsettings_override` for `appsettings.Production.json` merge values.
 - `docker/` needs `image_default` for each application, plus registry credentials only for private images.
 
 ## Application contract

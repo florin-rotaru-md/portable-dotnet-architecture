@@ -45,10 +45,6 @@
     enabled: true
     state:   started
 
-- name: Determine target PostgreSQL databases
-  set_fact:
-    postgres_target_databases: "{{ postgres_databases | default([postgres_db]) | unique }}"
-
 - name: Check if app DB user exists
   become_user: postgres
   command: psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='{{ postgres_user }}'"
@@ -63,37 +59,26 @@
   when: pg_user_check.stdout != '1'
   no_log: true
 
-- name: Check if app database exists
+- name: Enable postgis extension on template1 (inherited by new databases)
   become_user: postgres
-  command: psql -tAc "SELECT 1 FROM pg_database WHERE datname='{{ item }}'"
-  loop: "{{ postgres_target_databases }}"
-  loop_control:
-    label: "{{ item }}"
-  register: pg_db_check
+  command: psql -d template1 -c "CREATE EXTENSION IF NOT EXISTS postgis"
   changed_when: false
 
-- name: Create app database
-  become_user: postgres
-  command: >
-    psql -c "CREATE DATABASE {{ item.item }}
-             OWNER {{ postgres_user }}"
-  loop: "{{ pg_db_check.results }}"
-  loop_control:
-    label: "{{ item.item }}"
-  when: item.stdout != '1'
-
-- name: Enable postgis extension on app database
-  become_user: postgres
-  command: psql -d {{ item }} -c "CREATE EXTENSION IF NOT EXISTS postgis"
-  loop: "{{ postgres_target_databases }}"
-  loop_control:
-    label: "{{ item }}"
-  changed_when: false
-
-- name: Ensure backup directory exists
+- name: Ensure postgres backup directories exist
   file:
-    path:  /opt/postgres/backups
+    path:  "{{ item }}"
     state: directory
+    owner: postgres
+    group: postgres
+    mode:  '0750'
+  loop:
+    - /opt/postgres/backups
+    - /opt/postgres/scripts
+
+- name: Install backup script
+  template:
+    src:   pg-backup.sh.j2
+    dest:  /opt/postgres/scripts/pg-backup.sh
     owner: postgres
     group: postgres
     mode:  '0750'
@@ -104,8 +89,4 @@
     user:   postgres
     minute: "15"
     hour:   "2"
-    job:    >
-      for db in {{ postgres_target_databases | join(' ') }}; do
-      pg_dump -Fc "$db" > /opt/postgres/backups/${db}_$(date +\%Y\%m\%d_\%H\%M).dump;
-      done
-      && find /opt/postgres/backups -name '*.dump' -mtime +7 -delete
+    job:    "/opt/postgres/scripts/pg-backup.sh >> /opt/postgres/backups/cron.log 2>&1"

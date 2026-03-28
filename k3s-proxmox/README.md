@@ -159,6 +159,9 @@ kubectl create secret generic cloudflare-tunnel-token \
   -n cloudflared
 ```
 
+Databases are not created by Ansible. Applications should create/update their own databases via migrations.
+PostGIS is enabled on `template1`, and backups include all non-system databases.
+
 If the application image is private, create an image pull secret in the same namespace and reference it from `k3s/flux/apps/myapp/helmrelease.yaml`:
 
 ```bash

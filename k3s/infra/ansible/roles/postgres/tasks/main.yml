@@ -80,29 +80,30 @@
   when:   pg_user.stdout != '1'
   no_log: true
 
-- name: Check if database exists
+- name: Enable postgis extension on template1 (inherited by new databases)
   become_user: postgres
-  command: psql -tAc "SELECT 1 FROM pg_database WHERE datname='{{ postgres_db }}'"
-  register: pg_db
+  command: psql -d template1 -c "CREATE EXTENSION IF NOT EXISTS postgis"
   changed_when: false
 
-- name: Create database
-  become_user: postgres
-  command: psql -c "CREATE DATABASE {{ postgres_db }} OWNER {{ postgres_user }}"
-  when: pg_db.stdout != '1'
-
-- name: Enable postgis extension on app database
-  become_user: postgres
-  command: psql -d {{ postgres_db }} -c "CREATE EXTENSION IF NOT EXISTS postgis"
-  changed_when: false
-
-- name: Ensure backup directory exists
+- name: Ensure backup directories exist
   file:
-    path:  /opt/postgres/backups
+    path:  "{{ item }}"
     state: directory
     owner: postgres
     group: postgres
     mode:  '0750'
+  loop:
+    - /opt/postgres/backups
+    - /opt/postgres/scripts
+
+- name: Install S3 backup script
+  template:
+    src:   pg-backup.sh.j2
+    dest:  /opt/postgres/scripts/pg-backup.sh
+    owner: postgres
+    group: postgres
+    mode:  '0750'
+  no_log: true
 
 - name: Install S3 backup cron job
   cron:
@@ -110,13 +111,5 @@
     user:   postgres
     minute: "15"
     hour:   "2"
-    job: >
-      pg_dump -Fc {{ postgres_db }}
-      > /opt/postgres/backups/{{ postgres_db }}_$(date +\%Y\%m\%d_\%H\%M).dump
-      && AWS_ACCESS_KEY_ID="{{ s3_access_key }}"
-         AWS_SECRET_ACCESS_KEY="{{ s3_secret_key }}"
-         aws s3 sync /opt/postgres/backups
-         s3://{{ s3_bucket }}/postgres/
-         --endpoint-url {{ s3_endpoint }}
-      && find /opt/postgres/backups -name '*.dump' -mtime +{{ backup_retention_days }} -delete
+    job:    "/opt/postgres/scripts/pg-backup.sh >> /opt/postgres/backups/cron.log 2>&1"
   no_log: true

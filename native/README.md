@@ -92,7 +92,7 @@ Key variables in `inventory/group_vars/all/main.yml`:
 | `drain_seconds`   | Nginx drain before stopping old slot        |
 | `repo_url`        | Git repo URL used for initial deploy        |
 | `project_path`    | Path to the `.csproj` used for first deploy |
-| `postgres_db`     | Dedicated database name for that app        |
+| `appsettings_override` | Per-app `appsettings.Production.json` merge values |
 | `use_cloudflared` | `true` to install Cloudflare Tunnel         |
 
 `applications` example:
@@ -108,7 +108,9 @@ applications:
     repo_url: "https://github.com/your-org/myapp.git"
     repo_branch: "master"
     project_path: "src/MyApp/MyApp.csproj"
-    postgres_db: myapp_db
+    appsettings_override:
+      ConnectionStrings:
+        Main: "Host=127.0.0.1;Port=5432;Database=myapp_db;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
 
   - name: anotherapp
     assembly: AnotherApp
@@ -117,7 +119,9 @@ applications:
     port_green: 5011
     repo_url: "https://github.com/your-org/anotherapp.git"
     project_path: "src/AnotherApp/AnotherApp.csproj"
-    postgres_db: anotherapp_db
+    appsettings_override:
+      ConnectionStrings:
+        Main: "Host=127.0.0.1;Port=5432;Database=anotherapp_db;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
 ```
 
 **3. First bootstrap** — the `deploy` user doesn't exist yet, so connect as the initial root/admin user:
@@ -144,6 +148,9 @@ ansible-playbook playbooks/bootstrap.yml
 ```
 
 Bootstrap also performs the initial deploy automatically for each entry in `applications` where `repo_url` and `project_path` are configured. For private repositories, set `repo_token` (for that app) and store the secret in `vault.yml`.
+
+Database creation is not performed by Ansible. Applications are expected to create/update their own schemas through migrations at startup or deploy time.
+PostGIS is enabled on `template1`, so newly created databases inherit the extension.
 
 ## Deploy
 
@@ -198,9 +205,11 @@ systemctl stop <app>-<active>.service
     green/      ← dotnet publish output for green
   build/        ← git clone lives here
   env/
-    common.env  ← shared env (DB connection string, etc.)
+    common.env  ← shared runtime env (DOTNET_ENVIRONMENT, APP_NAME, custom vars)
     blue.env    ← SLOT_NAME + ASPNETCORE_URLS for blue
     green.env   ← SLOT_NAME + ASPNETCORE_URLS for green
+  config/
+    appsettings.Production.json  ← rendered from appsettings_override and copied on deploy
   nginx/
     upstream-blue.conf
     upstream-green.conf

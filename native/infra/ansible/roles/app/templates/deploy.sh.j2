@@ -111,6 +111,13 @@ dotnet publish "$BUILD_DIR/$PROJECT_PATH" \
   --self-contained false \
   -o "$SLOT_DIR/"
 
+# Inject per-app production overrides after publish.
+if [ -f "$APP_ROOT/config/appsettings.Production.json" ]; then
+  cp "$APP_ROOT/config/appsettings.Production.json" "$SLOT_DIR/appsettings.Production.json"
+  chown {{ app_user }}:{{ app_user }} "$SLOT_DIR/appsettings.Production.json"
+  chmod 600 "$SLOT_DIR/appsettings.Production.json"
+fi
+
 # ── Start idle slot ───────────────────────────────────────────────────────────
 echo "Starting $TARGET_SERVICE..."
 sudo systemctl start "$TARGET_SERVICE"

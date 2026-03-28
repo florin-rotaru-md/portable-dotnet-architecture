@@ -12,6 +12,7 @@
     - "{{ apps_root }}/{{ current_app.name }}/slots/green"
     - "{{ apps_root }}/{{ current_app.name }}/build"
     - "{{ apps_root }}/{{ current_app.name }}/env"
+    - "{{ apps_root }}/{{ current_app.name }}/config"
     - "{{ apps_root }}/{{ current_app.name }}/scripts"
     - "{{ apps_root }}/{{ current_app.name }}/nginx"
     - "{{ apps_root }}/{{ current_app.name }}/runtime"
@@ -26,8 +27,17 @@
     force: false
   vars:
     app_name: "{{ current_app.name }}"
-    postgres_db: "{{ current_app.postgres_db }}"
     app_env: "{{ current_app.env | default({}) }}"
+
+- name: Write appsettings.Production.json for {{ current_app.name }}
+  copy:
+    dest:    "{{ apps_root }}/{{ current_app.name }}/config/appsettings.Production.json"
+    content: "{{ current_app.appsettings_override | default({}) | to_nice_json }}\n"
+    owner:   "{{ app_user }}"
+    group:   "{{ app_user }}"
+    mode:    '0600'
+    force:   false
+  no_log: true
 
 - name: Render blue env file
   copy:
