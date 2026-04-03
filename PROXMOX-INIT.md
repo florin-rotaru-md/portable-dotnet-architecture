@@ -367,18 +367,46 @@ ssh deploy@192.168.0.30 hostname
 
 USB backup & restore
 ``` bash
-lsblk
+lsblk -f
 ```
 
-NAME                               MAJ:MIN RM   SIZE RO TYPE MOUNTPOINTS
-sdb                                  8:16   0   1.7T  0 disk
-├─sdb1                               8:17   0   128M  0 part
-└─sdb2                               8:18   0   1.7T  0 part
+NAME                              FSTYPE  FSVER LABEL  UUID                                   FSAVAIL FSUSE% MOUNTPOINTS
+sdb
+├─sdb1
+└─sdb2                            ntfs          backup 30848B8B848B51F0
 
+Util - device UUID
+``` bash
+blkid
+```
+
+Auto mount
+``` bash
 mkdir /mnt/usb-backup
-mount /dev/sdb2 /mnt/usb-backup
+nano /etc/fstab
+systemctl daemon-reload
+```
 
+add
+UUID=30848B8B848B51F0 /mnt/usb-backup ntfs-3g defaults,nofail,x-systemd.automount 0 0
+
+Test
+``` bash
+mount -a
+ls /mnt/usb-backup
+```
+
+Backup
+``` bash
 vzdump 1021 --storage usb-backup --mode snapshot
-qmrestore /mnt/usb/dump/vzdump-qemu-1021-*.vma.zst 1021
+```
 
-umount /mnt/usb-backup
+Restore
+``` bash
+qmrestore /mnt/usb/dump/vzdump-qemu-1021-*.vma.zst 1021
+```
+
+Unmount
+``` bash
+umount /mnt/usb-backup 
+```
