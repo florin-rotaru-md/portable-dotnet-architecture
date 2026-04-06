@@ -410,3 +410,25 @@ Unmount
 ``` bash
 umount /mnt/usb-backup 
 ```
+
+
+debug
+nginx -T | grep -A 10 -B 10 "upstream"
+ss -lntp | grep 5000
+readlink -f /proc/1234/cwd
+
+
+readlink -f /proc/1234/exe
+sudo lsof -i :5000
+
+
+systemctl list-units --type=service | grep myapp
+sudo systemctl restart myapp.service
+
+ps aux | grep myapp
+kill <PID>
+
+systemctl reload nginx
+
+nginx -T | grep -n "myapp_active"
+
