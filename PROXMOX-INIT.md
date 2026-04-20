@@ -42,6 +42,54 @@ reboot
 ### utils
 ``` bash
 apt install -y ntfs-3g
+apt install acpi -y
+
+cat << 'EOF' > /usr/local/bin/battery-check.sh
+#!/bin/bash
+
+BATTERY_LEVEL=$(acpi -b | grep -P -o '[0-9]+(?=%)' | head -1)
+AC_STATUS=$(cat /sys/class/power_supply/AC/online 2>/dev/null)
+
+if [ -z "$BATTERY_LEVEL" ]; then
+    logger "battery-check: Battery level not detected"
+    exit 0
+fi
+
+if [ "$AC_STATUS" = "0" ] && [ "$BATTERY_LEVEL" -le 10 ]; then
+    logger "battery-check: Battery low (${BATTERY_LEVEL}%) and not charging. Shutting down."
+    /usr/sbin/shutdown -h now
+fi
+EOF
+
+chmod +x /usr/local/bin/battery-check.sh
+
+cat << 'EOF' > /etc/systemd/system/battery-check.service
+[Unit]
+Description=Check battery level and shutdown if critically low
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/battery-check.sh
+EOF
+
+cat << 'EOF' > /etc/systemd/system/battery-check.timer
+[Unit]
+Description=Run battery check every 2 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=2min
+Unit=battery-check.service
+
+[Install]
+WantedBy=timers.target
+EOF
+
+systemctl daemon-reload
+systemctl enable --now battery-check.timer
+
+systemctl status battery-check.timer
+
 ```
 
 ## 4. Download Ubuntu Server iso
@@ -416,7 +464,7 @@ debug
 nginx -T | grep -A 10 -B 10 "upstream"
 ss -lntp | grep 5000
 readlink -f /proc/1234/cwd
-
+ls -lt -r
 
 readlink -f /proc/1234/exe
 sudo lsof -i :5000
