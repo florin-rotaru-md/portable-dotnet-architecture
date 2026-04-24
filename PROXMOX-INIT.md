@@ -39,7 +39,7 @@ apt update && apt full-upgrade -y
 reboot
 ```
 
-### utils
+### Run battery check
 ``` bash
 apt install -y ntfs-3g
 apt install acpi -y
@@ -89,8 +89,164 @@ systemctl daemon-reload
 systemctl enable --now battery-check.timer
 
 systemctl status battery-check.timer
-
 ```
+
+### Adjust power plan
+``` bash
+apt install tlp -y
+systemctl enable tlp
+systemctl start tlp
+```
+
+#### 1. TLP config
+``` bash
+cat << 'EOF' > /etc/tlp.d/99-proxmox-laptop.conf
+CPU_SCALING_GOVERNOR_ON_AC=powersave
+CPU_SCALING_GOVERNOR_ON_BAT=powersave
+
+CPU_ENERGY_PERF_POLICY_ON_AC=powersave
+CPU_ENERGY_PERF_POLICY_ON_BAT=powersave
+EOF
+```
+
+``` bash
+systemctl restart tlp
+```
+
+#### 2. cpu-power-manager Script 
+``` bash
+cat << 'EOF' > /usr/local/bin/cpu-power-manager.sh
+#!/bin/bash
+
+STATE_FILE="/run/cpu-power-manager.state"
+
+LOW_LOAD=20
+HIGH_LOAD=60
+REQUIRED_HITS=3
+
+CPU0_GOVERNOR_FILE="/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor"
+CPU0_AVAILABLE_FILE="/sys/devices/system/cpu/cpu0/cpufreq/scaling_available_governors"
+
+if [ ! -f "$CPU0_GOVERNOR_FILE" ]; then
+    logger "cpu-power-manager: CPU governor file not found"
+    exit 0
+fi
+
+CURRENT_GOVERNOR=$(cat "$CPU0_GOVERNOR_FILE")
+AVAILABLE_GOVERNORS=$(cat "$CPU0_AVAILABLE_FILE" 2>/dev/null)
+
+CPU_CORES=$(nproc)
+LOAD_1MIN_INT=$(awk '{print int($1 * 100)}' /proc/loadavg)
+LOAD_PERCENT=$(( LOAD_1MIN_INT / CPU_CORES ))
+
+BALANCED_GOVERNOR="schedutil"
+
+if ! echo "$AVAILABLE_GOVERNORS" | grep -qw "$BALANCED_GOVERNOR"; then
+    BALANCED_GOVERNOR="powersave"
+fi
+
+TARGET="$CURRENT_GOVERNOR"
+
+if [ "$LOAD_PERCENT" -ge "$HIGH_LOAD" ]; then
+    TARGET="performance"
+elif [ "$LOAD_PERCENT" -le "$LOW_LOAD" ]; then
+    TARGET="$BALANCED_GOVERNOR"
+else
+    TARGET="$CURRENT_GOVERNOR"
+fi
+
+if ! echo "$AVAILABLE_GOVERNORS" | grep -qw "$TARGET"; then
+    logger "cpu-power-manager: target governor $TARGET not available. Available: $AVAILABLE_GOVERNORS"
+    exit 0
+fi
+
+LAST_TARGET=""
+HITS=0
+
+if [ -f "$STATE_FILE" ]; then
+    . "$STATE_FILE"
+fi
+
+if [ "$TARGET" = "$LAST_TARGET" ]; then
+    HITS=$((HITS + 1))
+else
+    HITS=1
+fi
+
+cat << STATE > "$STATE_FILE"
+LAST_TARGET="$TARGET"
+HITS=$HITS
+STATE
+
+if [ "$HITS" -lt "$REQUIRED_HITS" ]; then
+    logger "cpu-power-manager: load=${LOAD_PERCENT}% target=${TARGET} hits=${HITS}/${REQUIRED_HITS}, waiting"
+    exit 0
+fi
+
+if [ "$CURRENT_GOVERNOR" != "$TARGET" ]; then
+    for governor_file in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
+        available_file="$(dirname "$governor_file")/scaling_available_governors"
+        available="$(cat "$available_file" 2>/dev/null)"
+
+        if echo "$available" | grep -qw "$TARGET"; then
+            echo "$TARGET" > "$governor_file"
+        else
+            logger "cpu-power-manager: skipping $governor_file, $TARGET not available. Available: $available"
+        fi
+    done
+
+    logger "cpu-power-manager: load=${LOAD_PERCENT}% governor changed ${CURRENT_GOVERNOR} -> ${TARGET}"
+else
+    logger "cpu-power-manager: load=${LOAD_PERCENT}% governor already ${CURRENT_GOVERNOR}"
+fi
+EOF
+```
+
+``` bash
+chmod +x /usr/local/bin/cpu-power-manager.sh
+```
+
+#### 3. Service systemd
+``` bash
+cat << 'EOF' > /etc/systemd/system/cpu-power-manager.service
+[Unit]
+Description=Smart CPU power manager for Proxmox laptop
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/cpu-power-manager.sh
+EOF
+```
+
+#### 4. Timer
+``` bash
+cat << 'EOF' > /etc/systemd/system/cpu-power-manager.timer
+[Unit]
+Description=Run smart CPU power manager every 1 minutes
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1min
+Unit=cpu-power-manager.service
+
+[Install]
+WantedBy=timers.target
+EOF
+```
+
+#### 5. Enable
+``` bash
+systemctl daemon-reload
+systemctl enable --now cpu-power-manager.timer
+```
+
+#### 6. Check
+``` bash
+systemctl status cpu-power-manager.timer
+journalctl -u cpu-power-manager.service -n 50
+cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
+```
+
 
 ## 4. Download Ubuntu Server iso
 https://ubuntu.com/download/server
