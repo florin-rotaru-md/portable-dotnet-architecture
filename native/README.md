@@ -35,9 +35,32 @@ All playbook runs connect as this user after the initial bootstrap.
 
 **1. Generate a key pair on your control machine** (skip if you already have one):
 
+Linux / WSL / macOS:
 ```bash
 test -f ~/.ssh/id_ed25519_ansible || \
   ssh-keygen -t ed25519 -C "ansible-control" -f ~/.ssh/id_ed25519_ansible -N ""
+```
+
+Windows (PowerShell — OpenSSH built-in, Windows 10 1809+):
+```powershell
+if (-not (Test-Path "$env:USERPROFILE\.ssh\id_ed25519_ansible")) {
+  ssh-keygen -t ed25519 -C "ansible-control" -f "$env:USERPROFILE/.ssh/id_ed25519_ansible" -N '""'
+}
+```
+
+**Backup the key** (once, after generation — store in a password manager, encrypted USB, or vault):
+```bash
+cp ~/.ssh/id_ed25519_ansible     ~/id_ed25519_ansible.bak
+cp ~/.ssh/id_ed25519_ansible.pub ~/id_ed25519_ansible.pub.bak
+```
+
+**Restore on a new / recovered control VM** (reusing the key avoids re-running `ssh-copy-id` on every target):
+```bash
+mkdir -p ~/.ssh && chmod 700 ~/.ssh
+cp id_ed25519_ansible     ~/.ssh/id_ed25519_ansible
+cp id_ed25519_ansible.pub ~/.ssh/id_ed25519_ansible.pub
+chmod 600 ~/.ssh/id_ed25519_ansible
+chmod 644 ~/.ssh/id_ed25519_ansible.pub
 ```
 
 **Copy the public key to the target VPS** (so Ansible can connect):

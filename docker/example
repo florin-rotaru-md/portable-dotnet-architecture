@@ -32,8 +32,26 @@ pipx ensurepath && \
 pipx install --include-deps ansible && \
 ~/.local/bin/ansible-galaxy collection install community.docker
 
+# SSH key — generate once, reuse across rebuilds / disaster recovery
+# Option A: Linux / WSL / macOS
 test -f ~/.ssh/id_ed25519_ansible || \
   ssh-keygen -t ed25519 -C "ansible-control" -f ~/.ssh/id_ed25519_ansible -N ""
+
+# Option B: Windows (PowerShell — OpenSSH built-in, Windows 10 1809+)
+# if (-not (Test-Path "$env:USERPROFILE\.ssh\id_ed25519_ansible")) {
+#   ssh-keygen -t ed25519 -C "ansible-control" -f "$env:USERPROFILE/.ssh/id_ed25519_ansible" -N '""'
+# }
+
+# Backup — run once after generation; store securely (password manager, encrypted USB, vault):
+# cp ~/.ssh/id_ed25519_ansible     ~/id_ed25519_ansible.bak
+# cp ~/.ssh/id_ed25519_ansible.pub ~/id_ed25519_ansible.pub.bak
+
+# Restore on a new / recovered control VM (avoids re-running ssh-copy-id on all targets):
+# mkdir -p ~/.ssh && chmod 700 ~/.ssh
+# cp id_ed25519_ansible     ~/.ssh/id_ed25519_ansible
+# cp id_ed25519_ansible.pub ~/.ssh/id_ed25519_ansible.pub
+# chmod 600 ~/.ssh/id_ed25519_ansible
+# chmod 644 ~/.ssh/id_ed25519_ansible.pub
 
 chmod 700 /home/deploy/.ssh && \
 chmod 600 /home/deploy/.ssh/authorized_keys && \
