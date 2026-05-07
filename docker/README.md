@@ -35,44 +35,44 @@ cd ~/src/portable-dotnet-architecture/docker
 
 ## SSH key setup
 
-The `common` role ensures the controller's public key is in `deploy`'s `authorized_keys`.
+The `common` role ensures the controller's public key is in `devops`'s `authorized_keys`.
 For a brand-new VPS, the first run should connect as your initial admin/root user;
-subsequent runs can connect as `deploy`.
+subsequent runs can connect as `devops`.
 
 **1. Generate a key pair on your control machine** (skip if you already have one):
 
 Linux / WSL / macOS:
 ```bash
-test -f ~/.ssh/id_ed25519_ansible || \
-  ssh-keygen -t ed25519 -C "ansible-control" -f ~/.ssh/id_ed25519_ansible -N ""
+test -f ~/.ssh/id_ed25519_devops || \
+  ssh-keygen -t ed25519 -C "ansible-control" -f ~/.ssh/id_ed25519_devops -N ""
 ```
 
 Windows (PowerShell — OpenSSH built-in, Windows 10 1809+):
 ```powershell
-if (-not (Test-Path "$env:USERPROFILE\.ssh\id_ed25519_ansible")) {
-  ssh-keygen -t ed25519 -C "ansible-control" -f "$env:USERPROFILE/.ssh/id_ed25519_ansible" -N '""'
+if (-not (Test-Path "$env:USERPROFILE\.ssh\id_ed25519_devops")) {
+  ssh-keygen -t ed25519 -C "ansible-control" -f "$env:USERPROFILE/.ssh/id_ed25519_devops" -N '""'
 }
 ```
 
 **Backup the key** (once, after generation — store in a password manager, encrypted USB, or vault):
 ```bash
-cp ~/.ssh/id_ed25519_ansible     ~/id_ed25519_ansible.bak
-cp ~/.ssh/id_ed25519_ansible.pub ~/id_ed25519_ansible.pub.bak
+cp ~/.ssh/id_ed25519_devops     ~/id_ed25519_devops.bak
+cp ~/.ssh/id_ed25519_devops.pub ~/id_ed25519_devops.pub.bak
 ```
 
 **Restore on a new / recovered control VM** (reusing the key avoids re-running `ssh-copy-id` on every target):
 ```bash
 mkdir -p ~/.ssh && chmod 700 ~/.ssh
-cp id_ed25519_ansible     ~/.ssh/id_ed25519_ansible
-cp id_ed25519_ansible.pub ~/.ssh/id_ed25519_ansible.pub
-chmod 600 ~/.ssh/id_ed25519_ansible
-chmod 644 ~/.ssh/id_ed25519_ansible.pub
+cp id_ed25519_devops     ~/.ssh/id_ed25519_devops
+cp id_ed25519_devops.pub ~/.ssh/id_ed25519_devops.pub
+chmod 600 ~/.ssh/id_ed25519_devops
+chmod 644 ~/.ssh/id_ed25519_devops.pub
 ```
 
 **Copy the public key to the target VPS** (so Ansible can connect):
 
 ```bash
-ssh-copy-id -i ~/.ssh/id_ed25519_ansible.pub root@<vps-ip>
+ssh-copy-id -i ~/.ssh/id_ed25519_devops.pub root@<vps-ip>
 ```
 
 **2. Add the public key to `vault.yml`** (see Configure below):
@@ -85,7 +85,7 @@ vim inventory/group_vars/all/vault.yml
 ```
 
 ```yaml
-ansible_ssh_public_key: "{{ lookup('file', '~/.ssh/id_ed25519_ansible.pub') }}"
+ansible_ssh_public_key: "{{ lookup('file', '~/.ssh/id_ed25519_devops.pub') }}"
 ```
 
 ## Configure
@@ -107,14 +107,14 @@ vim inventory/group_vars/all/vault.yml
 
 **Bootstrap**
 
-**First run** (if `deploy` does not exist yet):
+**First run** (if `devops` does not exist yet):
 
 ```bash
 cd infra/ansible
 ansible-playbook playbooks/bootstrap.yml -u root --ask-vault-pass
 ```
 
-**Subsequent runs** (`ansible.cfg` + inventory default to `deploy`):
+**Subsequent runs** (`ansible.cfg` + inventory default to `devops`):
 
 ```bash
 ansible-playbook playbooks/bootstrap.yml
@@ -223,10 +223,10 @@ After bootstrap, each app has its scripts at `/opt/apps/<name>/scripts/` and the
 
 ```bash
 # Deploy a newer specific image:
-sudo -u deploy /opt/apps/myapp/scripts/deploy.sh ghcr.io/org/myapp:v1.2.3
+sudo -u devops /opt/apps/myapp/scripts/deploy.sh ghcr.io/org/myapp:v1.2.3
 
 # Rollback (instant Nginx swap, no container changes):
-sudo -u deploy /opt/apps/myapp/scripts/rollback.sh
+sudo -u devops /opt/apps/myapp/scripts/rollback.sh
 ```
 
 If the target image is private, the host must already have the registry credentials configured via Ansible as shown above.

@@ -1,10 +1,10 @@
 ---
 # ── Ansible service account ────────────────────────────────────────────────────
-ansible_user: deploy
+ansible_user: devops
 # ansible_ssh_public_key comes from vault.yml — paste your controller's public key there
 
 # ── Apps (required) ───────────────────────────────────────────────────────────
-app_user:     deploy
+app_user: devops
 health_max_attempts: 16
 health_interval_seconds: 4
 # Global defaults used for all apps unless overridden per-app in applications[].

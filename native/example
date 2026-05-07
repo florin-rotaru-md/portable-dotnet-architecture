@@ -4,10 +4,10 @@ ssh-keygen -R 192.168.0.21
 
 on target vm:
 ---
-> /home/deploy/.ssh/authorized_keys
+> /home/devops/.ssh/authorized_keys
 
-echo 'deploy ALL=(ALL) NOPASSWD: ALL' | sudo tee /etc/sudoers.d/deploy
-sudo chmod 440 /etc/sudoers.d/deploy
+echo 'devops ALL=(ALL) NOPASSWD: ALL' | sudo tee /etc/sudoers.d/devops
+sudo chmod 440 /etc/sudoers.d/devops
 
 lsblk
 NAME                      MAJ:MIN RM SIZE RO TYPE MOUNTPOINTS
@@ -33,37 +33,37 @@ pipx install --include-deps ansible
 
 # SSH key — generate once, reuse across rebuilds / disaster recovery
 # Option A: Linux / WSL / macOS
-test -f ~/.ssh/id_ed25519_ansible || \
-  ssh-keygen -t ed25519 -C "ansible-control" -f ~/.ssh/id_ed25519_ansible -N ""
+test -f ~/.ssh/id_ed25519_devops || \
+  ssh-keygen -t ed25519 -C "ansible-control" -f ~/.ssh/id_ed25519_devops -N ""
 
 # Option B: Windows (PowerShell — OpenSSH built-in, Windows 10 1809+)
-# if (-not (Test-Path "$env:USERPROFILE\.ssh\id_ed25519_ansible")) {
-#   ssh-keygen -t ed25519 -C "ansible-control" -f "$env:USERPROFILE/.ssh/id_ed25519_ansible" -N '""'
+# if (-not (Test-Path "$env:USERPROFILE\.ssh\id_ed25519_devops")) {
+#   ssh-keygen -t ed25519 -C "ansible-control" -f "$env:USERPROFILE/.ssh/id_ed25519_devops" -N '""'
 # }
 
 # Backup — run once after generation; store securely (password manager, encrypted USB, vault):
-# cp ~/.ssh/id_ed25519_ansible     ~/id_ed25519_ansible.bak
-# cp ~/.ssh/id_ed25519_ansible.pub ~/id_ed25519_ansible.pub.bak
+# cp ~/.ssh/id_ed25519_devops     ~/id_ed25519_devops.bak
+# cp ~/.ssh/id_ed25519_devops.pub ~/id_ed25519_devops.pub.bak
 
 # Restore on a new / recovered control VM (avoids re-running ssh-copy-id on all targets):
 # mkdir -p ~/.ssh && chmod 700 ~/.ssh
-# cp id_ed25519_ansible     ~/.ssh/id_ed25519_ansible
-# cp id_ed25519_ansible.pub ~/.ssh/id_ed25519_ansible.pub
-# chmod 600 ~/.ssh/id_ed25519_ansible
-# chmod 644 ~/.ssh/id_ed25519_ansible.pub
+# cp id_ed25519_devops     ~/.ssh/id_ed25519_devops
+# cp id_ed25519_devops.pub ~/.ssh/id_ed25519_devops.pub
+# chmod 600 ~/.ssh/id_ed25519_devops
+# chmod 644 ~/.ssh/id_ed25519_devops.pub
 
-chmod 700 /home/deploy/.ssh && \
-chmod 600 /home/deploy/.ssh/authorized_keys && \
-chown -R deploy:deploy /home/deploy/.ssh
+chmod 700 /home/devops/.ssh && \
+chmod 600 /home/devops/.ssh/authorized_keys && \
+chown -R devops:devops /home/devops/.ssh
 
-ssh-copy-id -i ~/.ssh/id_ed25519_ansible.pub deploy@192.168.0.21
+ssh-copy-id -i ~/.ssh/id_ed25519_devops.pub devops@192.168.0.21
 
 mkdir -p ~/src && cd ~/src && \
 git clone https://github.com/florin-rotaru-md/portable-dotnet-architecture
 
 
 cat << 'EOF' > ~/src/portable-dotnet-architecture/native/infra/ansible/inventory/group_vars/all/vault.yml
-ansible_ssh_public_key:  "{{ lookup('file', '~/.ssh/id_ed25519_ansible.pub') }}"
+ansible_ssh_public_key:  "{{ lookup('file', '~/.ssh/id_ed25519_devops.pub') }}"
 
 postgres_password: "postgres"
 
@@ -78,10 +78,10 @@ EOF
 cat << 'EOF' > ~/src/portable-dotnet-architecture/native/infra/ansible/inventory/group_vars/all/main.yml
 ---
 # ── Ansible service account ────────────────────────────────────────────────────
-ansible_user: deploy
+ansible_user: devops
 
 # ── Infrastructure ─────────────────────────────────────────────────────────────
-app_user:     deploy
+app_user: devops
 apps_root:    /opt/apps
 dotnet_version: "10.0"
 
@@ -155,18 +155,18 @@ EOF
 
 cat << 'EOF' > ~/src/portable-dotnet-architecture/native/infra/ansible/inventory/hosts.ini
 [app]
-192.168.0.21 ansible_user=deploy ansible_private_key_file=~/.ssh/id_ed25519_ansible
+192.168.0.21 ansible_user=devops ansible_private_key_file=~/.ssh/id_ed25519_devops
 
 # Example with SSH key:
-# 1.2.3.4 ansible_user=deploy ansible_private_key_file=~/.ssh/id_ed25519_ansible
+# 1.2.3.4 ansible_user=devops ansible_private_key_file=~/.ssh/id_ed25519_devops
 EOF
 
 
-# First bootstrap on a fresh VM can be done as root if deploy is missing:
+# First bootstrap on a fresh VM can be done as root if devops is missing:
 cd ~/src/portable-dotnet-architecture/native/infra/ansible && \
 ansible-playbook playbooks/bootstrap.yml -u root --ask-vault-pass
 
-# Normal path (deploy user exists and key auth works):
+# Normal path (devops user exists and key auth works):
 cd ~/src/portable-dotnet-architecture/native/infra/ansible && \
 ansible-playbook playbooks/bootstrap.yml
 
@@ -175,9 +175,9 @@ ansible-playbook playbooks/bootstrap.yml
 
 # Bootstrap performs first deploy automatically for every app that has repo_url + project_path.
 # Manual deploy examples:
-# sudo -u deploy /opt/apps/api.waa.ro/scripts/deploy.sh
-# sudo -u deploy /opt/apps/admin.waa.ro/scripts/deploy.sh
+# sudo -u devops /opt/apps/api.waa.ro/scripts/deploy.sh
+# sudo -u devops /opt/apps/admin.waa.ro/scripts/deploy.sh
 
 # Manual rollback examples:
-# sudo -u deploy /opt/apps/api.waa.ro/scripts/rollback.sh
-# sudo -u deploy /opt/apps/admin.waa.ro/scripts/rollback.sh
+# sudo -u devops /opt/apps/api.waa.ro/scripts/rollback.sh
+# sudo -u devops /opt/apps/admin.waa.ro/scripts/rollback.sh

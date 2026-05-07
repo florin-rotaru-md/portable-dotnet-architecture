@@ -30,43 +30,43 @@ cd ~/src/portable-dotnet-architecture/native
 
 ## *(Optional)* Ansible service account — SSH key setup
 
-The `common` role creates a dedicated `deploy` user on the VPS with passwordless sudo.
+The `common` role creates a dedicated `devops` user on the VPS with passwordless sudo.
 All playbook runs connect as this user after the initial bootstrap.
 
 **1. Generate a key pair on your control machine** (skip if you already have one):
 
 Linux / WSL / macOS:
 ```bash
-test -f ~/.ssh/id_ed25519_ansible || \
-  ssh-keygen -t ed25519 -C "ansible-control" -f ~/.ssh/id_ed25519_ansible -N ""
+test -f ~/.ssh/id_ed25519_devops || \
+  ssh-keygen -t ed25519 -C "ansible-control" -f ~/.ssh/id_ed25519_devops -N ""
 ```
 
 Windows (PowerShell — OpenSSH built-in, Windows 10 1809+):
 ```powershell
-if (-not (Test-Path "$env:USERPROFILE\.ssh\id_ed25519_ansible")) {
-  ssh-keygen -t ed25519 -C "ansible-control" -f "$env:USERPROFILE/.ssh/id_ed25519_ansible" -N '""'
+if (-not (Test-Path "$env:USERPROFILE\.ssh\id_ed25519_devops")) {
+  ssh-keygen -t ed25519 -C "ansible-control" -f "$env:USERPROFILE/.ssh/id_ed25519_devops" -N '""'
 }
 ```
 
 **Backup the key** (once, after generation — store in a password manager, encrypted USB, or vault):
 ```bash
-cp ~/.ssh/id_ed25519_ansible     ~/id_ed25519_ansible.bak
-cp ~/.ssh/id_ed25519_ansible.pub ~/id_ed25519_ansible.pub.bak
+cp ~/.ssh/id_ed25519_devops     ~/id_ed25519_devops.bak
+cp ~/.ssh/id_ed25519_devops.pub ~/id_ed25519_devops.pub.bak
 ```
 
 **Restore on a new / recovered control VM** (reusing the key avoids re-running `ssh-copy-id` on every target):
 ```bash
 mkdir -p ~/.ssh && chmod 700 ~/.ssh
-cp id_ed25519_ansible     ~/.ssh/id_ed25519_ansible
-cp id_ed25519_ansible.pub ~/.ssh/id_ed25519_ansible.pub
-chmod 600 ~/.ssh/id_ed25519_ansible
-chmod 644 ~/.ssh/id_ed25519_ansible.pub
+cp id_ed25519_devops     ~/.ssh/id_ed25519_devops
+cp id_ed25519_devops.pub ~/.ssh/id_ed25519_devops.pub
+chmod 600 ~/.ssh/id_ed25519_devops
+chmod 644 ~/.ssh/id_ed25519_devops.pub
 ```
 
 **Copy the public key to the target VPS** (so Ansible can connect):
 
 ```bash
-ssh-copy-id -i ~/.ssh/id_ed25519_ansible.pub root@<vps-ip>
+ssh-copy-id -i ~/.ssh/id_ed25519_devops.pub root@<vps-ip>
 ```
 
 **2. Add the public key to `vault.yml`** (see Configure below):
@@ -79,7 +79,7 @@ vim inventory/group_vars/all/vault.yml
 
 ```yaml
 ansible_ssh_public_key: "ssh-ed25519 AAAA...  ansible-control"
-# or use an Ansible lookup ansible_ssh_public_key: "{{ lookup('file', '~/.ssh/id_ed25519_ansible.pub') }}"
+# or use an Ansible lookup ansible_ssh_public_key: "{{ lookup('file', '~/.ssh/id_ed25519_devops.pub') }}"
 ```
 
 ## Configure
@@ -147,7 +147,7 @@ applications:
         Main: "Host=127.0.0.1;Port=5432;Database=anotherapp_db;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
 ```
 
-**3. First bootstrap** — the `deploy` user doesn't exist yet, so connect as the initial root/admin user:
+**3. First bootstrap** — the `devops` user doesn't exist yet, so connect as the initial root/admin user:
 
 ```bash
 cd infra/ansible
@@ -156,7 +156,7 @@ ansible-playbook playbooks/bootstrap.yml -u root --ask-pass --ask-vault-pass
 
 > If the VPS was provisioned with your SSH key for root already, omit `--ask-pass`.
 
-**4. All subsequent runs** — `ansible.cfg` and `group_vars` set `ansible_user: deploy` automatically:
+**4. All subsequent runs** — `ansible.cfg` and `group_vars` set `ansible_user: devops` automatically:
 
 ```bash
 ansible-playbook playbooks/bootstrap.yml --ask-vault-pass
@@ -183,7 +183,7 @@ After bootstrap, each app has its own deploy script at `/opt/apps/<app_name>/scr
 
 **Manual first deploy** (only needed if you intentionally leave those variables empty):
 ```bash
-sudo -u deploy /opt/apps/myapp/scripts/deploy.sh \
+sudo -u devops /opt/apps/myapp/scripts/deploy.sh \
   --repo-url     "https://github.com/your-org/your-repo.git" \
   --branch       "master" \
   --token        "ghp_xxx"   # omit for public repos \
@@ -192,12 +192,12 @@ sudo -u deploy /opt/apps/myapp/scripts/deploy.sh \
 
 **Subsequent deploys:**
 ```bash
-sudo -u deploy /opt/apps/myapp/scripts/deploy.sh
+sudo -u devops /opt/apps/myapp/scripts/deploy.sh
 ```
 
 **Rollback** (switches Nginx back instantly):
 ```bash
-sudo -u deploy /opt/apps/myapp/scripts/rollback.sh
+sudo -u devops /opt/apps/myapp/scripts/rollback.sh
 ```
 
 ## Deployment sequence

@@ -25,7 +25,7 @@ provider "proxmox" {
   ssh {
     agent    = true
     username = var.proxmox_ssh_user
-    # private_key = file("~/.ssh/id_ed25519_ansible")  # uncomment if agent not available
+    # private_key = file("~/.ssh/id_ed25519_devops")  # uncomment if agent not available
   }
 }
 

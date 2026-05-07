@@ -2,7 +2,7 @@
 # Copy this file to native/infra/ansible/inventory/group_vars/all/vault.yml
 # Encrypt with: ansible-vault encrypt vault.yml
 
-ansible_ssh_public_key: "{{ lookup('file', '~/.ssh/id_ed25519_ansible.pub') }}"
+ansible_ssh_public_key: "{{ lookup('file', '~/.ssh/id_ed25519_devops.pub') }}"
 
 postgres_password: "change-me-strong-password"
 

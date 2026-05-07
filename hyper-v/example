@@ -40,12 +40,12 @@ pipx ensurepath && \
 pipx install --include-deps ansible
 
 # SSH key for Ansible controller
-test -f ~/.ssh/id_ed25519_ansible || \
-  ssh-keygen -t ed25519 -C "ansible-control" -f ~/.ssh/id_ed25519_ansible -N ""
+test -f ~/.ssh/id_ed25519_devops || \
+  ssh-keygen -t ed25519 -C "ansible-control" -f ~/.ssh/id_ed25519_devops -N ""
 
 # Copy the controller key to the initial admin account on the app VM.
 # Replace 'ubuntu' with your first user if different.
-ssh-copy-id -i ~/.ssh/id_ed25519_ansible.pub ubuntu@192.168.0.21
+ssh-copy-id -i ~/.ssh/id_ed25519_devops.pub ubuntu@192.168.0.21
 
 mkdir -p ~/src && cd ~/src && \
 git clone https://github.com/florin-rotaru-md/portable-dotnet-architecture
@@ -65,7 +65,7 @@ nano ~/src/portable-dotnet-architecture/native/infra/ansible/inventory/group_var
 cd ~/src/portable-dotnet-architecture/native/infra/ansible && \
 ansible-playbook playbooks/bootstrap.yml -u ubuntu --ask-become-pass
 
-# Normal path after the first run: deploy user + SSH key auth
+# Normal path after the first run: devops user + SSH key auth
 cd ~/src/portable-dotnet-architecture/native/infra/ansible && \
 ansible-playbook playbooks/bootstrap.yml
 
@@ -75,7 +75,7 @@ ansible-playbook playbooks/bootstrap.yml
 
 # Bootstrap performs first deploy automatically for every app that has repo_url + project_path.
 # Manual deploy example:
-# sudo -u deploy /opt/apps/api.example.local/scripts/deploy.sh
+# sudo -u devops /opt/apps/api.example.local/scripts/deploy.sh
 
 # Manual rollback example:
-# sudo -u deploy /opt/apps/api.example.local/scripts/rollback.sh
+# sudo -u devops /opt/apps/api.example.local/scripts/rollback.sh

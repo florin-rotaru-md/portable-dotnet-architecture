@@ -2,16 +2,16 @@ on local pc
 ---
 # ── Generate SSH key (run once; reuse across all VMs) ──────────────────────────
 # Windows (PowerShell — OpenSSH built-in, Windows 10 1809+)
-if (-not (Test-Path "$env:USERPROFILE\.ssh\id_ed25519_ansible")) {
-  ssh-keygen -t ed25519 -C "ansible-control" -f "$env:USERPROFILE/.ssh/id_ed25519_ansible" -N '""'
+if (-not (Test-Path "$env:USERPROFILE\.ssh\id_ed25519_devops")) {
+  ssh-keygen -t ed25519 -C "ansible-control" -f "$env:USERPROFILE/.ssh/id_ed25519_devops" -N '""'
 }
 # Print public key — copy this value; you'll need it during VM creation
-Get-Content "$env:USERPROFILE\.ssh\id_ed25519_ansible.pub"
+Get-Content "$env:USERPROFILE\.ssh\id_ed25519_devops.pub"
 
 # Linux / WSL / macOS
-# test -f ~/.ssh/id_ed25519_ansible || \
-#   ssh-keygen -t ed25519 -C "ansible-control" -f ~/.ssh/id_ed25519_ansible -N ""
-# cat ~/.ssh/id_ed25519_ansible.pub
+# test -f ~/.ssh/id_ed25519_devops || \
+#   ssh-keygen -t ed25519 -C "ansible-control" -f ~/.ssh/id_ed25519_devops -N ""
+# cat ~/.ssh/id_ed25519_devops.pub
 
 # ── Import the key when creating the VM ───────────────────────────────────────
 # Ubuntu Server installer (subiquity):
@@ -20,12 +20,12 @@ Get-Content "$env:USERPROFILE\.ssh\id_ed25519_ansible.pub"
 #   → paste the public key printed above into "Authorised keys"
 #
 # Alternatively, after VM creation, on the target VM run:
-#   mkdir -p /home/deploy/.ssh && chmod 700 /home/deploy/.ssh
-#   echo 'ssh-ed25519 AAAA... ansible-control' >> /home/deploy/.ssh/authorized_keys
-#   chmod 600 /home/deploy/.ssh/authorized_keys
-#   chown -R deploy:deploy /home/deploy/.ssh
+#   mkdir -p /home/devops/.ssh && chmod 700 /home/devops/.ssh
+#   echo 'ssh-ed25519 AAAA... ansible-control' >> /home/devops/.ssh/authorized_keys
+#   chmod 600 /home/devops/.ssh/authorized_keys
+#   chown -R devops:devops /home/devops/.ssh
 #
 # Verify connectivity before running Ansible:
-#   ssh -i ~/.ssh/id_ed25519_ansible deploy@192.168.0.22
+#   ssh -i ~/.ssh/id_ed25519_devops devops@192.168.0.22
 
 ssh-keygen -R 192.168.0.22

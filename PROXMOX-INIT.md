@@ -341,10 +341,10 @@ Guided storage configuration -> Done
 Storage configuration -> Done
 Confirm destructive action -> Continue
 
-Your name           : deploy
-Your server name    : deploy
-Pick a user name    : deploy
-Choose a password   : deploy
+Your name           : devops
+Your server name    : devops
+Pick a user name    : devops
+Choose a password   : devops
 
 Upgrade to Ubuntu Pro 
 (x) Skip for now -> Continue
@@ -365,7 +365,7 @@ ip a
 
 ### Connect using ssh
 ``` bash
-ssh deploy@192.168.0.1
+ssh devops@192.168.0.1
 ```
 
 ### Install qemu-guest-agent, cloud-init && cleanup
@@ -458,7 +458,7 @@ Datacenter -> proxmox -> 1010 -> Cloud-init
     IPv4/CIDR   : 192.168.0.10/24
     Gateway     : 192.168.0.1
 
-SSH deploy@192.168.0.10
+SSH devops@192.168.0.10
 ``` bash
 sudo apt update && sudo apt upgrade -y
 sudo apt install -y git curl wget unzip jq bash-completion python3 python3-pip python3-venv pipx openssh-client sshpass
@@ -549,22 +549,22 @@ lvextend -l +100%FREE /dev/mapper/ubuntu--vg-ubuntu--lv
 ## 11. Generate SSH key on ansible-control
 On ansible-control:
 ``` bash
-test -f ~/.ssh/id_ed25519_ansible || ssh-keygen -t ed25519 -C "ansible-control" -f ~/.ssh/id_ed25519_ansible
-cat ~/.ssh/id_ed25519_ansible.pub
+test -f ~/.ssh/id_ed25519_devops || ssh-keygen -t ed25519 -C "ansible-control" -f ~/.ssh/id_ed25519_devops
+cat ~/.ssh/id_ed25519_devops.pub
 ```
 
 Copy the public key to both VMs.
 
 If password login is still enabled on the target VMs:
 ``` bash
-ssh-copy-id deploy@192.168.0.20
-ssh-copy-id deploy@192.168.0.30
+ssh-copy-id devops@192.168.0.20
+ssh-copy-id devops@192.168.0.30
 ```
 
 Test SSH:
 ``` bash
-ssh deploy@192.168.0.20 hostname
-ssh deploy@192.168.0.30 hostname
+ssh devops@192.168.0.20 hostname
+ssh devops@192.168.0.30 hostname
 ```
 
 

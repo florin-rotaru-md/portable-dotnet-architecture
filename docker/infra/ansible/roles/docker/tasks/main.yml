@@ -14,7 +14,7 @@
     enabled: true
     state:   started
 
-- name: Add deploy user to docker group
+- name: Add app user to docker group
   user:
     name:   "{{ app_user }}"
     groups: docker

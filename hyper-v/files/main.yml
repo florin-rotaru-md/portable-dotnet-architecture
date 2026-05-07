@@ -2,10 +2,10 @@
 # Hyper-V starter for native/ on a local or home-lab LAN.
 
 # ── Ansible service account ────────────────────────────────────────────────────
-ansible_user: deploy
+ansible_user: devops
 
 # ── Infrastructure ─────────────────────────────────────────────────────────────
-app_user: deploy
+app_user: devops
 apps_root: /opt/apps
 dotnet_version: "10.0"
 

@@ -88,21 +88,21 @@ The `common` role can install your controller key into that account via `ansible
 **1. Generate a key pair on your control machine** (skip if you already have one):
 
 ```bash
-test -f ~/.ssh/id_ed25519_ansible || \
-  ssh-keygen -t ed25519 -C "ansible-control" -f ~/.ssh/id_ed25519_ansible -N ""
+test -f ~/.ssh/id_ed25519_devops || \
+  ssh-keygen -t ed25519 -C "ansible-control" -f ~/.ssh/id_ed25519_devops -N ""
 ```
 
 **Copy the public key to the target VPS** (so Ansible can connect):
 
 ```bash
-ssh-copy-id -i ~/.ssh/id_ed25519_ansible.pub root@<vps-ip>
+ssh-copy-id -i ~/.ssh/id_ed25519_devops.pub root@<vps-ip>
 ```
 
 **2. Add the public key to `vault.yml`:**
 
 ```yaml
 ansible_ssh_public_key: "ssh-ed25519 AAAA...  ansible-control"
-# or use a Ansible lookup: "{{ lookup('file', '~/.ssh/id_ed25519_ansible.pub') }}"
+# or use a Ansible lookup: "{{ lookup('file', '~/.ssh/id_ed25519_devops.pub') }}"
 ```
 
 ```bash

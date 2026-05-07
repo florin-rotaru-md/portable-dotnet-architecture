@@ -2,16 +2,16 @@ on local pc
 ---
 # ── Generate SSH key (run once; reuse across all VMs) ──────────────────────────
 # Windows (PowerShell — OpenSSH built-in, Windows 10 1809+)
-if (-not (Test-Path "$env:USERPROFILE\.ssh\id_ed25519_ansible")) {
-  ssh-keygen -t ed25519 -C "ansible-control" -f "$env:USERPROFILE/.ssh/id_ed25519_ansible" -N '""'
+if (-not (Test-Path "$env:USERPROFILE\.ssh\id_ed25519_devops")) {
+  ssh-keygen -t ed25519 -C "ansible-control" -f "$env:USERPROFILE/.ssh/id_ed25519_devops" -N '""'
 }
 # Print public key — copy this value; you'll need it during VM creation
-Get-Content "$env:USERPROFILE\.ssh\id_ed25519_ansible.pub"
+Get-Content "$env:USERPROFILE\.ssh\id_ed25519_devops.pub"
 
 # Linux / WSL / macOS
-# test -f ~/.ssh/id_ed25519_ansible || \
-#   ssh-keygen -t ed25519 -C "ansible-control" -f ~/.ssh/id_ed25519_ansible -N ""
-# cat ~/.ssh/id_ed25519_ansible.pub
+# test -f ~/.ssh/id_ed25519_devops || \
+#   ssh-keygen -t ed25519 -C "ansible-control" -f ~/.ssh/id_ed25519_devops -N ""
+# cat ~/.ssh/id_ed25519_devops.pub
 
 # ── Import the key when creating the VM ───────────────────────────────────────
 # Ubuntu Server installer (subiquity):
@@ -20,22 +20,22 @@ Get-Content "$env:USERPROFILE\.ssh\id_ed25519_ansible.pub"
 #   → paste the public key printed above into "Authorised keys"
 #
 # Alternatively, after VM creation, on the target VM run:
-#   mkdir -p /home/deploy/.ssh && chmod 700 /home/deploy/.ssh
-#   echo 'ssh-ed25519 AAAA... ansible-control' >> /home/deploy/.ssh/authorized_keys
-#   chmod 600 /home/deploy/.ssh/authorized_keys
-#   chown -R deploy:deploy /home/deploy/.ssh
+#   mkdir -p /home/devops/.ssh && chmod 700 /home/devops/.ssh
+#   echo 'ssh-ed25519 AAAA... ansible-control' >> /home/devops/.ssh/authorized_keys
+#   chmod 600 /home/devops/.ssh/authorized_keys
+#   chown -R devops:devops /home/devops/.ssh
 #
 # Verify connectivity before running Ansible:
-#   ssh -i ~/.ssh/id_ed25519_ansible deploy@192.168.0.22
+#   ssh -i ~/.ssh/id_ed25519_devops devops@192.168.0.22
 
 ssh-keygen -R 192.168.0.22
 
 on target vm:
 ---
-> /home/deploy/.ssh/authorized_keys
+> /home/devops/.ssh/authorized_keys
 
-echo 'deploy ALL=(ALL) NOPASSWD: ALL' | sudo tee /etc/sudoers.d/deploy
-sudo chmod 440 /etc/sudoers.d/deploy
+echo 'devops ALL=(ALL) NOPASSWD: ALL' | sudo tee /etc/sudoers.d/devops
+sudo chmod 440 /etc/sudoers.d/devops
 
 lsblk
 NAME                      MAJ:MIN RM SIZE RO TYPE MOUNTPOINTS
@@ -62,37 +62,37 @@ pipx install --include-deps ansible && \
 
 # SSH key — generate once, reuse across rebuilds / disaster recovery
 # Option A: Linux / WSL / macOS
-test -f ~/.ssh/id_ed25519_ansible || \
-  ssh-keygen -t ed25519 -C "ansible-control" -f ~/.ssh/id_ed25519_ansible -N ""
+test -f ~/.ssh/id_ed25519_devops || \
+  ssh-keygen -t ed25519 -C "ansible-control" -f ~/.ssh/id_ed25519_devops -N ""
 
 # Option B: Windows (PowerShell — OpenSSH built-in, Windows 10 1809+)
-# if (-not (Test-Path "$env:USERPROFILE\.ssh\id_ed25519_ansible")) {
-#   ssh-keygen -t ed25519 -C "ansible-control" -f "$env:USERPROFILE/.ssh/id_ed25519_ansible" -N '""'
+# if (-not (Test-Path "$env:USERPROFILE\.ssh\id_ed25519_devops")) {
+#   ssh-keygen -t ed25519 -C "ansible-control" -f "$env:USERPROFILE/.ssh/id_ed25519_devops" -N '""'
 # }
 
 # Backup — run once after generation; store securely (password manager, encrypted USB, vault):
-# cp ~/.ssh/id_ed25519_ansible     ~/id_ed25519_ansible.bak
-# cp ~/.ssh/id_ed25519_ansible.pub ~/id_ed25519_ansible.pub.bak
+# cp ~/.ssh/id_ed25519_devops     ~/id_ed25519_devops.bak
+# cp ~/.ssh/id_ed25519_devops.pub ~/id_ed25519_devops.pub.bak
 
 # Restore on a new / recovered control VM (avoids re-running ssh-copy-id on all targets):
 # mkdir -p ~/.ssh && chmod 700 ~/.ssh
-# cp id_ed25519_ansible     ~/.ssh/id_ed25519_ansible
-# cp id_ed25519_ansible.pub ~/.ssh/id_ed25519_ansible.pub
-# chmod 600 ~/.ssh/id_ed25519_ansible
-# chmod 644 ~/.ssh/id_ed25519_ansible.pub
+# cp id_ed25519_devops     ~/.ssh/id_ed25519_devops
+# cp id_ed25519_devops.pub ~/.ssh/id_ed25519_devops.pub
+# chmod 600 ~/.ssh/id_ed25519_devops
+# chmod 644 ~/.ssh/id_ed25519_devops.pub
 
-chmod 700 /home/deploy/.ssh && \
-chmod 600 /home/deploy/.ssh/authorized_keys && \
-chown -R deploy:deploy /home/deploy/.ssh
+chmod 700 /home/devops/.ssh && \
+chmod 600 /home/devops/.ssh/authorized_keys && \
+chown -R devops:devops /home/devops/.ssh
 
-ssh-copy-id -i ~/.ssh/id_ed25519_ansible.pub deploy@192.168.0.22
+ssh-copy-id -i ~/.ssh/id_ed25519_devops.pub devops@192.168.0.22
 
 mkdir -p ~/src && cd ~/src && \
 git clone https://github.com/florin-rotaru-md/portable-dotnet-architecture
 
 
 cat << 'EOF' > ~/src/portable-dotnet-architecture/docker/infra/ansible/inventory/group_vars/all/vault.yml
-ansible_ssh_public_key:  "{{ lookup('file', '~/.ssh/id_ed25519_ansible.pub') }}"
+ansible_ssh_public_key:  "{{ lookup('file', '~/.ssh/id_ed25519_devops.pub') }}"
 
 postgres_root_password:  "postgres"    # POSTGRES_PASSWORD for the postgres container
 postgres_password:       "postgres"    # password for postgres_user
@@ -110,7 +110,7 @@ EOF
 cat << 'EOF' > ~/src/portable-dotnet-architecture/docker/infra/ansible/inventory/group_vars/all/main.yml
 ---
 # ── Infrastructure ─────────────────────────────────────────────────────────────
-app_user:         deploy
+app_user: devops
 apps_root:        /opt/apps
 app_network_name: app_net
 health_max_attempts: 16
@@ -128,7 +128,7 @@ use_cloudflared: false
 # cloudflare_token comes from vault.yml when use_cloudflared: true
 
 # ── Ansible service account ────────────────────────────────────────────────────
-ansible_user: deploy
+ansible_user: devops
 # ansible_ssh_public_key comes from vault.yml — paste your controller's public key there
 
 # ── Firewall ───────────────────────────────────────────────────────────────────
@@ -179,10 +179,10 @@ EOF
 
 cat << 'EOF' > ~/src/portable-dotnet-architecture/docker/infra/ansible/inventory/hosts.ini
 [app]
-192.168.0.22 ansible_user=deploy ansible_private_key_file=~/.ssh/id_ed25519_ansible
+192.168.0.22 ansible_user=devops ansible_private_key_file=~/.ssh/id_ed25519_devops
 
 # Example with SSH key:
-# 1.2.3.4 ansible_user=root ansible_private_key_file=~/.ssh/id_ed25519_ansible
+# 1.2.3.4 ansible_user=root ansible_private_key_file=~/.ssh/id_ed25519_devops
 
 EOF
 
@@ -195,4 +195,4 @@ ansible-playbook playbooks/bootstrap.yml
 
 # The bootstrap playbook also performs the first deploy automatically using image_default.
 # Run deploy.sh only for later image updates, for example:
-# sudo -u deploy /opt/apps/api.waa.ro/scripts/deploy.sh ghcr.io/florin-rotaru-md/waa-server:latest
+# sudo -u devops /opt/apps/api.waa.ro/scripts/deploy.sh ghcr.io/florin-rotaru-md/waa-server:latest

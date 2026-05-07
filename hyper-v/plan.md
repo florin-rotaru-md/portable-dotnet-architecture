@@ -79,9 +79,9 @@ From `ubuntu-control`, run the first bootstrap against the app VM using either:
 - `root`, if enabled
 - or the initial Ubuntu user with `sudo`
 
-The `common` role already creates the `deploy` user and installs passwordless sudo. You do not need to hand-create `deploy` for the normal first run.
+The `common` role already creates the `devops` user and installs passwordless sudo. You do not need to hand-create `devops` for the normal first run.
 
-After bootstrap, all future runs should use the `deploy` account through the configured SSH key.
+After bootstrap, all future runs should use the `devops` account through the configured SSH key.
 
 ## Phase 6: Productive hardening
 
@@ -102,8 +102,8 @@ Practical additions worth doing early:
 
 Normal operations stay inside the app VM:
 
-- deploy: `sudo -u deploy /opt/apps/<app>/scripts/deploy.sh`
-- rollback: `sudo -u deploy /opt/apps/<app>/scripts/rollback.sh`
+- deploy: `sudo -u devops /opt/apps/<app>/scripts/deploy.sh`
+- rollback: `sudo -u devops /opt/apps/<app>/scripts/rollback.sh`
 
 Normal infrastructure changes stay inside the control VM:
 

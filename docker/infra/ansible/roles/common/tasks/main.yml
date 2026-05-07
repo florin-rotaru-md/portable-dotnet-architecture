@@ -15,21 +15,21 @@
     state: present
     update_cache: true
 
-- name: Ensure deploy group exists
+- name: Ensure app user group exists
   group:
     name: "{{ app_user }}"
     state: present
 
-- name: Ensure deploy user exists
+- name: Ensure app user exists
   user:
     name:        "{{ app_user }}"
     group:       "{{ app_user }}"
     shell:       /bin/bash
     create_home: true
 
-- name: Grant deploy passwordless sudo
+- name: Grant app user passwordless sudo
   copy:
-    dest:    /etc/sudoers.d/deploy
+    dest:    "/etc/sudoers.d/{{ app_user }}"
     content: "{{ app_user }} ALL=(ALL) NOPASSWD:ALL\n"
     owner:   root
     group:   root
