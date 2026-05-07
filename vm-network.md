@@ -19,7 +19,7 @@ Note the active interface name (for example `ens18`, `eth0`, or `enp0s3`).
 
 ## 2) Configure Netplan (Ubuntu 20.04+)
 
-Edit the Netplan file (for example `/etc/netplan/01-netcfg.yaml`):
+Edit the Netplan file (for example `/etc/netplan/00-installer-config.yaml`):
 
 ```yaml
 network:
