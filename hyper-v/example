@@ -1,0 +1,81 @@
+on windows 11 host:
+---
+# Remove stale host key after rebuilding the app VM
+ssh-keygen -R 192.168.0.21
+
+# Optional: create an external Hyper-V switch once
+# PowerShell (Run as Administrator)
+# Get-NetAdapter
+# New-VMSwitch -Name "External-LAN" -NetAdapterName "Ethernet" -AllowManagementOS $true
+
+# Optional: create VMs from PowerShell if you do not want to use Hyper-V Manager
+# New-VM -Name "ubuntu-control" -Generation 2 -MemoryStartupBytes 4GB -NewVHDPath "D:\Hyper-V\ubuntu-control.vhdx" -NewVHDSizeBytes 40GB -SwitchName "External-LAN"
+# New-VM -Name "ubuntu-app-01" -Generation 2 -MemoryStartupBytes 8GB -NewVHDPath "D:\Hyper-V\ubuntu-app-01.vhdx" -NewVHDSizeBytes 100GB -SwitchName "External-LAN"
+
+on target vm (ubuntu-app-01):
+---
+# Install SSH if missing and bring the OS current
+sudo apt update && \
+sudo apt upgrade -y && \
+sudo apt install -y openssh-server cloud-guest-utils
+
+# Optional if the virtual disk was expanded after install
+lsblk
+sudo growpart /dev/sda 3
+sudo lvextend -l +100%FREE /dev/ubuntu-vg/ubuntu-lv
+sudo resize2fs /dev/ubuntu-vg/ubuntu-lv
+
+# If you will connect as the default Ubuntu user on first bootstrap,
+# verify it has passwordless sudo or knows the sudo password.
+
+on control vm (ubuntu-control):
+---
+sudo apt update && \
+sudo apt upgrade -y && \
+sudo apt install -y git curl python3 python3-pip python3-venv pipx openssh-client && \
+mkdir -p ~/.local/bin && \
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && \
+export PATH="$HOME/.local/bin:$PATH" && \
+pipx ensurepath && \
+pipx install --include-deps ansible
+
+# SSH key for Ansible controller
+test -f ~/.ssh/id_ed25519_ansible || \
+  ssh-keygen -t ed25519 -C "ansible-control" -f ~/.ssh/id_ed25519_ansible -N ""
+
+# Copy the controller key to the initial admin account on the app VM.
+# Replace 'ubuntu' with your first user if different.
+ssh-copy-id -i ~/.ssh/id_ed25519_ansible.pub ubuntu@192.168.0.21
+
+mkdir -p ~/src && cd ~/src && \
+git clone https://github.com/florin-rotaru-md/portable-dotnet-architecture
+
+cd ~/src/portable-dotnet-architecture && \
+cp hyper-v/files/hosts.ini native/infra/ansible/inventory/hosts.ini && \
+cp hyper-v/files/main.yml native/infra/ansible/inventory/group_vars/all/main.yml && \
+cp hyper-v/files/vault.yml.example native/infra/ansible/inventory/group_vars/all/vault.yml
+
+# Edit the prepared files
+nano ~/src/portable-dotnet-architecture/native/infra/ansible/inventory/hosts.ini
+nano ~/src/portable-dotnet-architecture/native/infra/ansible/inventory/group_vars/all/main.yml
+nano ~/src/portable-dotnet-architecture/native/infra/ansible/inventory/group_vars/all/vault.yml
+
+# First bootstrap using the initial Ubuntu user.
+# If root SSH is enabled in your environment, replace -u ubuntu with -u root.
+cd ~/src/portable-dotnet-architecture/native/infra/ansible && \
+ansible-playbook playbooks/bootstrap.yml -u ubuntu --ask-become-pass
+
+# Normal path after the first run: deploy user + SSH key auth
+cd ~/src/portable-dotnet-architecture/native/infra/ansible && \
+ansible-playbook playbooks/bootstrap.yml
+
+# If vault.yml is encrypted:
+# ansible-vault encrypt inventory/group_vars/all/vault.yml
+# ansible-playbook playbooks/bootstrap.yml --ask-vault-pass
+
+# Bootstrap performs first deploy automatically for every app that has repo_url + project_path.
+# Manual deploy example:
+# sudo -u deploy /opt/apps/api.example.local/scripts/deploy.sh
+
+# Manual rollback example:
+# sudo -u deploy /opt/apps/api.example.local/scripts/rollback.sh

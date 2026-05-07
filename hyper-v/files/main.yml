@@ -1,0 +1,64 @@
+---
+# Hyper-V starter for native/ on a local or home-lab LAN.
+
+# ── Ansible service account ────────────────────────────────────────────────────
+ansible_user: deploy
+
+# ── Infrastructure ─────────────────────────────────────────────────────────────
+app_user: deploy
+apps_root: /opt/apps
+dotnet_version: "10.0"
+
+# ── Postgres ───────────────────────────────────────────────────────────────────
+postgres_version: "18"
+postgis_major_version: "3"
+postgres_user: postgres
+backup_retention_days: 7
+
+# ── Cloudflare (optional) ──────────────────────────────────────────────────────
+use_cloudflared: false
+
+# ── Firewall ───────────────────────────────────────────────────────────────────
+ufw_allowed_tcp_ports:
+  - "22"
+  - "80"
+  - "443"
+
+# ── Native multi-app mode ──────────────────────────────────────────────────────
+health_max_attempts: 16
+health_interval_seconds: 4
+
+applications:
+  - name: api.example.local
+    assembly: MyApp.Api
+    domain: api.example.local
+    port_blue: 5000
+    port_green: 5001
+    drain_seconds: 20
+    repo_url: "https://github.com/your-org/your-app.git"
+    repo_branch: "main"
+    project_path: "src/MyApp.Api/MyApp.Api.csproj"
+    # repo_token: "{{ app_repo_token }}"
+    appsettings_override:
+      ConnectionStrings:
+        Main: "Host=127.0.0.1;Port=5432;Database=myapp_main;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
+      Logging:
+        LogLevel:
+          Default: "Information"
+    env:
+      ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
+      ASPNETCORE_ENVIRONMENT: "Production"
+
+# Example second app
+#  - name: admin.example.local
+#    assembly: MyApp.Admin
+#    domain: admin.example.local
+#    port_blue: 5010
+#    port_green: 5011
+#    drain_seconds: 20
+#    repo_url: "https://github.com/your-org/your-admin-app.git"
+#    repo_branch: "main"
+#    project_path: "src/MyApp.Admin/MyApp.Admin.csproj"
+#    appsettings_override:
+#      ConnectionStrings:
+#        Main: "Host=127.0.0.1;Port=5432;Database=myapp_admin;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"

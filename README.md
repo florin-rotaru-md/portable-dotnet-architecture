@@ -13,6 +13,8 @@ when you need to.
 | [`k3s/`](k3s/)       | Horizontal scaling, GitOps, full IaC on cloud VPS | Terraform (Hetzner), Ansible, k3s, FluxCD, Helm |
 | [`k3s-proxmox/`](k3s-proxmox/) | Same as `k3s/` but on self-hosted Proxmox | Terraform (bpg/proxmox), Ansible, k3s, FluxCD, Helm |
 
+For a Windows 11 host running Ubuntu VMs on Hyper-V while keeping the `native/` runtime model, see [`hyper-v/`](hyper-v/).
+
 `native/` and `docker/` now perform the first application deploy during bootstrap when the required application source or image settings are configured. `native/` uses a multi-app `applications` definition. `k3s/` and `k3s-proxmox/` continue to deploy applications through FluxCD from Git.
 
 ## Minimal bootstrap (all setups)
