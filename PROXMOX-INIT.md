@@ -602,7 +602,7 @@ ls /mnt/usb-backup
 
 Backup
 ``` bash
-vzdump 1021 --storage usb-backup --mode snapshot
+vzdump 1021 --storage usb-backup --mode snapshot --compress zstd
 ```
 
 Restore
