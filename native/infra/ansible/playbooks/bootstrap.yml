@@ -1,7 +1,7 @@
 ---
 - name: Bootstrap native multi-app VPS (.NET)
   hosts: app
-  become: true
+  become: "{{ ansible_user != 'root' }}"
   pre_tasks:
     - name: Ensure applications are defined
       assert:

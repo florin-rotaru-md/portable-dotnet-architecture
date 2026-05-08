@@ -39,9 +39,29 @@ export PATH="$HOME/.local/bin:$PATH" && \
 pipx ensurepath && \
 pipx install --include-deps ansible
 
-# SSH key for Ansible controller
+# SSH key — generate once, reuse across rebuilds / disaster recovery
+# Option A: Linux / WSL / macOS
 test -f ~/.ssh/id_ed25519_devops || \
   ssh-keygen -t ed25519 -C "devops" -f ~/.ssh/id_ed25519_devops -N ""
+
+# Option B: Windows (PowerShell — OpenSSH built-in, Windows 10 1809+)
+# if (-not (Test-Path "$env:USERPROFILE\.ssh\id_ed25519_devops")) {
+#   ssh-keygen -t ed25519 -C "devops" -f "$env:USERPROFILE/.ssh/id_ed25519_devops" -N '""'
+# }
+
+# Backup — run once after generation; store securely (password manager, encrypted USB, vault):
+# cp ~/.ssh/id_ed25519_devops     ~/id_ed25519_devops.bak
+# cp ~/.ssh/id_ed25519_devops.pub ~/id_ed25519_devops.pub.bak
+
+# Restore on a new / recovered control VM (avoids re-running ssh-copy-id on all targets):
+#   mkdir -p /home/devops/.ssh && chmod 700 /home/devops/.ssh
+#   echo '-----BEGIN OPENSSH PRIVATE KEY...' >> /home/devops/.ssh/id_ed25519_devops
+#   echo 'ssh-ed25519 AAAA...' >> /home/devops/.ssh/id_ed25519_devops.pub
+
+chmod 600 /home/devops/.ssh/id_ed25519_devops
+chmod 644 /home/devops/.ssh/id_ed25519_devops.pub
+chown -R devops:devops /home/devops/.ssh
+
 
 # Copy the controller key to the initial admin account on the app VM.
 # Replace 'devops' with your first user if different.
@@ -57,8 +77,85 @@ cp hyper-v/files/vault.yml.example native/infra/ansible/inventory/group_vars/all
 
 # Edit the prepared files
 nano ~/src/portable-dotnet-architecture/native/infra/ansible/inventory/hosts.ini
-nano ~/src/portable-dotnet-architecture/native/infra/ansible/inventory/group_vars/all/main.yml
 nano ~/src/portable-dotnet-architecture/native/infra/ansible/inventory/group_vars/all/vault.yml
+# nano ~/src/portable-dotnet-architecture/native/infra/ansible/inventory/group_vars/all/main.yml
+
+cat << 'EOF' > ~/src/portable-dotnet-architecture/native/infra/ansible/inventory/group_vars/all/main.yml
+---
+# ── Ansible service account ────────────────────────────────────────────────────
+ansible_user: devops
+
+# ── Infrastructure ─────────────────────────────────────────────────────────────
+app_user: devops
+apps_root:    /opt/apps
+dotnet_version: "10.0"
+
+# ── Postgres ───────────────────────────────────────────────────────────────────
+postgres_version: "18"
+postgis_major_version: "3"
+postgres_user:    postgres
+backup_retention_days: 7
+
+# ── Cloudflare (optional) ──────────────────────────────────────────────────────
+use_cloudflared: false
+
+# ── Firewall ───────────────────────────────────────────────────────────────────
+ufw_allowed_tcp_ports:
+  - "22"
+  - "80"
+  - "443"
+
+# ── Native multi-app mode (recommended) ───────────────────────────────────────
+health_max_attempts: 16
+health_interval_seconds: 4
+
+applications:
+  - name:          api.waa.ro
+    assembly:      Waa.Server
+    domain:        api.waa.ro
+    port_blue:     5000
+    port_green:    5001
+    # Optional per-app override:
+    # health_max_attempts: 16
+    # health_interval_seconds: 4
+    drain_seconds: 32
+    repo_url:      "https://github.com/florin-rotaru-md/statics.git"
+    repo_branch:   "master"
+    project_path:  "Apps/Waa/Waa.Server/Waa.Server.csproj"
+    repo_token:    "{{ app_repo_token }}"
+    # ── appsettings.override.json override ────────────────────────────────
+    # This dict is rendered as appsettings.override.json and mounted
+    # read-only into the container.  .NET merges it on top of the
+    # appsettings.json baked into the image (DOTNET_ENVIRONMENT=Production).
+    # Put connection strings, secrets, and env-specific URLs here.
+    # Secrets (passwords, API keys) should reference vault.yml variables.
+    appsettings_override:
+      ConnectionStrings:
+        App:            "Host=127.0.0.1;Port=5432;Database=waa_ro_app;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
+        Users:          "Host=127.0.0.1;Port=5432;Database=waa_ro_users;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
+        DataProtection: "Host=127.0.0.1;Port=5432;Database=waa_ro_dp;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
+      # FileStorage:
+      #   BaseDirectory: "/data/files"
+      # UiClient:
+      #   Urls:
+      #     SignInWithToken: "https://www.example.com/auth/sign-in"
+    env:
+      ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
+
+#   - name:          admin.waa.ro
+#     assembly:      Waa.Admin
+#     domain:        admin.waa.ro
+#     port_blue:     5010
+#     port_green:    5011
+#     drain_seconds: 30
+#     repo_url:      "https://github.com/florin-rotaru-md/waa-server.git"
+#     repo_branch:   "master"
+#     project_path:  "src/Waa.Admin/Waa.Admin.csproj"
+#     repo_token:    "{{ app_repo_token }}"
+#     appsettings_override:
+#       ConnectionStrings:
+#         Main: "Host=127.0.0.1;Port=5432;Database=waa_ro_admin;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
+EOF
 
 # First bootstrap using the initial Ubuntu user.
 # If root SSH is enabled in your environment, replace -u ubuntu with -u root.
