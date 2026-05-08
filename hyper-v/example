@@ -41,11 +41,11 @@ pipx install --include-deps ansible
 
 # SSH key for Ansible controller
 test -f ~/.ssh/id_ed25519_devops || \
-  ssh-keygen -t ed25519 -C "ansible-control" -f ~/.ssh/id_ed25519_devops -N ""
+  ssh-keygen -t ed25519 -C "devops" -f ~/.ssh/id_ed25519_devops -N ""
 
 # Copy the controller key to the initial admin account on the app VM.
-# Replace 'ubuntu' with your first user if different.
-ssh-copy-id -i ~/.ssh/id_ed25519_devops.pub ubuntu@192.168.0.21
+# Replace 'devops' with your first user if different.
+ssh-copy-id -i ~/.ssh/id_ed25519_devops.pub devops@192.168.0.21
 
 mkdir -p ~/src && cd ~/src && \
 git clone https://github.com/florin-rotaru-md/portable-dotnet-architecture

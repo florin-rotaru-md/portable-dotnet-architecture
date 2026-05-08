@@ -89,7 +89,7 @@ The `common` role can install your controller key into that account via `ansible
 
 ```bash
 test -f ~/.ssh/id_ed25519_devops || \
-  ssh-keygen -t ed25519 -C "ansible-control" -f ~/.ssh/id_ed25519_devops -N ""
+  ssh-keygen -t ed25519 -C "devops" -f ~/.ssh/id_ed25519_devops -N ""
 ```
 
 **Copy the public key to the target VPS** (so Ansible can connect):

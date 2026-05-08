@@ -3,14 +3,14 @@ on local pc
 # ── Generate SSH key (run once; reuse across all VMs) ──────────────────────────
 # Windows (PowerShell — OpenSSH built-in, Windows 10 1809+)
 if (-not (Test-Path "$env:USERPROFILE\.ssh\id_ed25519_devops")) {
-  ssh-keygen -t ed25519 -C "ansible-control" -f "$env:USERPROFILE/.ssh/id_ed25519_devops" -N '""'
+  ssh-keygen -t ed25519 -C "devops" -f "$env:USERPROFILE/.ssh/id_ed25519_devops" -N '""'
 }
 # Print public key — copy this value; you'll need it during VM creation
 Get-Content "$env:USERPROFILE\.ssh\id_ed25519_devops.pub"
 
 # Linux / WSL / macOS
 # test -f ~/.ssh/id_ed25519_devops || \
-#   ssh-keygen -t ed25519 -C "ansible-control" -f ~/.ssh/id_ed25519_devops -N ""
+#   ssh-keygen -t ed25519 -C "devops" -f ~/.ssh/id_ed25519_devops -N ""
 # cat ~/.ssh/id_ed25519_devops.pub
 
 # ── Import the key when creating the VM ───────────────────────────────────────
@@ -63,11 +63,11 @@ pipx install --include-deps ansible && \
 # SSH key — generate once, reuse across rebuilds / disaster recovery
 # Option A: Linux / WSL / macOS
 test -f ~/.ssh/id_ed25519_devops || \
-  ssh-keygen -t ed25519 -C "ansible-control" -f ~/.ssh/id_ed25519_devops -N ""
+  ssh-keygen -t ed25519 -C "devops" -f ~/.ssh/id_ed25519_devops -N ""
 
 # Option B: Windows (PowerShell — OpenSSH built-in, Windows 10 1809+)
 # if (-not (Test-Path "$env:USERPROFILE\.ssh\id_ed25519_devops")) {
-#   ssh-keygen -t ed25519 -C "ansible-control" -f "$env:USERPROFILE/.ssh/id_ed25519_devops" -N '""'
+#   ssh-keygen -t ed25519 -C "devops" -f "$env:USERPROFILE/.ssh/id_ed25519_devops" -N '""'
 # }
 
 # Backup — run once after generation; store securely (password manager, encrypted USB, vault):

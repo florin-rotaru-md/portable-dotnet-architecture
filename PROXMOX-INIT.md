@@ -549,7 +549,7 @@ lvextend -l +100%FREE /dev/mapper/ubuntu--vg-ubuntu--lv
 ## 11. Generate SSH key on ansible-control
 On ansible-control:
 ``` bash
-test -f ~/.ssh/id_ed25519_devops || ssh-keygen -t ed25519 -C "ansible-control" -f ~/.ssh/id_ed25519_devops
+test -f ~/.ssh/id_ed25519_devops || ssh-keygen -t ed25519 -C "devops" -f ~/.ssh/id_ed25519_devops
 cat ~/.ssh/id_ed25519_devops.pub
 ```
 

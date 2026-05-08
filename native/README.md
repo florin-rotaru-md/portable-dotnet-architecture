@@ -38,13 +38,13 @@ All playbook runs connect as this user after the initial bootstrap.
 Linux / WSL / macOS:
 ```bash
 test -f ~/.ssh/id_ed25519_devops || \
-  ssh-keygen -t ed25519 -C "ansible-control" -f ~/.ssh/id_ed25519_devops -N ""
+  ssh-keygen -t ed25519 -C "devops" -f ~/.ssh/id_ed25519_devops -N ""
 ```
 
 Windows (PowerShell — OpenSSH built-in, Windows 10 1809+):
 ```powershell
 if (-not (Test-Path "$env:USERPROFILE\.ssh\id_ed25519_devops")) {
-  ssh-keygen -t ed25519 -C "ansible-control" -f "$env:USERPROFILE/.ssh/id_ed25519_devops" -N '""'
+  ssh-keygen -t ed25519 -C "devops" -f "$env:USERPROFILE/.ssh/id_ed25519_devops" -N '""'
 }
 ```
 
