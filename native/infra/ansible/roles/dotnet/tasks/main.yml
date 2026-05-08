@@ -19,7 +19,7 @@
   apt_repository:
     repo: >-
       deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft.asc]
-      https://packages.microsoft.com/ubuntu/22.04/prod
+      https://packages.microsoft.com/ubuntu/24.04/prod
       jammy main
     state:    present
     filename: microsoft-ubuntu

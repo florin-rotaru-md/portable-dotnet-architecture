@@ -28,6 +28,9 @@ sudo resize2fs /dev/ubuntu-vg/ubuntu-lv
 # If you will connect as the default Ubuntu user on first bootstrap,
 # verify it has passwordless sudo or knows the sudo password.
 
+echo 'devops ALL=(ALL) NOPASSWD: ALL' | sudo tee /etc/sudoers.d/devops
+sudo chmod 440 /etc/sudoers.d/devops
+
 on control vm (ubuntu-control):
 ---
 sudo apt update && \
