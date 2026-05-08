@@ -20,6 +20,16 @@
     repo: "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared {{ ansible_facts['distribution_release'] }} main"
     state:    present
     filename: cloudflared
+  ignore_errors: true   # fall back to generic Cloudflare repo if distro-specific repo missing
+
+- name: Add Cloudflare apt repository (fallback)
+  apt_repository:
+    repo: >-
+      deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg]
+      https://pkg.cloudflare.com/cloudflared any main
+    state:    present
+    filename: cloudflared-any
+  when: ansible_facts['distribution_release'] not in ['bookworm', 'focal', 'jammy', 'noble']
 
 - name: Install cloudflared
   apt:
