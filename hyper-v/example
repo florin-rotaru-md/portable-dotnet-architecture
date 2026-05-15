@@ -12,6 +12,26 @@ ssh-keygen -R 192.168.0.21
 # New-VM -Name "ubuntu-control" -Generation 2 -MemoryStartupBytes 4GB -NewVHDPath "D:\Hyper-V\ubuntu-control.vhdx" -NewVHDSizeBytes 40GB -SwitchName "External-LAN"
 # New-VM -Name "ubuntu-app-01" -Generation 2 -MemoryStartupBytes 8GB -NewVHDPath "D:\Hyper-V\ubuntu-app-01.vhdx" -NewVHDSizeBytes 100GB -SwitchName "External-LAN"
 
+# Optional but recommended: dedicated Postgres backup disk on a different physical drive
+# ---------------------------------------------------------------------------------------
+# Goal: keep Postgres dumps on a disk that is NOT the same physical drive as the
+# OS VHDX of ubuntu-app-01. The VM still sees a normal /dev/sdb block device.
+# Point the VHDX path below to a folder on the SECOND physical disk in the host.
+#
+# PowerShell (Run as Administrator):
+# New-Item -ItemType Directory -Force -Path "E:\Hyper-V\backups" | Out-Null
+# New-VHD -Path "E:\Hyper-V\backups\ubuntu-app-01-pgbackups.vhdx" `
+#         -SizeBytes 100GB -Dynamic
+# Add-VMHardDiskDrive -VMName "ubuntu-app-01" `
+#         -Path "E:\Hyper-V\backups\ubuntu-app-01-pgbackups.vhdx" `
+#         -ControllerType SCSI
+#
+# Notes:
+# - Use a Dynamic VHDX on a different *physical* disk than the OS VHDX.
+# - Do NOT rely on Hyper-V checkpoints as a substitute for off-host backups.
+# - For true pass-through: take the disk Offline in Disk Management first,
+#   then Add-VMHardDiskDrive with -DiskNumber instead of -Path.
+
 on target vm (ubuntu-app-01):
 ---
 # Install SSH if missing and bring the OS current
@@ -24,6 +44,13 @@ lsblk
 sudo growpart /dev/sda 3
 sudo lvextend -l +100%FREE /dev/ubuntu-vg/ubuntu-lv
 sudo resize2fs /dev/ubuntu-vg/ubuntu-lv
+
+# Optional: verify the dedicated Postgres backup disk is visible and unformatted.
+# It should appear as /dev/sdb with no partitions and an empty TYPE.
+# The ansible postgres role will mkfs.ext4 + mount it at /mnt/pgbackups and
+# add the fstab entry. Do NOT pre-format it manually.
+lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINT
+sudo blkid /dev/sdb || echo "empty, ok"
 
 # If you will connect as the default Ubuntu user on first bootstrap,
 # verify it has passwordless sudo or knows the sudo password.
@@ -99,6 +126,12 @@ postgis_major_version: "3"
 postgres_user:    postgres
 backup_retention_days: 7
 
+# ── Postgres backup disk (dedicated VHDX on a different physical drive) ───────
+# Comment these out to keep backups on the OS disk under /opt/postgres/backups.
+postgres_backup_device: /dev/sdb
+postgres_backup_mount:  /mnt/pgbackups
+postgres_backup_label:  pgbackups
+
 # ── Cloudflare (optional) ──────────────────────────────────────────────────────
 use_cloudflared: false
 
@@ -173,6 +206,21 @@ ansible-playbook playbooks/bootstrap.yml
 # ansible-vault encrypt inventory/group_vars/all/vault.yml
 # ansible-playbook playbooks/bootstrap.yml --ask-vault-pass
 
+
+# Verify the Postgres backup disk after bootstrap (only if you attached one)
+# ssh devops@192.168.0.21 '
+#   findmnt /mnt/pgbackups &&
+#   grep pgbackups /etc/fstab &&
+#   sudo -u postgres /opt/postgres/scripts/pg-backup.sh &&
+#   ls -lh /mnt/pgbackups/postgres/
+# '
+
+# Monthly restore drill (rotate this through your runbook)
+# ssh devops@192.168.0.21 '
+#   sudo -u postgres createdb restore_test &&
+#   sudo -u postgres pg_restore -d restore_test /mnt/pgbackups/postgres/<db>_<stamp>.dump &&
+#   sudo -u postgres dropdb restore_test
+# '
 # Bootstrap performs first deploy automatically for every app that has repo_url + project_path.
 # Manual deploy example:
 # sudo -u devops /opt/apps/api.example.local/scripts/deploy.sh

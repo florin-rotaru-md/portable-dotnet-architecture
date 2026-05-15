@@ -2,22 +2,39 @@
 # Nightly backup — dumps every user database individually, then cleans up old backups.
 set -euo pipefail
 
-BACKUP_DIR="/opt/postgres/backups"
+BACKUP_DIR="{{ postgres_backup_dir }}"
 RETENTION_DAYS="{{ backup_retention_days | default(7) }}"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 
-# List all non-template, non-system databases
+{% if postgres_backup_device is defined and (postgres_backup_device | length > 0) %}
+# Refuse to run if the dedicated backup disk is not mounted —
+# prevents silently filling the root filesystem.
+if ! mountpoint -q "{{ postgres_backup_mount }}"; then
+  echo "[$(date -Iseconds)] FATAL: {{ postgres_backup_mount }} is not mounted, aborting" >&2
+  exit 1
+fi
+{% endif %}
+
+mkdir -p "$BACKUP_DIR"
+
+# Globals (roles, passwords, tablespaces) — restore prerequisite.
+pg_dumpall -U postgres --globals-only | gzip > "${BACKUP_DIR}/globals_${STAMP}.sql.gz"
+chmod 600 "${BACKUP_DIR}/globals_${STAMP}.sql.gz"
+
+# Per-database custom-format dumps (parallel restore friendly).
 DATABASES=$(psql -U postgres -tAc \
   "SELECT datname FROM pg_database WHERE datistemplate = false AND datname NOT IN ('postgres')")
 
 for DB in $DATABASES; do
-  DEST="${BACKUP_DIR}/${DB}_${STAMP}.sql.gz"
+  DEST="${BACKUP_DIR}/${DB}_${STAMP}.dump"
   echo "[$(date -Iseconds)] Backing up ${DB} -> ${DEST}"
-  pg_dump -U postgres --no-owner --no-acl "$DB" | gzip > "$DEST"
+  pg_dump -U postgres -Fc --no-owner --no-acl "$DB" > "$DEST"
   chmod 600 "$DEST"
 done
 
-# Prune backups older than retention period
-find "$BACKUP_DIR" -name "*.sql.gz" -mtime +"$RETENTION_DAYS" -delete
+# Prune old artifacts.
+find "$BACKUP_DIR" -maxdepth 1 -type f \
+  \( -name '*.dump' -o -name '*.sql.gz' \) \
+  -mtime +"$RETENTION_DAYS" -delete
 
 echo "[$(date -Iseconds)] Backup complete - $(echo "$DATABASES" | wc -w) database(s)"

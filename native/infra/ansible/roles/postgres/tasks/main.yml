@@ -97,7 +97,22 @@
       - CREATE EXTENSION IF NOT EXISTS postgis
   changed_when: false
 
-- name: Ensure postgres backup directories exist
+- name: Prepare dedicated backup disk (optional)
+  include_tasks: backup_disk.yml
+  when:
+    - postgres_backup_device is defined
+    - postgres_backup_device | length > 0
+
+- name: Resolve effective backup directory
+  set_fact:
+    postgres_backup_dir: >-
+      {{
+        (postgres_backup_mount ~ '/postgres')
+        if (postgres_backup_device is defined and (postgres_backup_device | length > 0))
+        else '/opt/postgres/backups'
+      }}
+
+- name: Ensure postgres backup + scripts directories exist
   file:
     path:  "{{ item }}"
     state: directory
@@ -105,7 +120,7 @@
     group: postgres
     mode:  '0750'
   loop:
-    - /opt/postgres/backups
+    - "{{ postgres_backup_dir }}"
     - /opt/postgres/scripts
 
 - name: Install backup script
@@ -122,4 +137,4 @@
     user:   postgres
     minute: "15"
     hour:   "2"
-    job:    "/opt/postgres/scripts/pg-backup.sh >> /opt/postgres/backups/cron.log 2>&1"
+    job:    "/opt/postgres/scripts/pg-backup.sh >> {{ postgres_backup_dir }}/cron.log 2>&1"

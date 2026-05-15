@@ -1,0 +1,64 @@
+---
+# Optional: prepare a dedicated disk for Postgres backups.
+# Triggered only when postgres_backup_device is defined (e.g. /dev/sdb).
+# Idempotent: it never reformats a disk that already has a filesystem.
+
+- name: Assert backup device exists
+  stat:
+    path: "{{ postgres_backup_device }}"
+  register: backup_dev_stat
+
+- name: Fail if backup device is missing
+  fail:
+    msg: >-
+      postgres_backup_device={{ postgres_backup_device }} does not exist on
+      this host. Attach the disk in Hyper-V (or your hypervisor) before running
+      bootstrap, or unset the variable to skip the dedicated backup disk.
+  when: not backup_dev_stat.stat.exists
+
+- name: Detect existing filesystem on backup device
+  command: "blkid -o value -s TYPE {{ postgres_backup_device }}"
+  register: backup_fs
+  changed_when: false
+  failed_when: false
+
+- name: Format backup device as ext4 (only when empty)
+  command: >-
+    mkfs.ext4 -L {{ postgres_backup_label | default('pgbackups') }}
+    {{ postgres_backup_device }}
+  when: (backup_fs.stdout | default('') | trim) == ''
+
+- name: Read filesystem UUID
+  command: "blkid -o value -s UUID {{ postgres_backup_device }}"
+  register: backup_uuid
+  changed_when: false
+
+- name: Ensure backup mount point exists
+  file:
+    path:  "{{ postgres_backup_mount }}"
+    state: directory
+    owner: root
+    group: root
+    mode:  '0755'
+
+- name: Persist backup mount in /etc/fstab
+  lineinfile:
+    path:   /etc/fstab
+    regexp: "^UUID={{ backup_uuid.stdout }}\\s"
+    line: >-
+      UUID={{ backup_uuid.stdout }} {{ postgres_backup_mount }} ext4
+      defaults,nofail,x-systemd.device-timeout=10s 0 2
+    state: present
+
+- name: Mount the backup filesystem
+  command: "mount {{ postgres_backup_mount }}"
+  args:
+    creates: "{{ postgres_backup_mount }}/lost+found"
+
+- name: Ensure backup directory on the dedicated disk
+  file:
+    path:  "{{ postgres_backup_mount }}/postgres"
+    state: directory
+    owner: postgres
+    group: postgres
+    mode:  '0750'

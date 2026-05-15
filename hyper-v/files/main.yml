@@ -15,6 +15,17 @@ postgis_major_version: "3"
 postgres_user: postgres
 backup_retention_days: 7
 
+# ── Postgres backup disk (optional, recommended on Hyper-V) ───────────────────
+# Attach a second VHDX (or pass-through disk) to the app VM, pointing to a
+# different physical disk than the OS VHDX. The role will mkfs.ext4 it on first
+# run (only if empty), mount it, persist in /etc/fstab, and target it for dumps.
+# Leave these unset/commented to keep backups on the OS disk under
+# /opt/postgres/backups.
+
+#postgres_backup_device: /dev/sdb            # bare block device inside the VM
+#postgres_backup_mount:  /mnt/pgbackups      # mount target inside the VM
+#postgres_backup_label:  pgbackups           # ext4 label used at mkfs time
+
 # ── Cloudflare (optional) ──────────────────────────────────────────────────────
 use_cloudflared: false
 
