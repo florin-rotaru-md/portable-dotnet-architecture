@@ -181,3 +181,28 @@ ansible-playbook playbooks/bootstrap.yml
 # Manual rollback examples:
 # sudo -u devops /opt/apps/api.waa.ro/scripts/rollback.sh
 # sudo -u devops /opt/apps/admin.waa.ro/scripts/rollback.sh
+
+# Manual Postgres backup (any time)
+# --------------------------------
+# Run an on-demand backup outside the nightly cron schedule:
+# ssh devops@192.168.0.21 'sudo -u postgres /opt/postgres/scripts/pg-backup.sh'
+#
+# Check backup results:
+# ssh devops@192.168.0.21 'ls -lh /opt/postgres/backups/'
+#
+# Expected output (if you have databases waa_ro_app, waa_ro_users, waa_ro_dp):
+#   -rw------- 1 postgres postgres  2.3M May 16 10:45 globals_20260516-104523.sql.gz
+#   -rw------- 1 postgres postgres  15M  May 16 10:45 waa_ro_app_20260516-104523.dump
+#   -rw------- 1 postgres postgres  8.2M May 16 10:45 waa_ro_users_20260516-104523.dump
+#   -rw------- 1 postgres postgres  1.1M May 16 10:45 waa_ro_dp_20260516-104523.dump
+#   -rw-r--r-- 1 postgres postgres  42B  May 16 10:45 cron.log
+#
+# Tail the backup log:
+# ssh devops@192.168.0.21 'tail -f /opt/postgres/backups/cron.log'
+#
+# Monthly restore drill (rotate this through your runbook):
+# ssh devops@192.168.0.21 '
+#   sudo -u postgres createdb restore_test &&
+#   sudo -u postgres pg_restore -d restore_test /opt/postgres/backups/<db>_<stamp>.dump &&
+#   sudo -u postgres dropdb restore_test
+# '
