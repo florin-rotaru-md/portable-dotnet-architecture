@@ -1,7 +1,8 @@
 on windows 11 host:
 ---
-# Remove stale host key after rebuilding the app VM
+# Remove stale host keys after rebuilding VMs
 ssh-keygen -R 192.168.0.21
+ssh-keygen -R 192.168.0.22
 
 # Optional: create an external Hyper-V switch once
 # PowerShell (Run as Administrator)
@@ -9,21 +10,24 @@ ssh-keygen -R 192.168.0.21
 # New-VMSwitch -Name "External-LAN" -NetAdapterName "Ethernet" -AllowManagementOS $true
 
 # Optional: create VMs from PowerShell if you do not want to use Hyper-V Manager
-# New-VM -Name "ubuntu-control" -Generation 2 -MemoryStartupBytes 4GB -NewVHDPath "D:\Hyper-V\ubuntu-control.vhdx" -NewVHDSizeBytes 40GB -SwitchName "External-LAN"
-# New-VM -Name "ubuntu-app-01" -Generation 2 -MemoryStartupBytes 8GB -NewVHDPath "D:\Hyper-V\ubuntu-app-01.vhdx" -NewVHDSizeBytes 100GB -SwitchName "External-LAN"
+# Topology: ubuntu-control (Ansible), ubuntu-app-01 (Nginx + .NET), ubuntu-postgres (PostgreSQL)
+#
+# New-VM -Name "ubuntu-control"   -Generation 2 -MemoryStartupBytes 4GB  -NewVHDPath "D:\Hyper-V\ubuntu-control.vhdx"   -NewVHDSizeBytes 40GB  -SwitchName "External-LAN"
+# New-VM -Name "ubuntu-app-01"    -Generation 2 -MemoryStartupBytes 8GB  -NewVHDPath "D:\Hyper-V\ubuntu-app-01.vhdx"    -NewVHDSizeBytes 100GB -SwitchName "External-LAN"
+# New-VM -Name "ubuntu-postgres"  -Generation 2 -MemoryStartupBytes 4GB  -NewVHDPath "D:\Hyper-V\ubuntu-postgres.vhdx"  -NewVHDSizeBytes 60GB  -SwitchName "External-LAN"
 
 # Optional but recommended: dedicated Postgres backup disk on a different physical drive
 # ---------------------------------------------------------------------------------------
 # Goal: keep Postgres dumps on a disk that is NOT the same physical drive as the
-# OS VHDX of ubuntu-app-01. The VM still sees a normal /dev/sdb block device.
+# OS VHDX of ubuntu-postgres. The VM still sees a normal /dev/sdb block device.
 # Point the VHDX path below to a folder on the SECOND physical disk in the host.
 #
 # PowerShell (Run as Administrator):
 # New-Item -ItemType Directory -Force -Path "E:\Hyper-V\backups" | Out-Null
-# New-VHD -Path "E:\Hyper-V\backups\ubuntu-app-01-pgbackups.vhdx" `
+# New-VHD -Path "E:\Hyper-V\backups\ubuntu-postgres-pgbackups.vhdx" `
 #         -SizeBytes 100GB -Dynamic
-# Add-VMHardDiskDrive -VMName "ubuntu-app-01" `
-#         -Path "E:\Hyper-V\backups\ubuntu-app-01-pgbackups.vhdx" `
+# Add-VMHardDiskDrive -VMName "ubuntu-postgres" `
+#         -Path "E:\Hyper-V\backups\ubuntu-postgres-pgbackups.vhdx" `
 #         -ControllerType SCSI
 #
 # Notes:
@@ -32,7 +36,26 @@ ssh-keygen -R 192.168.0.21
 # - For true pass-through: take the disk Offline in Disk Management first,
 #   then Add-VMHardDiskDrive with -DiskNumber instead of -Path.
 
-on target vm (ubuntu-app-01):
+on target vm (ubuntu-app-01 — 192.168.0.21):
+---
+# Install SSH if missing and bring the OS current
+sudo apt update && \
+sudo apt upgrade -y && \
+sudo apt install -y openssh-server cloud-guest-utils
+
+# Optional if the virtual disk was expanded after install
+lsblk
+sudo growpart /dev/sda 3
+sudo lvextend -l +100%FREE /dev/ubuntu-vg/ubuntu-lv
+sudo resize2fs /dev/ubuntu-vg/ubuntu-lv
+
+# If you will connect as the default Ubuntu user on first bootstrap,
+# verify it has passwordless sudo or knows the sudo password.
+
+echo 'devops ALL=(ALL) NOPASSWD: ALL' | sudo tee /etc/sudoers.d/devops
+sudo chmod 440 /etc/sudoers.d/devops
+
+on target vm (ubuntu-postgres — 192.168.0.22):
 ---
 # Install SSH if missing and bring the OS current
 sudo apt update && \
@@ -51,9 +74,6 @@ sudo resize2fs /dev/ubuntu-vg/ubuntu-lv
 # add the fstab entry. Do NOT pre-format it manually.
 lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINT
 sudo blkid /dev/sdb || echo "empty, ok"
-
-# If you will connect as the default Ubuntu user on first bootstrap,
-# verify it has passwordless sudo or knows the sudo password.
 
 echo 'devops ALL=(ALL) NOPASSWD: ALL' | sudo tee /etc/sudoers.d/devops
 sudo chmod 440 /etc/sudoers.d/devops
@@ -93,9 +113,10 @@ chmod 644 /home/devops/.ssh/id_ed25519_devops.pub
 chown -R devops:devops /home/devops/.ssh
 
 
-# Copy the controller key to the initial admin account on the app VM.
+# Copy the controller key to the initial admin account on both VMs.
 # Replace 'devops' with your first user if different.
 ssh-copy-id -i ~/.ssh/id_ed25519_devops.pub devops@192.168.0.21
+ssh-copy-id -i ~/.ssh/id_ed25519_devops.pub devops@192.168.0.22
 
 mkdir -p ~/src && cd ~/src && \
 git clone https://github.com/florin-rotaru-md/portable-dotnet-architecture
@@ -126,7 +147,15 @@ postgis_major_version: "3"
 postgres_user:    postgres
 backup_retention_days: 7
 
+# IP that the app VM uses to reach the postgres VM (ubuntu-postgres — 192.168.0.22).
+postgres_host: "192.168.0.22"
+
+# Subnet allowed to connect to PostgreSQL over TCP.
+# The postgres role opens UFW port 5432 and adds a pg_hba.conf entry for this CIDR.
+postgres_app_cidr: "192.168.0.0/24"
+
 # ── Postgres backup disk (dedicated VHDX on a different physical drive) ───────
+# Attach the second VHDX to ubuntu-postgres (not ubuntu-app-01).
 # Comment these out to keep backups on the OS disk under /opt/postgres/backups.
 postgres_backup_device: /dev/sdb
 postgres_backup_mount:  /mnt/pgbackups
@@ -159,17 +188,11 @@ applications:
     repo_branch:   "master"
     project_path:  "Apps/Waa/Waa.Server/Waa.Server.csproj"
     repo_token:    "{{ app_repo_token }}"
-    # ── appsettings.override.json override ────────────────────────────────
-    # This dict is rendered as appsettings.override.json and mounted
-    # read-only into the container.  .NET merges it on top of the
-    # appsettings.json baked into the image (DOTNET_ENVIRONMENT=Production).
-    # Put connection strings, secrets, and env-specific URLs here.
-    # Secrets (passwords, API keys) should reference vault.yml variables.
     appsettings_override:
       ConnectionStrings:
-        App:            "Host=127.0.0.1;Port=5432;Database=waa_ro_app;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
-        Users:          "Host=127.0.0.1;Port=5432;Database=waa_ro_users;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
-        DataProtection: "Host=127.0.0.1;Port=5432;Database=waa_ro_dp;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
+        App:            "Host={{ postgres_host }};Port=5432;Database=waa_ro_app;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
+        Users:          "Host={{ postgres_host }};Port=5432;Database=waa_ro_users;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
+        DataProtection: "Host={{ postgres_host }};Port=5432;Database=waa_ro_dp;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
       # FileStorage:
       #   BaseDirectory: "/data/files"
       # UiClient:
@@ -190,10 +213,11 @@ applications:
 #     repo_token:    "{{ app_repo_token }}"
 #     appsettings_override:
 #       ConnectionStrings:
-#         Main: "Host=127.0.0.1;Port=5432;Database=waa_ro_admin;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
+#         Main: "Host={{ postgres_host }};Port=5432;Database=waa_ro_admin;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
 EOF
 
 # First bootstrap using the initial Ubuntu user.
+# Play 1 targets [postgres] (ubuntu-postgres), Play 2 targets [app] (ubuntu-app-01).
 # If root SSH is enabled in your environment, replace -u ubuntu with -u root.
 cd ~/src/portable-dotnet-architecture/native/infra/ansible && \
 ansible-playbook playbooks/bootstrap.yml -u ubuntu --ask-become-pass
@@ -208,7 +232,7 @@ ansible-playbook playbooks/bootstrap.yml
 
 
 # Verify the Postgres backup disk after bootstrap (only if you attached one)
-# ssh devops@192.168.0.21 '
+# ssh devops@192.168.0.22 '
 #   findmnt /mnt/pgbackups &&
 #   grep pgbackups /etc/fstab &&
 #   sudo -u postgres /opt/postgres/scripts/pg-backup.sh &&
@@ -218,10 +242,10 @@ ansible-playbook playbooks/bootstrap.yml
 # Manual Postgres backup (any time)
 # --------------------------------
 # Run an on-demand backup outside the nightly cron schedule:
-# ssh devops@192.168.0.21 'sudo -u postgres /opt/postgres/scripts/pg-backup.sh'
+# ssh devops@192.168.0.22 'sudo -u postgres /opt/postgres/scripts/pg-backup.sh'
 #
 # Check backup results:
-# ssh devops@192.168.0.21 'ls -lh /mnt/pgbackups/postgres/'
+# ssh devops@192.168.0.22 'ls -lh /mnt/pgbackups/postgres/'
 #
 # Expected output (if you have databases waa_ro_app, waa_ro_users, waa_ro_dp):
 #   -rw------- 1 postgres postgres  2.3M May 16 10:45 globals_20260516-104523.sql.gz
@@ -231,14 +255,15 @@ ansible-playbook playbooks/bootstrap.yml
 #   -rw-r--r-- 1 postgres postgres  42B  May 16 10:45 cron.log
 #
 # Tail the backup log:
-# ssh devops@192.168.0.21 'tail -f /mnt/pgbackups/postgres/cron.log'
+# ssh devops@192.168.0.22 'tail -f /mnt/pgbackups/postgres/cron.log'
 
 # Monthly restore drill (rotate this through your runbook)
-# ssh devops@192.168.0.21 '
+# ssh devops@192.168.0.22 '
 #   sudo -u postgres createdb restore_test &&
 #   sudo -u postgres pg_restore -d restore_test /mnt/pgbackups/postgres/<db>_<stamp>.dump &&
 #   sudo -u postgres dropdb restore_test
 # '
+
 # Bootstrap performs first deploy automatically for every app that has repo_url + project_path.
 # Manual deploy example:
 # sudo -u devops /opt/apps/api.example.local/scripts/deploy.sh

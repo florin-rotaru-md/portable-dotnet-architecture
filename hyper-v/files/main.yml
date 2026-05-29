@@ -15,8 +15,17 @@ postgis_major_version: "3"
 postgres_user: postgres
 backup_retention_days: 7
 
+# IP that the app VM uses to reach the postgres VM.
+# Update to match the static IP you assigned to ubuntu-postgres in Hyper-V.
+postgres_host: "192.168.0.22"
+
+# Subnet allowed to connect to PostgreSQL over TCP.
+# The postgres role opens UFW port 5432 and adds a pg_hba.conf entry for this CIDR.
+# Must include the app VM IP (192.168.0.21).
+postgres_app_cidr: "192.168.0.0/24"
+
 # ── Postgres backup disk (optional, recommended on Hyper-V) ───────────────────
-# Attach a second VHDX (or pass-through disk) to the app VM, pointing to a
+# Attach a second VHDX (or pass-through disk) to the postgres VM, pointing to a
 # different physical disk than the OS VHDX. The role will mkfs.ext4 it on first
 # run (only if empty), mount it, persist in /etc/fstab, and target it for dumps.
 # Leave these unset/commented to keep backups on the OS disk under
@@ -52,7 +61,7 @@ applications:
     # repo_token: "{{ app_repo_token }}"
     appsettings_override:
       ConnectionStrings:
-        Main: "Host=127.0.0.1;Port=5432;Database=myapp_main;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
+        Main: "Host={{ postgres_host }};Port=5432;Database=myapp_main;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
       Logging:
         LogLevel:
           Default: "Information"
@@ -72,4 +81,4 @@ applications:
 #    project_path: "src/MyApp.Admin/MyApp.Admin.csproj"
 #    appsettings_override:
 #      ConnectionStrings:
-#        Main: "Host=127.0.0.1;Port=5432;Database=myapp_admin;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
+#        Main: "Host={{ postgres_host }};Port=5432;Database=myapp_admin;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"

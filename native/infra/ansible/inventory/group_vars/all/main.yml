@@ -25,7 +25,7 @@ applications:
     # repo_token: "{{ app_repo_token }}"
     # appsettings_override:
     #   ConnectionStrings:
-    #     Main: "Host=127.0.0.1;Port=5432;Database=myapp_db;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
+    #     Main: "Host={{ postgres_host }};Port=5432;Database=myapp_db;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
     # env:
     #   SomeSetting__Nested__Value: "example"
 
@@ -38,6 +38,17 @@ postgis_major_version: "3"
 postgres_user:    myapp
 backup_retention_days: 7
 # postgres_password comes from vault.yml
+
+# postgres_host: IP or hostname that the app VM uses to reach PostgreSQL.
+#   - Single-VM deploy (app + postgres on same host): keep 127.0.0.1
+#   - Split-VM deploy (dedicated postgres VM):        set to the postgres VM IP
+postgres_host: "127.0.0.1"
+
+# postgres_app_cidr: CIDR allowed to connect to PostgreSQL over TCP.
+#   - Single-VM deploy: leave empty (loopback-only access)
+#   - Split-VM deploy:  set to the subnet that contains the app VM
+#     e.g. "10.0.0.0/24" for a VPS private network, "192.168.0.0/24" for LAN
+postgres_app_cidr: ""
 
 # ── Cloudflare (optional) ──────────────────────────────────────────────────────
 use_cloudflared: false

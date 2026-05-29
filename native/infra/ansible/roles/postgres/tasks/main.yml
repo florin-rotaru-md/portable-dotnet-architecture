@@ -39,6 +39,22 @@
     mode:  '0640'
   notify: restart postgresql
 
+- name: Configure PostgreSQL to accept remote connections
+  lineinfile:
+    path:   "/etc/postgresql/{{ postgres_version }}/main/postgresql.conf"
+    regexp: '^#?listen_addresses\s*='
+    line:   "listen_addresses = '*'"
+  notify: restart postgresql
+  when: postgres_app_cidr | default('') | length > 0
+
+- name: Allow PostgreSQL port through UFW from app subnet
+  ufw:
+    rule:  allow
+    port:  "5432"
+    proto: tcp
+    src:   "{{ postgres_app_cidr }}"
+  when: postgres_app_cidr | default('') | length > 0
+
 - name: Ensure PostgreSQL is enabled and started
   service:
     name:    postgresql

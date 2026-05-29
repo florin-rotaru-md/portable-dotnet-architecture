@@ -7,7 +7,8 @@ Reach the same end state as `native/`, but with Windows 11 as the host and Ubunt
 End state:
 
 - one persistent control VM for Ansible and secrets
-- one persistent app VM running PostgreSQL, Nginx, and the .NET apps
+- one persistent app VM running Nginx and the .NET apps
+- one persistent postgres VM running PostgreSQL and PostGIS
 - blue/green deploy and rollback through the existing scripts from `native/`
 
 ## Phase 1: Hyper-V host preparation
@@ -29,28 +30,34 @@ Create:
 
 - `ubuntu-control`
 - `ubuntu-app-01`
+- `ubuntu-postgres`
 
 Suggested sizing:
 
 - `ubuntu-control`: 2 vCPU, 4 GB RAM, 40 GB disk
 - `ubuntu-app-01`: 4 vCPU minimum, 8 GB RAM minimum, 80 GB disk minimum
+- `ubuntu-postgres`: 2-4 vCPU, 4-8 GB RAM, 60 GB disk minimum
 
-If PostgreSQL will hold real data volume, size storage first. Resizing later is possible, but avoid making it your normal operating path.
+If PostgreSQL will hold real data volume, size the postgres VM storage first. Resizing later is possible, but avoid making it your normal operating path. Consider attaching a second VHDX for backups on a different physical disk.
 
 ## Phase 3: Base OS setup
 
-Install Ubuntu 24.04 LTS on both VMs.
+Install Ubuntu 24.04 LTS on all three VMs.
 
-On both VMs:
+On each VM:
 
 - install OpenSSH server during setup or immediately after first boot
 - update packages
 - set hostname and timezone
-- confirm each VM can reach the other by IP
+- confirm all VMs can reach each other by IP
 
 On the app VM specifically:
 
 - if disk space is larger than the initial root filesystem, expand the root partition and filesystem before bootstrap
+
+On the postgres VM specifically:
+
+- if you attached a second VHDX for backups, verify it appears as `/dev/sdb` unformatted — the `postgres` role will format and mount it automatically
 
 ## Phase 4: Controller setup
 
@@ -61,9 +68,10 @@ On `ubuntu-control`:
 3. Clone this repository.
 4. Copy the prepared files from `hyper-v/files/` into `native/infra/ansible/inventory/`.
 5. Edit:
-   - app VM IP
-   - domain names
-   - repository URLs and project paths
+   - app VM IP (`[app]` group in `hosts.ini`)
+   - postgres VM IP (`[postgres]` group in `hosts.ini`)
+   - `postgres_host` and `postgres_app_cidr` in `main.yml`
+   - domain names, repository URLs, and project paths
    - secrets in `vault.yml`
 
 Design rule:
@@ -74,20 +82,27 @@ That keeps file permissions and Ansible lookups predictable.
 
 ## Phase 5: First bootstrap
 
-From `ubuntu-control`, run the first bootstrap against the app VM using either:
+From `ubuntu-control`, run the single bootstrap playbook. It contains two plays:
 
-- `root`, if enabled
-- or the initial Ubuntu user with `sudo`
+- **Play 1** targets `[postgres]` (`ubuntu-postgres`): installs `common` + `postgres`
+- **Play 2** targets `[app]` (`ubuntu-app-01`): installs `common` + `dotnet` + `nginx` + `app`
 
-The `common` role already creates the `devops` user and installs passwordless sudo. You do not need to hand-create `devops` for the normal first run.
+Run as either `root` (if enabled) or the initial Ubuntu user with `sudo`:
 
-After bootstrap, all future runs should use the `devops` account through the configured SSH key.
+```bash
+cd ~/src/portable-dotnet-architecture/native/infra/ansible
+ansible-playbook playbooks/bootstrap.yml -u ubuntu --ask-become-pass
+```
+
+The `common` role creates the `devops` user and installs passwordless sudo on both VMs. You do not need to hand-create `devops` before running.
+
+After bootstrap, all future runs use the `devops` account through the configured SSH key.
 
 ## Phase 6: Productive hardening
 
 Before exposing traffic, confirm:
 
-- PostgreSQL backups are created and exported off the Hyper-V host
+- PostgreSQL backups are created on `ubuntu-postgres` and exported off the Hyper-V host
 - your domain resolves correctly or Cloudflare Tunnel is active
 - app readiness endpoint returns `200`
 - rollback works on a test deploy
@@ -100,10 +115,14 @@ Practical additions worth doing early:
 
 ## Phase 7: Operations model
 
-Normal operations stay inside the app VM:
+Normal app operations stay inside the app VM:
 
 - deploy: `sudo -u devops /opt/apps/<app>/scripts/deploy.sh`
 - rollback: `sudo -u devops /opt/apps/<app>/scripts/rollback.sh`
+
+Normal database operations stay inside the postgres VM:
+
+- manual backup: `sudo -u postgres /opt/postgres/scripts/pg-backup.sh`
 
 Normal infrastructure changes stay inside the control VM:
 

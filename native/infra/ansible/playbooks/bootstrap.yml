@@ -1,4 +1,13 @@
 ---
+# ── Play 1: Bootstrap postgres VM ──────────────────────────────────────────────
+- name: Bootstrap postgres VM
+  hosts: postgres
+  become: "{{ ansible_user != 'root' }}"
+  roles:
+    - common
+    - postgres
+
+# ── Play 2: Bootstrap app VM (.NET + Nginx) ─────────────────────────────────────
 - name: Bootstrap native multi-app VPS (.NET)
   hosts: app
   become: "{{ ansible_user != 'root' }}"
@@ -60,7 +69,6 @@
   roles:
     - common
     - dotnet
-    - postgres
     - nginx
     - app
     - role: cloudflared

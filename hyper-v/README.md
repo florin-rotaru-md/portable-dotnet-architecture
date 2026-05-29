@@ -11,20 +11,22 @@ This folder gives you:
 
 ## Recommended topology
 
-Use two Ubuntu 24.04 LTS VMs:
+Use three Ubuntu 24.04 LTS VMs:
 
 | VM | Purpose | Suggested size |
 |----|---------|----------------|
 | `ubuntu-control` | Ansible controller, repo checkout, SSH keys, vault files | 2 vCPU, 4 GB RAM, 40 GB disk |
-| `ubuntu-app-01` | Nginx, PostgreSQL, .NET runtime, blue/green app slots | 4-8 vCPU, 8-16 GB RAM, 80+ GB disk |
+| `ubuntu-app-01` | Nginx + .NET runtime, blue/green app slots | 4-8 vCPU, 8-16 GB RAM, 80+ GB disk |
+| `ubuntu-postgres` | PostgreSQL + PostGIS, nightly backups | 2-4 vCPU, 4-8 GB RAM, 60+ GB disk |
 
-Why two VMs:
+Why three VMs:
 
-- the controller survives app VM rebuilds
+- the controller survives app and database rebuilds
 - SSH keys and vault material stay isolated from the runtime host
+- PostgreSQL on a dedicated VM allows independent scaling and backup disk placement
 - Ansible matches the flow already documented in `native/`
 
-If you want the smallest possible lab, you can run everything in a single Ubuntu VM and target `127.0.0.1` or the VM IP. For anything even mildly production-like, keep the controller separate.
+If you want the smallest possible lab, you can point both `[app]` and `[postgres]` inventory groups at the same VM IP. For anything even mildly production-like, keep at least the database separate.
 
 ## Networking recommendation
 
@@ -39,15 +41,16 @@ Suggested addressing example:
 - Windows host: `192.168.0.10`
 - `ubuntu-control`: `192.168.0.20`
 - `ubuntu-app-01`: `192.168.0.21`
+- `ubuntu-postgres`: `192.168.0.22`
 
 ## Fast path
 
-1. Create the VMs and attach both to the same External vSwitch.
-2. Install Ubuntu 24.04 LTS on both.
+1. Create all three VMs and attach them to the same External vSwitch.
+2. Install Ubuntu 24.04 LTS on all three.
 3. In `ubuntu-control`, install Ansible and clone this repository.
 4. Copy the files from `hyper-v/files/` into `native/infra/ansible/inventory/`.
 5. Adjust IPs, domains, repository URLs, and secrets.
-6. Run the first bootstrap from `ubuntu-control` against `ubuntu-app-01`.
+6. Run the first bootstrap from `ubuntu-control` — Play 1 targets `ubuntu-postgres`, Play 2 targets `ubuntu-app-01`.
 
 ## Files in this folder
 
