@@ -11,14 +11,14 @@ This folder gives you:
 
 ## Recommended topology
 
-Use four Ubuntu 24.04 LTS VMs:
+Use four Ubuntu 24.04 LTS VMs (naming pattern: `{name}-{distribution}`):
 
 | VM | Purpose | Suggested size |
 |----|---------|----------------|
-| `ubuntu-control` | Ansible controller, repo checkout, SSH keys, vault files | 2 vCPU, 4 GB RAM, 40 GB disk |
-| `ubuntu-app-01` | Nginx + .NET runtime, blue/green app slots | 4-8 vCPU, 8-16 GB RAM, 80+ GB disk |
-| `ubuntu-postgres` | PostgreSQL + PostGIS, nightly backups | 2-4 vCPU, 4-8 GB RAM, 60+ GB disk |
-| `ubuntu-monitoring` | Docker host for Loki + Grafana | 2 vCPU, 4 GB RAM, 40+ GB disk |
+| `control-ubuntu` | Ansible controller, repo checkout, SSH keys, vault files | 2 vCPU, 4 GB RAM, 40 GB disk |
+| `app-ubuntu` | Nginx + .NET runtime, blue/green app slots | 4-8 vCPU, 8-16 GB RAM, 80+ GB disk |
+| `postgres-ubuntu` | PostgreSQL + PostGIS, nightly backups | 2-4 vCPU, 4-8 GB RAM, 60+ GB disk |
+| `monitoring-ubuntu` | Docker host for Loki + Grafana | 2 vCPU, 4 GB RAM, 40+ GB disk |
 
 Why four VMs:
 
@@ -41,19 +41,19 @@ Prefer an External Hyper-V vSwitch.
 Suggested addressing example:
 
 - Windows host: `192.168.0.10`
-- `ubuntu-control`: `192.168.0.20`
-- `ubuntu-app-01`: `192.168.0.21`
-- `ubuntu-postgres`: `192.168.0.22`
-- `ubuntu-monitoring`: `192.168.0.23`
+- `control-ubuntu`: `192.168.0.20`
+- `app-ubuntu`: `192.168.0.21`
+- `postgres-ubuntu`: `192.168.0.22`
+- `monitoring-ubuntu`: `192.168.0.23`
 
 ## Fast path
 
 1. Create all four VMs and attach them to the same External vSwitch.
 2. Install Ubuntu 24.04 LTS on all four.
-3. In `ubuntu-control`, install Ansible and clone this repository.
+3. In `control-ubuntu`, install Ansible and clone this repository.
 4. Copy the files from `hyper-v/files/` into `native/infra/ansible/inventory/`.
 5. Adjust IPs, domains, repository URLs, and secrets.
-6. Run the first bootstrap from `ubuntu-control` — Play 1 targets `ubuntu-postgres`, Play 2 targets `ubuntu-app-01`, Play 3 targets `ubuntu-monitoring`.
+6. Run the first bootstrap from `control-ubuntu` — Play 1 targets `postgres-ubuntu`, Play 2 targets `app-ubuntu`, Play 3 targets `monitoring-ubuntu`.
 
 ## Files in this folder
 
@@ -65,7 +65,7 @@ Suggested addressing example:
 
 ## Copy targets
 
-Use these copy targets inside the repo checkout on `ubuntu-control`:
+Use these copy targets inside the repo checkout on `control-ubuntu`:
 
 - `hyper-v/files/hosts.ini` -> `native/infra/ansible/inventory/hosts.ini`
 - `hyper-v/files/main.yml` -> `native/infra/ansible/inventory/group_vars/all/main.yml`

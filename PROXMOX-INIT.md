@@ -439,12 +439,12 @@ umount /mnt/usb-backup
 sync
 ```
 
-## 8. Create VM1010 ansible-control
+## 8. Create VM1010 control-ubuntu
 Datacenter -> proxmox -> 9000 (ubuntu-template)
     right click -> clone
         Target Node     : proxmox
         VM ID           : 1010
-        Name            : ansible-control
+        Name            : control-ubuntu
         Mode            : Full Clone
         Target Storage  : nvme2-thin
 
@@ -475,12 +475,12 @@ ansible --version
 python3 --version
 ```
 
-## 9. Create VM1021 app-20
+## 9. Create VM1021 app-ubuntu
 Datacenter -> proxmox -> 9000 (ubuntu-template)
     right click -> clone
         Target Node     : proxmox
         VM ID           : 1020
-        Name            : app-20
+        Name            : app-ubuntu
         Mode            : Full Clone
         Target Storage  : nvme2-thin
 
@@ -494,12 +494,12 @@ Datacenter -> proxmox -> 1020 -> Cloud-init
     IPv4/CIDR   : 192.168.0.20/24
     Gateway     : 192.168.0.1
 
-## 10. Create VM1030 db-30
+## 10. Create VM1030 postgres-ubuntu
 Datacenter -> proxmox -> 9000 (ubuntu-template)
     right click -> clone
         Target Node     : proxmox
         VM ID           : 1030
-        Name            : db-30
+        Name            : postgres-ubuntu
         Mode            : Full Clone
         Target Storage  : nvme2-thin
 
@@ -546,8 +546,8 @@ pvresize /dev/sda3 && \
 lvextend -l +100%FREE /dev/mapper/ubuntu--vg-ubuntu--lv
 ```
 
-## 11. Generate SSH key on ansible-control
-On ansible-control:
+## 11. Generate SSH key on control-ubuntu
+On control-ubuntu:
 ``` bash
 test -f ~/.ssh/id_ed25519_devops || ssh-keygen -t ed25519 -C "devops" -f ~/.ssh/id_ed25519_devops
 cat ~/.ssh/id_ed25519_devops.pub

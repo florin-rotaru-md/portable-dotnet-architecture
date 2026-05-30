@@ -11,26 +11,26 @@ ssh-keygen -R 192.168.0.23
 # New-VMSwitch -Name "External-LAN" -NetAdapterName "Ethernet" -AllowManagementOS $true
 
 # Optional: create VMs from PowerShell if you do not want to use Hyper-V Manager
-# Topology: ubuntu-control (Ansible), ubuntu-app-01 (Nginx + .NET),
-#           ubuntu-postgres (PostgreSQL), ubuntu-monitoring (Docker: Loki + Grafana)
+# Topology: control-ubuntu (Ansible), app-ubuntu (Nginx + .NET),
+#           postgres-ubuntu (PostgreSQL), monitoring-ubuntu (Docker: Loki + Grafana)
 #
-# New-VM -Name "ubuntu-control"   -Generation 2 -MemoryStartupBytes 4GB  -NewVHDPath "D:\Hyper-V\ubuntu-control.vhdx"   -NewVHDSizeBytes 40GB  -SwitchName "External-LAN"
-# New-VM -Name "ubuntu-app-01"    -Generation 2 -MemoryStartupBytes 8GB  -NewVHDPath "D:\Hyper-V\ubuntu-app-01.vhdx"    -NewVHDSizeBytes 100GB -SwitchName "External-LAN"
-# New-VM -Name "ubuntu-postgres"  -Generation 2 -MemoryStartupBytes 4GB  -NewVHDPath "D:\Hyper-V\ubuntu-postgres.vhdx"  -NewVHDSizeBytes 60GB  -SwitchName "External-LAN"
-# New-VM -Name "ubuntu-monitoring" -Generation 2 -MemoryStartupBytes 4GB  -NewVHDPath "D:\Hyper-V\ubuntu-monitoring.vhdx" -NewVHDSizeBytes 40GB  -SwitchName "External-LAN"
+# New-VM -Name "control-ubuntu"    -Generation 2 -MemoryStartupBytes 4GB  -NewVHDPath "D:\Hyper-V\control-ubuntu.vhdx"    -NewVHDSizeBytes 40GB  -SwitchName "External-LAN"
+# New-VM -Name "app-ubuntu"        -Generation 2 -MemoryStartupBytes 8GB  -NewVHDPath "D:\Hyper-V\app-ubuntu.vhdx"        -NewVHDSizeBytes 100GB -SwitchName "External-LAN"
+# New-VM -Name "postgres-ubuntu"   -Generation 2 -MemoryStartupBytes 4GB  -NewVHDPath "D:\Hyper-V\postgres-ubuntu.vhdx"   -NewVHDSizeBytes 60GB  -SwitchName "External-LAN"
+# New-VM -Name "monitoring-ubuntu" -Generation 2 -MemoryStartupBytes 4GB  -NewVHDPath "D:\Hyper-V\monitoring-ubuntu.vhdx" -NewVHDSizeBytes 40GB  -SwitchName "External-LAN"
 
 # Optional but recommended: dedicated Postgres backup disk on a different physical drive
 # ---------------------------------------------------------------------------------------
 # Goal: keep Postgres dumps on a disk that is NOT the same physical drive as the
-# OS VHDX of ubuntu-postgres. The VM still sees a normal /dev/sdb block device.
+# OS VHDX of postgres-ubuntu. The VM still sees a normal /dev/sdb block device.
 # Point the VHDX path below to a folder on the SECOND physical disk in the host.
 #
 # PowerShell (Run as Administrator):
 # New-Item -ItemType Directory -Force -Path "E:\Hyper-V\backups" | Out-Null
-# New-VHD -Path "E:\Hyper-V\backups\ubuntu-postgres-pgbackups.vhdx" `
+# New-VHD -Path "E:\Hyper-V\backups\postgres-ubuntu-pgbackups.vhdx" `
 #         -SizeBytes 100GB -Dynamic
-# Add-VMHardDiskDrive -VMName "ubuntu-postgres" `
-#         -Path "E:\Hyper-V\backups\ubuntu-postgres-pgbackups.vhdx" `
+# Add-VMHardDiskDrive -VMName "postgres-ubuntu" `
+#         -Path "E:\Hyper-V\backups\postgres-ubuntu-pgbackups.vhdx" `
 #         -ControllerType SCSI
 #
 # Notes:
@@ -39,7 +39,7 @@ ssh-keygen -R 192.168.0.23
 # - For true pass-through: take the disk Offline in Disk Management first,
 #   then Add-VMHardDiskDrive with -DiskNumber instead of -Path.
 
-on target vm (ubuntu-app-01 — 192.168.0.21):
+on target vm (app-ubuntu — 192.168.0.21):
 ---
 # Install SSH if missing and bring the OS current
 sudo apt update && \
@@ -58,7 +58,7 @@ sudo resize2fs /dev/ubuntu-vg/ubuntu-lv
 echo 'devops ALL=(ALL) NOPASSWD: ALL' | sudo tee /etc/sudoers.d/devops
 sudo chmod 440 /etc/sudoers.d/devops
 
-on target vm (ubuntu-postgres — 192.168.0.22):
+on target vm (postgres-ubuntu — 192.168.0.22):
 ---
 # Install SSH if missing and bring the OS current
 sudo apt update && \
@@ -81,7 +81,7 @@ sudo blkid /dev/sdb || echo "empty, ok"
 echo 'devops ALL=(ALL) NOPASSWD: ALL' | sudo tee /etc/sudoers.d/devops
 sudo chmod 440 /etc/sudoers.d/devops
 
-on target vm (ubuntu-monitoring — 192.168.0.23):
+on target vm (monitoring-ubuntu — 192.168.0.23):
 ---
 # Install SSH if missing and bring the OS current
 sudo apt update && \
@@ -91,7 +91,7 @@ sudo apt install -y openssh-server
 echo 'devops ALL=(ALL) NOPASSWD: ALL' | sudo tee /etc/sudoers.d/devops
 sudo chmod 440 /etc/sudoers.d/devops
 
-on control vm (ubuntu-control):
+on control vm (control-ubuntu):
 ---
 sudo apt update && \
 sudo apt upgrade -y && \
@@ -161,7 +161,7 @@ postgis_major_version: "3"
 postgres_user:    postgres
 backup_retention_days: 7
 
-# IP that the app VM uses to reach the postgres VM (ubuntu-postgres — 192.168.0.22).
+# IP that the app VM uses to reach the postgres VM (postgres-ubuntu — 192.168.0.22).
 postgres_host: "192.168.0.22"
 
 # Subnet allowed to connect to PostgreSQL over TCP.
@@ -169,7 +169,7 @@ postgres_host: "192.168.0.22"
 postgres_app_cidr: "192.168.0.0/24"
 
 # ── Postgres backup disk (dedicated VHDX on a different physical drive) ───────
-# Attach the second VHDX to ubuntu-postgres (not ubuntu-app-01).
+# Attach the second VHDX to postgres-ubuntu (not app-ubuntu).
 # Comment these out to keep backups on the OS disk under /opt/postgres/backups.
 postgres_backup_device: /dev/sdb
 postgres_backup_mount:  /mnt/pgbackups
@@ -242,7 +242,7 @@ applications:
 EOF
 
 # First bootstrap using the initial Ubuntu user.
-# Play 1 targets [postgres] (ubuntu-postgres), Play 2 targets [app] (ubuntu-app-01).
+# Play 1 targets [postgres] (postgres-ubuntu), Play 2 targets [app] (app-ubuntu).
 # If root SSH is enabled in your environment, replace -u ubuntu with -u root.
 cd ~/src/portable-dotnet-architecture/native/infra/ansible && \
 ansible-playbook playbooks/bootstrap.yml -u ubuntu --ask-become-pass
@@ -268,7 +268,7 @@ ansible-playbook playbooks/bootstrap.yml -u ubuntu --ask-become-pass --limit app
 # ansible-vault encrypt inventory/group_vars/all/vault.yml
 # ansible-playbook playbooks/bootstrap.yml --ask-vault-pass
 
-# Validate monitoring stack (on ubuntu-monitoring)
+# Validate monitoring stack (on monitoring-ubuntu)
 # ssh devops@192.168.0.23 'cd /opt/monitoring && sudo docker compose ps'
 # ssh devops@192.168.0.23 'curl -fsS http://127.0.0.1:3100/ready && echo'
 # ssh devops@192.168.0.23 'curl -I http://127.0.0.1:3000/login | head -n 1'

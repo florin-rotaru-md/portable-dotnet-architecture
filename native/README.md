@@ -82,7 +82,7 @@ vim inventory/group_vars/all/vault.yml
 ```
 
 ```yaml
-ansible_ssh_public_key: "ssh-ed25519 AAAA...  ansible-control"
+ansible_ssh_public_key: "ssh-ed25519 AAAA...  control-ubuntu"
 # or use an Ansible lookup ansible_ssh_public_key: "{{ lookup('file', '~/.ssh/id_ed25519_devops.pub') }}"
 ```
 
@@ -109,24 +109,24 @@ vim inventory/group_vars/all/vault.yml
 
 Key variables in `inventory/group_vars/all/main.yml`:
 
-| Variable          | Description                                 |
-|-------------------|---------------------------------------------|
-| `applications`    | List of native apps (required)              |
-| `name`            | App identifier (systemd/nginx/runtime paths) |
-| `assembly`        | .NET assembly name (DLL without extension)  |
-| `domain`          | Nginx `server_name`                         |
-| `port_blue`       | Port for blue slot                          |
-| `port_green`      | Port for green slot                         |
-| `drain_seconds`   | Nginx drain before stopping old slot        |
-| `repo_url`        | Git repo URL used for initial deploy        |
-| `project_path`    | Path to the `.csproj` used for first deploy |
-| `appsettings_override` | Per-app `appsettings.override.json` merge values |
-| `use_cloudflared` | `true` to install Cloudflare Tunnel         |
-| `use_loki_grafana` | `true` to install Dockerized Loki + Grafana |
-| `monitoring_target` | `app` (default) or `monitoring` (`[monitoring]` host group) |
-| `monitoring_bind_address` | Bind IP for Loki/Grafana ports (`127.0.0.1` by default) |
-| `grafana_port` | Host port for Grafana (default `3000`) |
-| `loki_port` | Host port for Loki API (default `3100`) |
+| Variable                  | Description                                 
+|---------------------------|---------------------------------------------
+| `applications`            | List of native apps (required)
+| `name`                    | App identifier (systemd/nginx/runtime paths)
+| `assembly`                | .NET assembly name (DLL without extension)
+| `domain`                  | Nginx `server_name`
+| `port_blue`               | Port for blue slot
+| `port_green`              | Port for green slot
+| `drain_seconds`           | Nginx drain before stopping old slot
+| `repo_url`                | Git repo URL used for initial deploy
+| `project_path`            | Path to the `.csproj` used for first deploy
+| `appsettings_override`    | Per-app `appsettings.override.json` merge values
+| `use_cloudflared`         | `true` to install Cloudflare Tunnel
+| `use_loki_grafana`        | `true` to install Dockerized Loki + Grafana
+| `monitoring_target`       | `app` (default) or `monitoring` (`[monitoring]` host group)
+| `monitoring_bind_address` | Bind IP for Loki/Grafana ports (`127.0.0.1` by default)
+| `grafana_port`            | Host port for Grafana (default `3000`)
+| `loki_port`               | Host port for Loki API (default `3100`)
 
 `applications` example:
 

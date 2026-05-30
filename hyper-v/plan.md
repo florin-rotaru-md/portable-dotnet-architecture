@@ -29,17 +29,17 @@ Recommended Windows-side decisions:
 
 Create:
 
-- `ubuntu-control`
-- `ubuntu-app-01`
-- `ubuntu-postgres`
-- `ubuntu-monitoring`
+- `control-ubuntu`
+- `app-ubuntu`
+- `postgres-ubuntu`
+- `monitoring-ubuntu`
 
 Suggested sizing:
 
-- `ubuntu-control`: 2 vCPU, 4 GB RAM, 40 GB disk
-- `ubuntu-app-01`: 4 vCPU minimum, 8 GB RAM minimum, 80 GB disk minimum
-- `ubuntu-postgres`: 2-4 vCPU, 4-8 GB RAM, 60 GB disk minimum
-- `ubuntu-monitoring`: 2 vCPU, 4 GB RAM, 40 GB disk minimum
+- `control-ubuntu`: 2 vCPU, 4 GB RAM, 40 GB disk
+- `app-ubuntu`: 4 vCPU minimum, 8 GB RAM minimum, 80 GB disk minimum
+- `postgres-ubuntu`: 2-4 vCPU, 4-8 GB RAM, 60 GB disk minimum
+- `monitoring-ubuntu`: 2 vCPU, 4 GB RAM, 40 GB disk minimum
 
 If PostgreSQL will hold real data volume, size the postgres VM storage first. Resizing later is possible, but avoid making it your normal operating path. Consider attaching a second VHDX for backups on a different physical disk.
 
@@ -64,7 +64,7 @@ On the postgres VM specifically:
 
 ## Phase 4: Controller setup
 
-On `ubuntu-control`:
+On `control-ubuntu`:
 
 1. Install Ansible and Git.
 2. Generate or restore the dedicated SSH key used for Ansible.
@@ -79,16 +79,16 @@ On `ubuntu-control`:
 
 Design rule:
 
-- generate and keep the Ansible SSH key inside `ubuntu-control`, not on Windows
+- generate and keep the Ansible SSH key inside `control-ubuntu`, not on Windows
 
 That keeps file permissions and Ansible lookups predictable.
 
 ## Phase 5: First bootstrap
 
-From `ubuntu-control`, run the single bootstrap playbook. It contains two plays:
+From `control-ubuntu`, run the single bootstrap playbook. It contains two plays:
 
-- **Play 1** targets `[postgres]` (`ubuntu-postgres`): installs `common` + `postgres`
-- **Play 2** targets `[app]` (`ubuntu-app-01`): installs `common` + `dotnet` + `nginx` + `app`
+- **Play 1** targets `[postgres]` (`postgres-ubuntu`): installs `common` + `postgres`
+- **Play 2** targets `[app]` (`app-ubuntu`): installs `common` + `dotnet` + `nginx` + `app`
 
 Run as either `root` (if enabled) or the initial Ubuntu user with `sudo`:
 
@@ -101,9 +101,9 @@ The `common` role creates the `devops` user and installs passwordless sudo on ta
 
 Play behavior:
 
-- Play 1 targets `[postgres]` (`ubuntu-postgres`)
-- Play 2 targets `[app]` (`ubuntu-app-01`)
-- Play 3 targets `[monitoring]` (`ubuntu-monitoring`) when `use_loki_grafana: true` and `monitoring_target: monitoring`
+- Play 1 targets `[postgres]` (`postgres-ubuntu`)
+- Play 2 targets `[app]` (`app-ubuntu`)
+- Play 3 targets `[monitoring]` (`monitoring-ubuntu`) when `use_loki_grafana: true` and `monitoring_target: monitoring`
 
 After bootstrap, all future runs use the `devops` account through the configured SSH key.
 
@@ -111,7 +111,7 @@ After bootstrap, all future runs use the `devops` account through the configured
 
 Before exposing traffic, confirm:
 
-- PostgreSQL backups are created on `ubuntu-postgres` and exported off the Hyper-V host
+- PostgreSQL backups are created on `postgres-ubuntu` and exported off the Hyper-V host
 - your domain resolves correctly or Cloudflare Tunnel is active
 - app readiness endpoint returns `200`
 - rollback works on a test deploy

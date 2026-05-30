@@ -16,7 +16,7 @@ postgres_user: postgres
 backup_retention_days: 7
 
 # IP that the app VM uses to reach the postgres VM.
-# Update to match the static IP you assigned to ubuntu-postgres in Hyper-V.
+# Update to match the static IP you assigned to postgres-ubuntu in Hyper-V.
 postgres_host: "192.168.0.22"
 
 # Subnet allowed to connect to PostgreSQL over TCP.

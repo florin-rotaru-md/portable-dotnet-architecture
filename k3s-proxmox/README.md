@@ -115,7 +115,7 @@ ssh-copy-id -i ~/.ssh/id_ed25519_devops.pub root@<vps-ip>
 **2. Add the public key to `vault.yml`:**
 
 ```yaml
-ansible_ssh_public_key: "ssh-ed25519 AAAA...  ansible-control"
+ansible_ssh_public_key: "ssh-ed25519 AAAA...  control-ubuntu"
 # or use a Ansible lookup: "{{ lookup('file', '~/.ssh/id_ed25519_devops.pub') }}"
 ```
 
