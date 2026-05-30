@@ -1,0 +1,67 @@
+---
+- name: Validate required Grafana admin password
+  assert:
+    that:
+      - grafana_admin_password is defined
+      - grafana_admin_password | string | trim | length >= 12
+    fail_msg: >-
+      Define grafana_admin_password in inventory/group_vars/all/vault.yml before
+      enabling use_loki_grafana. Use at least 12 characters.
+  no_log: true
+
+- name: Install Docker runtime for optional monitoring stack
+  apt:
+    name:
+      - docker.io
+      - docker-compose-v2
+    state: present
+    update_cache: true
+
+- name: Ensure Docker service is enabled and started
+  service:
+    name: docker
+    enabled: true
+    state: started
+
+- name: Create monitoring directories
+  file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner | default(app_user) }}"
+    group: "{{ item.group | default(app_user) }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "{{ monitoring_root }}", mode: "0755" }
+    - { path: "{{ monitoring_root }}/loki", mode: "0755" }
+    - { path: "{{ monitoring_root }}/loki/data", mode: "0755" }
+    - { path: "{{ monitoring_root }}/grafana", mode: "0755" }
+    - { path: "{{ monitoring_root }}/grafana/data", mode: "0750", owner: "472", group: "472" }
+
+- name: Render Loki configuration
+  template:
+    src: loki-config.yml.j2
+    dest: "{{ monitoring_root }}/loki/config.yml"
+    owner: "{{ app_user }}"
+    group: "{{ app_user }}"
+    mode: "0644"
+  notify: restart monitoring stack
+
+- name: Render monitoring compose file
+  template:
+    src: docker-compose.monitoring.yml.j2
+    dest: "{{ monitoring_root }}/docker-compose.yml"
+    owner: "{{ app_user }}"
+    group: "{{ app_user }}"
+    mode: "0640"
+  notify: restart monitoring stack
+
+- name: Bring monitoring stack online
+  command: docker compose up -d
+  args:
+    chdir: "{{ monitoring_root }}"
+  register: monitoring_up
+  changed_when: >-
+    'Creating' in monitoring_up.stdout or
+    'Recreating' in monitoring_up.stdout or
+    'Pulling' in monitoring_up.stdout or
+    'Starting' in monitoring_up.stdout

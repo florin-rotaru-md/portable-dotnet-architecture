@@ -38,6 +38,20 @@ postgres_app_cidr: "192.168.0.0/24"
 # ── Cloudflare (optional) ──────────────────────────────────────────────────────
 use_cloudflared: false
 
+# ── Loki + Grafana (optional, Docker on dedicated VM) ────────────────────────
+use_loki_grafana: true
+# Where to run Loki/Grafana:
+#   app        = install on the app host (default, single-VM style)
+#   monitoring = install on hosts in [monitoring] group (dedicated VM)
+monitoring_target: monitoring
+monitoring_root: /opt/monitoring
+monitoring_bind_address: "127.0.0.1"
+loki_image: "grafana/loki:3.0.0"
+grafana_image: "grafana/grafana:11.1.4"
+grafana_port: 3000
+loki_port: 3100
+grafana_admin_user: admin
+
 # ── Firewall ───────────────────────────────────────────────────────────────────
 ufw_allowed_tcp_ports:
   - "22"

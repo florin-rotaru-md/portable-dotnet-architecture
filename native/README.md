@@ -1,7 +1,8 @@
 # Setup 1 — Native .NET multi-app on a VPS
 
-Single Ubuntu VPS. No Docker. Applications are compiled and run directly as systemd services.
+Single Ubuntu VPS. Applications are compiled and run directly as systemd services.
 Blue/green deployment via source build (`dotnet publish`) and Nginx upstream swap.
+Optionally, Loki + Grafana can run in Docker for logs and dashboards.
 
 ## What gets installed
 
@@ -10,6 +11,9 @@ Blue/green deployment via source build (`dotnet publish`) and Nginx upstream swa
 | .NET SDK   | Microsoft apt    |
 | PostgreSQL | PGDG apt         |
 | Nginx      | Ubuntu apt       |
+| Docker     | Ubuntu apt *(only when Loki/Grafana is enabled)* |
+| Loki       | Docker container *(optional)* |
+| Grafana    | Docker container *(optional)* |
 | cloudflared| Cloudflare apt *(optional)* |
 
 ## Minimal bootstrap commands
@@ -99,6 +103,7 @@ vim inventory/group_vars/all/vault.yml
 # required values:
 # postgres_password: "replace-me"
 # cloudflare_token: "replace-me"   # only when use_cloudflared: true
+# grafana_admin_password: "replace-me"   # only when use_loki_grafana: true
 # Optionally encrypt: ansible-vault encrypt inventory/group_vars/all/vault.yml
 ```
 
@@ -117,6 +122,11 @@ Key variables in `inventory/group_vars/all/main.yml`:
 | `project_path`    | Path to the `.csproj` used for first deploy |
 | `appsettings_override` | Per-app `appsettings.override.json` merge values |
 | `use_cloudflared` | `true` to install Cloudflare Tunnel         |
+| `use_loki_grafana` | `true` to install Dockerized Loki + Grafana |
+| `monitoring_target` | `app` (default) or `monitoring` (`[monitoring]` host group) |
+| `monitoring_bind_address` | Bind IP for Loki/Grafana ports (`127.0.0.1` by default) |
+| `grafana_port` | Host port for Grafana (default `3000`) |
+| `loki_port` | Host port for Loki API (default `3100`) |
 
 `applications` example:
 
@@ -252,3 +262,16 @@ systemctl stop <app>-<active>.service
 Set `use_cloudflared: true` in `inventory/group_vars/all/main.yml` and provide `cloudflare_token` in `vault.yml`.
 The tunnel is installed as a systemd service and starts automatically.
 With a tunnel active, you can remove ports 80/443 from `ufw_allowed_tcp_ports`.
+
+## Loki + Grafana (optional, Docker)
+
+Set `use_loki_grafana: true` in `inventory/group_vars/all/main.yml` and provide `grafana_admin_password` in `vault.yml`.
+
+Default behavior:
+
+- Loki listens on `127.0.0.1:3100`
+- Grafana listens on `127.0.0.1:3000`
+- Data persists under `/opt/monitoring/loki/data` and `/opt/monitoring/grafana/data`
+
+Because the default bind address is loopback, services are not internet-exposed.
+If you need remote access, prefer SSH tunneling or put Grafana behind your existing reverse proxy/tunnel setup.

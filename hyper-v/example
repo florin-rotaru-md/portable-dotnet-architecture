@@ -3,6 +3,7 @@ on windows 11 host:
 # Remove stale host keys after rebuilding VMs
 ssh-keygen -R 192.168.0.21
 ssh-keygen -R 192.168.0.22
+ssh-keygen -R 192.168.0.23
 
 # Optional: create an external Hyper-V switch once
 # PowerShell (Run as Administrator)
@@ -10,11 +11,13 @@ ssh-keygen -R 192.168.0.22
 # New-VMSwitch -Name "External-LAN" -NetAdapterName "Ethernet" -AllowManagementOS $true
 
 # Optional: create VMs from PowerShell if you do not want to use Hyper-V Manager
-# Topology: ubuntu-control (Ansible), ubuntu-app-01 (Nginx + .NET), ubuntu-postgres (PostgreSQL)
+# Topology: ubuntu-control (Ansible), ubuntu-app-01 (Nginx + .NET),
+#           ubuntu-postgres (PostgreSQL), ubuntu-monitoring (Docker: Loki + Grafana)
 #
 # New-VM -Name "ubuntu-control"   -Generation 2 -MemoryStartupBytes 4GB  -NewVHDPath "D:\Hyper-V\ubuntu-control.vhdx"   -NewVHDSizeBytes 40GB  -SwitchName "External-LAN"
 # New-VM -Name "ubuntu-app-01"    -Generation 2 -MemoryStartupBytes 8GB  -NewVHDPath "D:\Hyper-V\ubuntu-app-01.vhdx"    -NewVHDSizeBytes 100GB -SwitchName "External-LAN"
 # New-VM -Name "ubuntu-postgres"  -Generation 2 -MemoryStartupBytes 4GB  -NewVHDPath "D:\Hyper-V\ubuntu-postgres.vhdx"  -NewVHDSizeBytes 60GB  -SwitchName "External-LAN"
+# New-VM -Name "ubuntu-monitoring" -Generation 2 -MemoryStartupBytes 4GB  -NewVHDPath "D:\Hyper-V\ubuntu-monitoring.vhdx" -NewVHDSizeBytes 40GB  -SwitchName "External-LAN"
 
 # Optional but recommended: dedicated Postgres backup disk on a different physical drive
 # ---------------------------------------------------------------------------------------
@@ -78,6 +81,16 @@ sudo blkid /dev/sdb || echo "empty, ok"
 echo 'devops ALL=(ALL) NOPASSWD: ALL' | sudo tee /etc/sudoers.d/devops
 sudo chmod 440 /etc/sudoers.d/devops
 
+on target vm (ubuntu-monitoring — 192.168.0.23):
+---
+# Install SSH if missing and bring the OS current
+sudo apt update && \
+sudo apt upgrade -y && \
+sudo apt install -y openssh-server
+
+echo 'devops ALL=(ALL) NOPASSWD: ALL' | sudo tee /etc/sudoers.d/devops
+sudo chmod 440 /etc/sudoers.d/devops
+
 on control vm (ubuntu-control):
 ---
 sudo apt update && \
@@ -113,10 +126,11 @@ chmod 644 /home/devops/.ssh/id_ed25519_devops.pub
 chown -R devops:devops /home/devops/.ssh
 
 
-# Copy the controller key to the initial admin account on both VMs.
+# Copy the controller key to the initial admin account on all target VMs.
 # Replace 'devops' with your first user if different.
 ssh-copy-id -i ~/.ssh/id_ed25519_devops.pub devops@192.168.0.21
 ssh-copy-id -i ~/.ssh/id_ed25519_devops.pub devops@192.168.0.22
+ssh-copy-id -i ~/.ssh/id_ed25519_devops.pub devops@192.168.0.23
 
 mkdir -p ~/src && cd ~/src && \
 git clone https://github.com/florin-rotaru-md/portable-dotnet-architecture
@@ -148,7 +162,7 @@ postgres_user:    postgres
 backup_retention_days: 7
 
 # IP that the app VM uses to reach the postgres VM (ubuntu-postgres — 192.168.0.22).
-postgres_host: "192.168.0.144"
+postgres_host: "192.168.0.22"
 
 # Subnet allowed to connect to PostgreSQL over TCP.
 # The postgres role opens UFW port 5432 and adds a pg_hba.conf entry for this CIDR.
@@ -163,6 +177,17 @@ postgres_backup_label:  pgbackups
 
 # ── Cloudflare (optional) ──────────────────────────────────────────────────────
 use_cloudflared: true
+
+# ── Loki + Grafana (optional, Docker on dedicated monitoring VM) ─────────────
+use_loki_grafana: true
+monitoring_target: monitoring
+monitoring_root: /opt/monitoring
+monitoring_bind_address: "127.0.0.1"
+loki_image: "grafana/loki:3.0.0"
+grafana_image: "grafana/grafana:11.1.4"
+grafana_port: 3000
+loki_port: 3100
+grafana_admin_user: admin
 
 # ── Firewall ───────────────────────────────────────────────────────────────────
 ufw_allowed_tcp_ports:
@@ -231,6 +256,10 @@ ansible-playbook playbooks/bootstrap.yml
 cd ~/src/portable-dotnet-architecture/native/infra/ansible && \
 ansible-playbook playbooks/bootstrap.yml --limit app
 
+# Run only Play 3 (hosts: monitoring) for Loki/Grafana changes.
+cd ~/src/portable-dotnet-architecture/native/infra/ansible && \
+ansible-playbook playbooks/bootstrap.yml --limit monitoring
+
 # First bootstrap variant (if you still connect with the initial Ubuntu user):
 cd ~/src/portable-dotnet-architecture/native/infra/ansible && \
 ansible-playbook playbooks/bootstrap.yml -u ubuntu --ask-become-pass --limit app
@@ -238,6 +267,11 @@ ansible-playbook playbooks/bootstrap.yml -u ubuntu --ask-become-pass --limit app
 # If vault.yml is encrypted:
 # ansible-vault encrypt inventory/group_vars/all/vault.yml
 # ansible-playbook playbooks/bootstrap.yml --ask-vault-pass
+
+# Validate monitoring stack (on ubuntu-monitoring)
+# ssh devops@192.168.0.23 'cd /opt/monitoring && sudo docker compose ps'
+# ssh devops@192.168.0.23 'curl -fsS http://127.0.0.1:3100/ready && echo'
+# ssh devops@192.168.0.23 'curl -I http://127.0.0.1:3000/login | head -n 1'
 
 
 # Verify the Postgres backup disk after bootstrap (only if you attached one)

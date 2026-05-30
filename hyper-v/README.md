@@ -11,19 +11,21 @@ This folder gives you:
 
 ## Recommended topology
 
-Use three Ubuntu 24.04 LTS VMs:
+Use four Ubuntu 24.04 LTS VMs:
 
 | VM | Purpose | Suggested size |
 |----|---------|----------------|
 | `ubuntu-control` | Ansible controller, repo checkout, SSH keys, vault files | 2 vCPU, 4 GB RAM, 40 GB disk |
 | `ubuntu-app-01` | Nginx + .NET runtime, blue/green app slots | 4-8 vCPU, 8-16 GB RAM, 80+ GB disk |
 | `ubuntu-postgres` | PostgreSQL + PostGIS, nightly backups | 2-4 vCPU, 4-8 GB RAM, 60+ GB disk |
+| `ubuntu-monitoring` | Docker host for Loki + Grafana | 2 vCPU, 4 GB RAM, 40+ GB disk |
 
-Why three VMs:
+Why four VMs:
 
 - the controller survives app and database rebuilds
 - SSH keys and vault material stay isolated from the runtime host
 - PostgreSQL on a dedicated VM allows independent scaling and backup disk placement
+- Dockerized observability stays isolated from the app runtime and database
 - Ansible matches the flow already documented in `native/`
 
 If you want the smallest possible lab, you can point both `[app]` and `[postgres]` inventory groups at the same VM IP. For anything even mildly production-like, keep at least the database separate.
@@ -42,15 +44,16 @@ Suggested addressing example:
 - `ubuntu-control`: `192.168.0.20`
 - `ubuntu-app-01`: `192.168.0.21`
 - `ubuntu-postgres`: `192.168.0.22`
+- `ubuntu-monitoring`: `192.168.0.23`
 
 ## Fast path
 
-1. Create all three VMs and attach them to the same External vSwitch.
-2. Install Ubuntu 24.04 LTS on all three.
+1. Create all four VMs and attach them to the same External vSwitch.
+2. Install Ubuntu 24.04 LTS on all four.
 3. In `ubuntu-control`, install Ansible and clone this repository.
 4. Copy the files from `hyper-v/files/` into `native/infra/ansible/inventory/`.
 5. Adjust IPs, domains, repository URLs, and secrets.
-6. Run the first bootstrap from `ubuntu-control` — Play 1 targets `ubuntu-postgres`, Play 2 targets `ubuntu-app-01`.
+6. Run the first bootstrap from `ubuntu-control` — Play 1 targets `ubuntu-postgres`, Play 2 targets `ubuntu-app-01`, Play 3 targets `ubuntu-monitoring`.
 
 ## Files in this folder
 

@@ -9,19 +9,20 @@ End state:
 - one persistent control VM for Ansible and secrets
 - one persistent app VM running Nginx and the .NET apps
 - one persistent postgres VM running PostgreSQL and PostGIS
+- one persistent monitoring VM running Dockerized Loki + Grafana
 - blue/green deploy and rollback through the existing scripts from `native/`
 
 ## Phase 1: Hyper-V host preparation
 
 1. Enable Hyper-V on Windows 11 Pro/Enterprise.
 2. Create an External virtual switch bound to the NIC that reaches your LAN/router.
-3. Reserve or assign stable LAN IPs for both Ubuntu VMs.
+3. Reserve or assign stable LAN IPs for all target Ubuntu VMs.
 4. Decide where backups leave the box: NAS, another Linux machine, cloud object storage, or encrypted external disk.
 
 Recommended Windows-side decisions:
 
 - keep Windows Update automatic, but schedule it outside business hours
-- enable VM auto-start for both Ubuntu VMs
+- enable VM auto-start for all target Ubuntu VMs
 - keep the controller and app VM on separate virtual disks
 
 ## Phase 2: Create the VMs
@@ -31,18 +32,20 @@ Create:
 - `ubuntu-control`
 - `ubuntu-app-01`
 - `ubuntu-postgres`
+- `ubuntu-monitoring`
 
 Suggested sizing:
 
 - `ubuntu-control`: 2 vCPU, 4 GB RAM, 40 GB disk
 - `ubuntu-app-01`: 4 vCPU minimum, 8 GB RAM minimum, 80 GB disk minimum
 - `ubuntu-postgres`: 2-4 vCPU, 4-8 GB RAM, 60 GB disk minimum
+- `ubuntu-monitoring`: 2 vCPU, 4 GB RAM, 40 GB disk minimum
 
 If PostgreSQL will hold real data volume, size the postgres VM storage first. Resizing later is possible, but avoid making it your normal operating path. Consider attaching a second VHDX for backups on a different physical disk.
 
 ## Phase 3: Base OS setup
 
-Install Ubuntu 24.04 LTS on all three VMs.
+Install Ubuntu 24.04 LTS on all four VMs.
 
 On each VM:
 
@@ -94,7 +97,13 @@ cd ~/src/portable-dotnet-architecture/native/infra/ansible
 ansible-playbook playbooks/bootstrap.yml -u ubuntu --ask-become-pass
 ```
 
-The `common` role creates the `devops` user and installs passwordless sudo on both VMs. You do not need to hand-create `devops` before running.
+The `common` role creates the `devops` user and installs passwordless sudo on target VMs. You do not need to hand-create `devops` before running.
+
+Play behavior:
+
+- Play 1 targets `[postgres]` (`ubuntu-postgres`)
+- Play 2 targets `[app]` (`ubuntu-app-01`)
+- Play 3 targets `[monitoring]` (`ubuntu-monitoring`) when `use_loki_grafana: true` and `monitoring_target: monitoring`
 
 After bootstrap, all future runs use the `devops` account through the configured SSH key.
 
@@ -128,6 +137,11 @@ Normal infrastructure changes stay inside the control VM:
 
 - edit `native/infra/ansible/inventory/...`
 - rerun `ansible-playbook playbooks/bootstrap.yml`
+
+Normal monitoring operations stay inside the monitoring VM:
+
+- check stack: `ssh devops@<monitoring-ip> 'cd /opt/monitoring && sudo docker compose ps'`
+- restart stack: `ssh devops@<monitoring-ip> 'cd /opt/monitoring && sudo docker compose up -d'`
 
 ## When to move beyond native/
 

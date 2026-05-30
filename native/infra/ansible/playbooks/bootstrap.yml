@@ -71,6 +71,10 @@
     - dotnet
     - nginx
     - app
+    - role: monitoring
+      when:
+        - use_loki_grafana | bool
+        - (monitoring_target | default('app')) == 'app'
     - role: cloudflared
       when: use_cloudflared | bool
 
@@ -114,3 +118,14 @@
         - app_cfg is defined
         - app_cfg.repo_url | default('') | length > 0
         - app_cfg.project_path | default('') | length > 0
+
+# ── Play 3: Bootstrap dedicated monitoring VM (optional) ─────────────────────
+- name: Bootstrap monitoring VM (Loki + Grafana)
+  hosts: monitoring
+  become: "{{ ansible_user != 'root' }}"
+  roles:
+    - common
+    - role: monitoring
+      when:
+        - use_loki_grafana | bool
+        - (monitoring_target | default('app')) == 'monitoring'
