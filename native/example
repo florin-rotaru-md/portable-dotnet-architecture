@@ -178,6 +178,11 @@ ansible-playbook playbooks/bootstrap.yml
 # sudo -u devops /opt/apps/api.waa.ro/scripts/deploy.sh
 # sudo -u devops /opt/apps/admin.waa.ro/scripts/deploy.sh
 
+# read -s -p "GitHub token: " APP_REPO_TOKEN && echo
+# sudo -u devops env APP_REPO_TOKEN="$APP_REPO_TOKEN" /opt/apps/api.example.local/scripts/deploy.sh
+# unset APP_REPO_TOKEN
+
+
 # Manual rollback examples:
 # sudo -u devops /opt/apps/api.waa.ro/scripts/rollback.sh
 # sudo -u devops /opt/apps/admin.waa.ro/scripts/rollback.sh
