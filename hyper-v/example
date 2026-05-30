@@ -185,6 +185,8 @@ monitoring_target: monitoring
 monitoring_root: /opt/monitoring
 monitoring_bind_address: "127.0.0.1"
 loki_bind_address: "0.0.0.0"
+grafana_bind_address: "0.0.0.0"
+monitoring_allowed_cidr: "192.168.0.0/24"
 loki_image: "grafana/loki:3.0.0"
 grafana_image: "grafana/grafana:11.1.4"
 grafana_port: 3000
@@ -309,6 +311,9 @@ ansible-playbook playbooks/bootstrap.yml -u ubuntu --ask-become-pass --limit app
 # ssh devops@192.168.0.23 'cd /opt/monitoring && sudo docker compose ps'
 # ssh devops@192.168.0.23 'curl -fsS http://127.0.0.1:3100/ready && echo'
 # ssh devops@192.168.0.23 'curl -I http://127.0.0.1:3000/login | head -n 1'
+# From Windows host (or any LAN machine):
+# curl -I http://192.168.0.23:3000/login
+# Or open http://192.168.0.23:3000 in browser (admin / grafana_admin_password)
 
 
 # Verify the Postgres backup disk after bootstrap (only if you attached one)

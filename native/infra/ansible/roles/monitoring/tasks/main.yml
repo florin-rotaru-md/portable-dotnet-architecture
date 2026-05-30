@@ -32,6 +32,16 @@
   loop: "{{ groups['app'] | default([]) }}"
   when: (monitoring_target | default('app')) == 'monitoring'
 
+- name: Allow Grafana ingress from configured CIDR
+  ufw:
+    rule: allow
+    from_ip: "{{ monitoring_allowed_cidr }}"
+    to_port: "{{ grafana_port }}"
+    proto: tcp
+  when:
+    - monitoring_allowed_cidr is defined
+    - monitoring_allowed_cidr | string | trim | length > 0
+
 - name: Create monitoring directories
   file:
     path: "{{ item.path }}"
@@ -42,7 +52,7 @@
   loop:
     - { path: "{{ monitoring_root }}", mode: "0755" }
     - { path: "{{ monitoring_root }}/loki", mode: "0755" }
-    - { path: "{{ monitoring_root }}/loki/data", mode: "0755" }
+    - { path: "{{ monitoring_root }}/loki/data", mode: "0755", owner: "10001", group: "10001" }
     - { path: "{{ monitoring_root }}/grafana", mode: "0755" }
     - { path: "{{ monitoring_root }}/grafana/data", mode: "0750", owner: "472", group: "472" }
 

@@ -48,6 +48,8 @@ monitoring_target: monitoring
 monitoring_root: /opt/monitoring
 monitoring_bind_address: "127.0.0.1"
 loki_bind_address: "0.0.0.0"
+grafana_bind_address: "0.0.0.0"
+monitoring_allowed_cidr: "192.168.0.0/24"
 loki_image: "grafana/loki:3.0.0"
 grafana_image: "grafana/grafana:11.1.4"
 grafana_port: 3000
