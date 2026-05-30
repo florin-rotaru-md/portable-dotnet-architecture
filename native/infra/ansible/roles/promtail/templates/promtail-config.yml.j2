@@ -27,5 +27,17 @@ scrape_configs:
           service: "{{ app.name }}"
           host: "{{ inventory_hostname }}"
           __path__: "{{ promtail_logs_root }}/{{ app.name }}/{{ promtail_log_glob }}"
-
+    pipeline_stages:
+      - json:
+          expressions:
+            ts: "\"@t\""
+            level: "\"@l\""
+            msg: "\"@m\""
+            exception: "\"@x\""
+            env: env
+      - timestamp:
+          source: ts
+          format: RFC3339
+      - labels:
+          level:
 {% endfor %}
