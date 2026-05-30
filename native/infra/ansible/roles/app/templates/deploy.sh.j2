@@ -140,11 +140,13 @@ dotnet publish "$BUILD_DIR/$PROJECT_PATH" \
   --self-contained false \
   -o "$SLOT_DIR/"
 
-# Inject per-app production overrides after publish.
+# Keep override config identical across blue/green slots.
 if [ -f "$APP_ROOT/config/appsettings.override.json" ]; then
-  cp "$APP_ROOT/config/appsettings.override.json" "$SLOT_DIR/appsettings.override.json"
-  chown {{ app_user }}:{{ app_user }} "$SLOT_DIR/appsettings.override.json"
-  chmod 600 "$SLOT_DIR/appsettings.override.json"
+  for slot in blue green; do
+    cp "$APP_ROOT/config/appsettings.override.json" "$APP_ROOT/slots/$slot/appsettings.override.json"
+    chown {{ app_user }}:{{ app_user }} "$APP_ROOT/slots/$slot/appsettings.override.json"
+    chmod 600 "$APP_ROOT/slots/$slot/appsettings.override.json"
+  done
 fi
 
 # ── Start idle slot ───────────────────────────────────────────────────────────

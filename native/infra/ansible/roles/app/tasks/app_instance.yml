@@ -56,6 +56,48 @@
     force:   true
   no_log: true
 
+- name: Sync appsettings.override.json into blue/green slots
+  copy:
+    src: "{{ apps_root }}/{{ current_app.name }}/config/appsettings.override.json"
+    dest: "{{ apps_root }}/{{ current_app.name }}/slots/{{ item }}/appsettings.override.json"
+    remote_src: true
+    owner: "{{ app_user }}"
+    group: "{{ app_user }}"
+    mode: "0600"
+  loop:
+    - blue
+    - green
+  register: slot_override_sync
+  no_log: true
+
+- name: Read active slot
+  slurp:
+    src: "{{ apps_root }}/{{ current_app.name }}/runtime/active-slot"
+  register: active_slot_raw
+  changed_when: false
+  failed_when: false
+
+- name: Resolve active slot name
+  set_fact:
+    active_slot_name: >-
+      {{ (active_slot_raw.content | b64decode | trim)
+         if (active_slot_raw.content is defined and (active_slot_raw.content | length > 0))
+         else 'blue' }}
+
+- name: Check whether active slot service is running
+  command: systemctl is-active --quiet {{ current_app.name }}-{{ active_slot_name }}.service
+  register: active_slot_service_state
+  changed_when: false
+  failed_when: false
+
+- name: Restart active slot service to apply new override
+  systemd:
+    name: "{{ current_app.name }}-{{ active_slot_name }}.service"
+    state: restarted
+  when:
+    - slot_override_sync is changed
+    - active_slot_service_state.rc == 0
+
 - name: Render blue env file
   copy:
     dest:    "{{ apps_root }}/{{ current_app.name }}/env/blue.env"
