@@ -53,7 +53,7 @@
     owner:   "{{ app_user }}"
     group:   "{{ app_user }}"
     mode:    '0600'
-    force:   false
+    force:   true
   no_log: true
 
 - name: Render blue env file
