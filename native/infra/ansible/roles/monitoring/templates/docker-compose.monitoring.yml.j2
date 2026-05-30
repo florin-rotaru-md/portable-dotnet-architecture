@@ -5,7 +5,7 @@ services:
     restart: unless-stopped
     command: ["-config.file=/etc/loki/config.yml"]
     ports:
-      - "{{ monitoring_bind_address }}:{{ loki_port }}:{{ loki_port }}"
+      - "{{ loki_bind_address | default(monitoring_bind_address) }}:{{ loki_port }}:{{ loki_port }}"
     volumes:
       - ./loki/config.yml:/etc/loki/config.yml:ro
       - ./loki/data:/loki

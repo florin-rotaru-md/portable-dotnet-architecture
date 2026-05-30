@@ -5,12 +5,14 @@ ansible_user: devops
 
 # ── Apps (required) ───────────────────────────────────────────────────────────
 app_user: devops
+app_log_root: /var/log
 health_max_attempts: 16
 health_interval_seconds: 4
 # Global defaults used for all apps unless overridden per-app in applications[].
 
 applications:
   - name:         myapp
+    # log_dir_name: myapp
     assembly:     MyApp
     domain:       demo.example.com
     port_blue:    5000
@@ -62,12 +64,21 @@ use_loki_grafana: false
 monitoring_target: app
 monitoring_root: /opt/monitoring
 monitoring_bind_address: "127.0.0.1"
+loki_bind_address: "127.0.0.1"
 loki_image: "grafana/loki:3.0.0"
 grafana_image: "grafana/grafana:11.1.4"
 grafana_port: 3000
 loki_port: 3100
 grafana_admin_user: admin
 # grafana_admin_password comes from vault.yml when use_loki_grafana: true
+
+# ── Promtail (optional, runs on app host) ─────────────────────────────────────
+promtail_http_port: 9080
+promtail_positions_file: /var/lib/promtail/positions.yaml
+promtail_logs_root: "{{ app_log_root }}"
+promtail_log_glob: "*.log"
+# promtail_loki_url can override automatic endpoint discovery, for example:
+# promtail_loki_url: "http://192.168.0.23:3100/loki/api/v1/push"
 
 # ── Firewall ───────────────────────────────────────────────────────────────────
 ufw_allowed_tcp_ports:

@@ -19,7 +19,7 @@ TimeoutStopSec={{ drain_seconds | int + 10 }}
 # Hardening
 NoNewPrivileges=true
 ProtectSystem=strict
-ReadWritePaths={{ apps_root }}/{{ app_name }}
+ReadWritePaths={{ apps_root }}/{{ app_name }} {{ app_log_root }}/{{ app_log_dir_name }}
 PrivateTmp=true
 
 [Install]

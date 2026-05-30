@@ -7,6 +7,7 @@ ansible_user: devops
 # ── Infrastructure ─────────────────────────────────────────────────────────────
 app_user: devops
 apps_root: /opt/apps
+app_log_root: /var/log
 dotnet_version: "10.0"
 
 # ── Postgres ───────────────────────────────────────────────────────────────────
@@ -46,11 +47,20 @@ use_loki_grafana: true
 monitoring_target: monitoring
 monitoring_root: /opt/monitoring
 monitoring_bind_address: "127.0.0.1"
+loki_bind_address: "0.0.0.0"
 loki_image: "grafana/loki:3.0.0"
 grafana_image: "grafana/grafana:11.1.4"
 grafana_port: 3000
 loki_port: 3100
 grafana_admin_user: admin
+
+# ── Promtail on app VM (logs -> Loki on monitoring VM) ───────────────────────
+promtail_http_port: 9080
+promtail_positions_file: /var/lib/promtail/positions.yaml
+promtail_logs_root: "{{ app_log_root }}"
+promtail_log_glob: "*.log"
+# Optional explicit override for dedicated monitoring VM:
+# promtail_loki_url: "http://192.168.0.23:3100/loki/api/v1/push"
 
 # ── Firewall ───────────────────────────────────────────────────────────────────
 ufw_allowed_tcp_ports:
@@ -64,6 +74,7 @@ health_interval_seconds: 4
 
 applications:
   - name: api.example.local
+    log_dir_name: api.example.local
     assembly: MyApp.Api
     domain: api.example.local
     port_blue: 5000
@@ -74,6 +85,33 @@ applications:
     project_path: "src/MyApp.Api/MyApp.Api.csproj"
     # repo_token: "{{ app_repo_token }}"
     appsettings_override:
+      Serilog:
+        Using:
+          - Serilog.Sinks.File
+          - Serilog.Formatting.Compact
+        MinimumLevel:
+          Default: Information
+          Override:
+            Microsoft: Warning
+            System: Warning
+        Enrich:
+          - FromLogContext
+          - WithMachineName
+          - WithThreadId
+        WriteTo:
+          - Name: File
+            Args:
+              path: "{{ app_log_root }}/api.example.local/app.log"
+              rollingInterval: Day
+              formatter: "Serilog.Formatting.Compact.CompactJsonFormatter, Serilog.Formatting.Compact"
+              shared: true
+              buffered: false
+              rollOnFileSizeLimit: true
+              fileSizeLimitBytes: 104857600
+              retainedFileCountLimit: 14
+        Properties:
+          service: api.example.local
+          env: production
       ConnectionStrings:
         Main: "Host={{ postgres_host }};Port=5432;Database=myapp_main;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
       Logging:

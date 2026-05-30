@@ -23,6 +23,15 @@
     enabled: true
     state: started
 
+- name: Allow Loki ingress from app hosts when monitoring is dedicated
+  ufw:
+    rule: allow
+    from_ip: "{{ hostvars[item].ansible_host | default(item) }}"
+    to_port: "{{ loki_port }}"
+    proto: tcp
+  loop: "{{ groups['app'] | default([]) }}"
+  when: (monitoring_target | default('app')) == 'monitoring'
+
 - name: Create monitoring directories
   file:
     path: "{{ item.path }}"

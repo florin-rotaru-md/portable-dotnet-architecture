@@ -118,15 +118,22 @@ Key variables in `inventory/group_vars/all/main.yml`:
 | `port_blue`               | Port for blue slot
 | `port_green`              | Port for green slot
 | `drain_seconds`           | Nginx drain before stopping old slot
+| `log_dir_name`            | Optional log folder name under `/var/log` (default: app `name`)
 | `repo_url`                | Git repo URL used for initial deploy
 | `project_path`            | Path to the `.csproj` used for first deploy
 | `appsettings_override`    | Per-app `appsettings.override.json` merge values
+| `app_log_root`            | Root folder for app logs (default `/var/log`)
 | `use_cloudflared`         | `true` to install Cloudflare Tunnel
 | `use_loki_grafana`        | `true` to install Dockerized Loki + Grafana
 | `monitoring_target`       | `app` (default) or `monitoring` (`[monitoring]` host group)
 | `monitoring_bind_address` | Bind IP for Loki/Grafana ports (`127.0.0.1` by default)
+| `loki_bind_address`       | Loki bind IP (set `0.0.0.0` when target is dedicated `monitoring`)
 | `grafana_port`            | Host port for Grafana (default `3000`)
 | `loki_port`               | Host port for Loki API (default `3100`)
+| `promtail_positions_file` | Promtail read offset state file
+| `promtail_logs_root`      | Root searched by Promtail (default follows `app_log_root`)
+| `promtail_log_glob`       | Log filename glob matched by Promtail (default `*.log`)
+| `promtail_loki_url`       | Optional explicit Loki push endpoint override
 
 `applications` example:
 
@@ -272,6 +279,10 @@ Default behavior:
 - Loki listens on `127.0.0.1:3100`
 - Grafana listens on `127.0.0.1:3000`
 - Data persists under `/opt/monitoring/loki/data` and `/opt/monitoring/grafana/data`
+- Promtail is installed on app hosts and ships `/var/log/<app-name>/*.log` to Loki
 
 Because the default bind address is loopback, services are not internet-exposed.
 If you need remote access, prefer SSH tunneling or put Grafana behind your existing reverse proxy/tunnel setup.
+
+When `monitoring_target: monitoring` is used, set `loki_bind_address: "0.0.0.0"` so app hosts can push logs.
+The monitoring role allows TCP `loki_port` from hosts in the `[app]` inventory group.

@@ -1,0 +1,69 @@
+---
+- name: Ensure monitoring host exists when monitoring_target is dedicated
+  assert:
+    that:
+      - groups['monitoring'] is defined
+      - groups['monitoring'] | length > 0
+    fail_msg: >-
+      monitoring_target is set to monitoring, but inventory group [monitoring]
+      is missing or empty.
+  when: (monitoring_target | default('app')) == 'monitoring'
+
+- name: Install Grafana apt keyring dependencies
+  apt:
+    name:
+      - apt-transport-https
+      - software-properties-common
+    state: present
+    update_cache: true
+
+- name: Ensure keyring directory exists
+  file:
+    path: /etc/apt/keyrings
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install Grafana repository key
+  shell: |
+    set -euo pipefail
+    curl -fsSL https://apt.grafana.com/gpg.key | gpg --dearmor -o /etc/apt/keyrings/grafana.gpg
+  args:
+    executable: /bin/bash
+    creates: /etc/apt/keyrings/grafana.gpg
+
+- name: Add Grafana apt repository
+  apt_repository:
+    repo: "deb [signed-by=/etc/apt/keyrings/grafana.gpg] https://apt.grafana.com stable main"
+    filename: grafana
+    state: present
+
+- name: Install Promtail
+  apt:
+    name: promtail
+    state: present
+    update_cache: true
+
+- name: Ensure Promtail state directory exists
+  file:
+    path: "{{ promtail_positions_file | dirname }}"
+    state: directory
+    owner: promtail
+    group: promtail
+    mode: "0755"
+
+- name: Render Promtail configuration
+  template:
+    src: promtail-config.yml.j2
+    dest: /etc/promtail/config.yml
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart promtail
+
+- name: Ensure Promtail service is enabled and started
+  service:
+    name: promtail
+    state: started
+    enabled: true

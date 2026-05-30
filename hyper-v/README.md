@@ -53,7 +53,7 @@ Suggested addressing example:
 3. In `control-ubuntu`, install Ansible and clone this repository.
 4. Copy the files from `hyper-v/files/` into `native/infra/ansible/inventory/`.
 5. Adjust IPs, domains, repository URLs, and secrets.
-6. Run the first bootstrap from `control-ubuntu` — Play 1 targets `postgres-ubuntu`, Play 2 targets `app-ubuntu`, Play 3 targets `monitoring-ubuntu`.
+6. Run the first bootstrap from `control-ubuntu` — Play 1 targets `postgres-ubuntu`, Play 2 targets `app-ubuntu` (including Promtail), Play 3 targets `monitoring-ubuntu` (Loki + Grafana).
 
 ## Files in this folder
 

@@ -71,6 +71,8 @@
     - dotnet
     - nginx
     - app
+    - role: promtail
+      when: use_loki_grafana | bool
     - role: monitoring
       when:
         - use_loki_grafana | bool

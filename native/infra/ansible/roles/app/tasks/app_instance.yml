@@ -17,6 +17,23 @@
     - "{{ apps_root }}/{{ current_app.name }}/nginx"
     - "{{ apps_root }}/{{ current_app.name }}/runtime"
 
+- name: Ensure app log directory exists
+  file:
+    path: "{{ app_log_root }}/{{ current_app.log_dir_name | default(current_app.name) }}"
+    state: directory
+    owner: "{{ app_user }}"
+    group: "{{ app_user }}"
+    mode: "0755"
+
+- name: Ensure app log file exists
+  copy:
+    dest: "{{ app_log_root }}/{{ current_app.log_dir_name | default(current_app.name) }}/app.log"
+    content: ""
+    owner: "{{ app_user }}"
+    group: "{{ app_user }}"
+    mode: "0644"
+    force: false
+
 - name: Render common env file
   template:
     src:   config.env.j2
@@ -109,6 +126,7 @@
   vars:
     app_name: "{{ current_app.name }}"
     app_assembly: "{{ current_app.runtime_assembly | default(((current_app.project_path | default('') | basename | regex_replace('\\.csproj$', '')) if (current_app.project_path | default('') | length > 0) else current_app.assembly)) }}"
+    app_log_dir_name: "{{ current_app.log_dir_name | default(current_app.name) }}"
     drain_seconds: "{{ current_app.drain_seconds }}"
     slot:      blue
     slot_port: "{{ current_app.port_blue }}"
@@ -122,6 +140,7 @@
   vars:
     app_name: "{{ current_app.name }}"
     app_assembly: "{{ current_app.runtime_assembly | default(((current_app.project_path | default('') | basename | regex_replace('\\.csproj$', '')) if (current_app.project_path | default('') | length > 0) else current_app.assembly)) }}"
+    app_log_dir_name: "{{ current_app.log_dir_name | default(current_app.name) }}"
     drain_seconds: "{{ current_app.drain_seconds }}"
     slot:      green
     slot_port: "{{ current_app.port_green }}"
