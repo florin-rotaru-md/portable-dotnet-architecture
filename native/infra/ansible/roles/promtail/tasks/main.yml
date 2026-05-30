@@ -50,7 +50,7 @@
     path: "{{ promtail_positions_file | dirname }}"
     state: directory
     owner: promtail
-    group: promtail
+    group: root
     mode: "0755"
 
 - name: Render Promtail configuration
