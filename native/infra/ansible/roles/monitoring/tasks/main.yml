@@ -55,6 +55,8 @@
     - { path: "{{ monitoring_root }}/loki/data", mode: "0755", owner: "10001", group: "10001" }
     - { path: "{{ monitoring_root }}/grafana", mode: "0755" }
     - { path: "{{ monitoring_root }}/grafana/data", mode: "0750", owner: "472", group: "472" }
+    - { path: "{{ monitoring_root }}/grafana/provisioning", mode: "0755" }
+    - { path: "{{ monitoring_root }}/grafana/provisioning/datasources", mode: "0755" }
 
 - name: Render Loki configuration
   template:
@@ -72,6 +74,15 @@
     owner: "{{ app_user }}"
     group: "{{ app_user }}"
     mode: "0640"
+  notify: restart monitoring stack
+
+- name: Render Grafana datasource provisioning
+  template:
+    src: grafana-datasource-loki.yml.j2
+    dest: "{{ monitoring_root }}/grafana/provisioning/datasources/loki.yml"
+    owner: "{{ app_user }}"
+    group: "{{ app_user }}"
+    mode: "0644"
   notify: restart monitoring stack
 
 - name: Bring monitoring stack online

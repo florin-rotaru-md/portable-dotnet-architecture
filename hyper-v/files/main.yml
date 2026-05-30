@@ -55,6 +55,9 @@ grafana_image: "grafana/grafana:11.1.4"
 grafana_port: 3000
 loki_port: 3100
 grafana_admin_user: admin
+grafana_loki_datasource_name: "Loki"
+grafana_loki_datasource_url: "http://loki:3100"
+grafana_loki_is_default: true
 
 # ── Promtail on app VM (logs -> Loki on monitoring VM) ───────────────────────
 promtail_http_port: 9080

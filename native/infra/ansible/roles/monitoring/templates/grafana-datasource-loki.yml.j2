@@ -1,0 +1,15 @@
+apiVersion: 1
+
+deleteDatasources:
+  - name: "{{ grafana_loki_datasource_name | default('Loki') }}"
+    orgId: 1
+
+datasources:
+  - name: "{{ grafana_loki_datasource_name | default('Loki') }}"
+    type: loki
+    access: proxy
+    url: "{{ grafana_loki_datasource_url | default('http://loki:3100') }}"
+    isDefault: {{ grafana_loki_is_default | default(true) | bool | lower }}
+    editable: true
+    jsonData:
+      maxLines: 1000

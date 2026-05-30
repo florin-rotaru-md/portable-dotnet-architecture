@@ -21,5 +21,6 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: "{{ grafana_admin_password }}"
     volumes:
       - ./grafana/data:/var/lib/grafana
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
     depends_on:
       - loki
