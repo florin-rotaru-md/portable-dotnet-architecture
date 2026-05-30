@@ -30,12 +30,11 @@ scrape_configs:
     pipeline_stages:
       - json:
           expressions:
-            ts: "@t"
-            level: "@l"
-            msg: "@m"
-            exception: "@x"
+            ts: "\"@t\""
+            level: "\"@l\""
+            msg: "\"@m\""
+            exception: "\"@x\""
             env: env
-            service_property: service
       - timestamp:
           source: ts
           format: RFC3339
