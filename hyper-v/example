@@ -196,12 +196,11 @@ grafana_loki_datasource_name: "Loki"
 grafana_loki_datasource_url: "http://loki:3100"
 grafana_loki_is_default: true
 
-# ── Promtail on app VM (logs -> Loki on monitoring VM) ───────────────────────
-promtail_http_port: 9080
-promtail_positions_file: /var/lib/promtail/positions.yaml
-promtail_logs_root: "{{ app_log_root }}"
-promtail_log_glob: "*.log"
-# promtail_loki_url: "http://192.168.0.23:3100/loki/api/v1/push"
+# ── Grafana Alloy on app VM (logs -> Loki on monitoring VM) ──────────────────
+alloy_http_port: 12345
+alloy_logs_root: "{{ app_log_root }}"
+alloy_log_glob: "*.log"
+# alloy_loki_url: "http://192.168.0.23:3100/loki/api/v1/push"
 
 # ── Firewall ───────────────────────────────────────────────────────────────────
 ufw_allowed_tcp_ports:

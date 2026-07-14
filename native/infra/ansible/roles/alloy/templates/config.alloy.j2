@@ -1,0 +1,56 @@
+{% if alloy_loki_url is defined and (alloy_loki_url | string | trim | length > 0) %}
+{%   set loki_push_url = alloy_loki_url | trim %}
+{% elif (monitoring_target | default('app')) == 'monitoring' %}
+{%   set monitoring_host = hostvars[groups['monitoring'][0]].ansible_host | default(groups['monitoring'][0]) %}
+{%   set loki_push_url = 'http://' ~ monitoring_host ~ ':' ~ (loki_port | string) ~ '/loki/api/v1/push' %}
+{% else %}
+{%   set loki_push_url = 'http://127.0.0.1:' ~ (loki_port | string) ~ '/loki/api/v1/push' %}
+{% endif %}
+loki.write "default" {
+  endpoint {
+    url = "{{ loki_push_url }}"
+  }
+}
+
+{% for app in native_apps %}
+{% set app_label = app.name | regex_replace('[^a-zA-Z0-9_]', '_') %}
+local.file_match "{{ app_label }}" {
+  path_targets = [{
+    __path__ = "{{ alloy_logs_root }}/{{ app.name }}/{{ alloy_log_glob }}",
+    job      = "dotnet",
+    service  = "{{ app.name }}",
+    host     = "{{ inventory_hostname }}",
+  }]
+}
+
+loki.source.file "{{ app_label }}" {
+  targets    = local.file_match.{{ app_label }}.targets
+  forward_to = [loki.process.{{ app_label }}.receiver]
+}
+
+loki.process "{{ app_label }}" {
+  stage.json {
+    expressions = {
+      ts        = "\"@t\"",
+      level     = "\"@l\"",
+      msg       = "\"@m\"",
+      exception = "\"@x\"",
+      env       = "env",
+    }
+  }
+
+  stage.timestamp {
+    source = "ts"
+    format = "RFC3339"
+  }
+
+  stage.labels {
+    values = {
+      level = "",
+    }
+  }
+
+  forward_to = [loki.write.default.receiver]
+}
+
+{% endfor %}

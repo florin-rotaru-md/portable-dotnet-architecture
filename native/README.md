@@ -130,10 +130,10 @@ Key variables in `inventory/group_vars/all/main.yml`:
 | `loki_bind_address`       | Loki bind IP (set `0.0.0.0` when target is dedicated `monitoring`)
 | `grafana_port`            | Host port for Grafana (default `3000`)
 | `loki_port`               | Host port for Loki API (default `3100`)
-| `promtail_positions_file` | Promtail read offset state file
-| `promtail_logs_root`      | Root searched by Promtail (default follows `app_log_root`)
-| `promtail_log_glob`       | Log filename glob matched by Promtail (default `*.log`)
-| `promtail_loki_url`       | Optional explicit Loki push endpoint override
+| `alloy_http_port`         | Alloy HTTP server port, bound to loopback (default `12345`)
+| `alloy_logs_root`         | Root searched by Alloy (default follows `app_log_root`)
+| `alloy_log_glob`          | Log filename glob matched by Alloy (default `*.log`)
+| `alloy_loki_url`          | Optional explicit Loki push endpoint override
 
 `applications` example:
 
@@ -279,7 +279,7 @@ Default behavior:
 - Loki listens on `127.0.0.1:3100`
 - Grafana listens on `127.0.0.1:3000`
 - Data persists under `/opt/monitoring/loki/data` and `/opt/monitoring/grafana/data`
-- Promtail is installed on app hosts and ships `/var/log/<app-name>/*.log` to Loki
+- Grafana Alloy is installed on app hosts and ships `/var/log/<app-name>/*.log` to Loki
 
 Because the default bind address is loopback, services are not internet-exposed.
 If you need remote access, prefer SSH tunneling or put Grafana behind your existing reverse proxy/tunnel setup.

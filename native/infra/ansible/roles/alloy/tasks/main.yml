@@ -39,31 +39,30 @@
     filename: grafana
     state: present
 
-- name: Install Promtail
+- name: Install Alloy
   apt:
-    name: promtail
+    name: alloy
     state: present
     update_cache: true
 
-- name: Ensure Promtail state directory exists
-  file:
-    path: "{{ promtail_positions_file | dirname }}"
-    state: directory
-    owner: promtail
-    group: root
-    mode: "0755"
+- name: Bind Alloy HTTP server to loopback
+  lineinfile:
+    path: /etc/default/alloy
+    regexp: '^CUSTOM_ARGS='
+    line: 'CUSTOM_ARGS="--server.http.listen-addr=127.0.0.1:{{ alloy_http_port }}"'
+  notify: restart alloy
 
-- name: Render Promtail configuration
+- name: Render Alloy configuration
   template:
-    src: promtail-config.yml.j2
-    dest: /etc/promtail/config.yml
+    src: config.alloy.j2
+    dest: /etc/alloy/config.alloy
     owner: root
     group: root
     mode: "0644"
-  notify: restart promtail
+  notify: restart alloy
 
-- name: Ensure Promtail service is enabled and started
+- name: Ensure Alloy service is enabled and started
   service:
-    name: promtail
+    name: alloy
     state: started
     enabled: true
