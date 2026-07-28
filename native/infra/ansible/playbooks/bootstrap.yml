@@ -69,6 +69,8 @@
   roles:
     - common
     - dotnet
+    - role: browser
+      when: use_headless_browser | bool
     - nginx
     - app
     - role: alloy

@@ -1,0 +1,13 @@
+---
+# Fonts the browser needs to render anything beyond ASCII. Without these, headless Chrome draws
+# tofu boxes for diacritics and emoji and nobody notices until a customer downloads the file.
+headless_browser_fonts:
+  - fonts-liberation
+  - fonts-dejavu-core
+  - fonts-noto-core
+  - fonts-noto-color-emoji
+
+# Where the installed binary ends up, per architecture. Applications point their own configuration
+# at this path (for .NET/PuppeteerSharp: Render:BrowserExecutablePath).
+headless_browser_path_amd64: /usr/bin/google-chrome-stable
+headless_browser_path_other: /usr/bin/chromium

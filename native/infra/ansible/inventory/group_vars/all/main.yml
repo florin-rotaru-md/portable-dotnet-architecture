@@ -24,6 +24,8 @@ applications:
     repo_url:     ""
     repo_branch:  "master"
     project_path: ""
+    # Set when this app renders through a headless browser (needs use_headless_browser: true):
+    # headless_browser: true
     # repo_token: "{{ app_repo_token }}"
     # appsettings_override:
     #   ConnectionStrings:
@@ -33,6 +35,12 @@ applications:
 
 apps_root:  /opt/apps
 dotnet_version: "10.0"
+
+# ── Headless browser (optional) ───────────────────────────────────────────────
+# Install Chrome on the app host for server-side HTML → PNG/PDF rendering (PuppeteerSharp,
+# Playwright). Adds ~400 MB. Apps that use it also want `headless_browser: true` in their
+# applications[] entry, which gives the service a writable HOME for the browser profile.
+use_headless_browser: true
 
 # ── Postgres ───────────────────────────────────────────────────────────────────
 postgres_version: "18"

@@ -15,6 +15,20 @@ Optionally, Loki + Grafana can run in Docker for logs and dashboards.
 | Loki       | Docker container *(optional)* |
 | Grafana    | Docker container *(optional)* |
 | cloudflared| Cloudflare apt *(optional)* |
+| Chrome + fonts | Google apt *(optional — `use_headless_browser: true`)* |
+
+### Headless browser
+
+Applications that render HTML to PNG or PDF (PuppeteerSharp, Playwright) need a browser on the
+host; nothing is downloaded at runtime. Set `use_headless_browser: true`, and `headless_browser:
+true` on the application entry so its service gets a writable `HOME` for the browser profile —
+`ProtectSystem=strict` leaves the service user's real home read-only. The binary lands at
+`/usr/bin/google-chrome-stable`; point the app's configuration at that path
+(.NET/PuppeteerSharp: `Render:BrowserExecutablePath`).
+
+Google's `.deb` is used rather than Ubuntu's `chromium` package, which is a snap shim that cannot
+be launched from a hardened systemd unit. The role smoke-tests the browser during provisioning, so
+that failure surfaces in the playbook run rather than on a customer's first download.
 
 ## Minimal bootstrap commands
 

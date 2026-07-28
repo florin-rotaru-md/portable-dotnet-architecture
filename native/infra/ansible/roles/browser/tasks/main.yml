@@ -1,0 +1,84 @@
+---
+# Headless browser for server-side rendering (HTML → PNG/PDF via PuppeteerSharp, Playwright, …).
+#
+# Two decisions worth knowing before editing this file:
+#
+#   * On amd64 this installs Google's own .deb, NOT Ubuntu's `chromium` package. The latter is a
+#     transitional shim for the snap, and a snap cannot be launched from a systemd unit with
+#     ProtectSystem=strict by a non-login service user — it fails in a way that reads like a
+#     Puppeteer bug for about a day. The .deb also pulls its own shared libraries, so there is no
+#     hand-maintained list of libnss3/libgbm1/… to drift out of date.
+#   * Nothing here lets the application download a browser at runtime. The version installed is an
+#     operational decision, applied by a playbook run, not something that changes under a running
+#     service.
+
+- name: Ensure apt keyring directory exists
+  file:
+    path:  /etc/apt/keyrings
+    state: directory
+    mode:  '0755'
+
+- name: Install fonts for headless rendering
+  apt:
+    name:  "{{ headless_browser_fonts }}"
+    state: present
+    update_cache: true
+
+# ── amd64: Google Chrome from Google's repository ─────────────────────────────
+- name: Add Google Chrome signing key
+  get_url:
+    url:  https://dl.google.com/linux/linux_signing_key.pub
+    dest: /etc/apt/keyrings/google-chrome.asc
+    mode: '0644'
+  when: ansible_facts['architecture'] == 'x86_64'
+
+- name: Add Google Chrome apt repository
+  apt_repository:
+    repo:     "deb [arch=amd64 signed-by=/etc/apt/keyrings/google-chrome.asc] https://dl.google.com/linux/chrome/deb/ stable main"
+    filename: google-chrome
+    state:    present
+    update_cache: true
+  when: ansible_facts['architecture'] == 'x86_64'
+
+- name: Install Google Chrome
+  apt:
+    name:  google-chrome-stable
+    state: present
+  when: ansible_facts['architecture'] == 'x86_64'
+
+# ── everything else (arm64): distribution Chromium ────────────────────────────
+# Google publishes no Chrome build for arm64. On Debian `chromium` is a real .deb; on Ubuntu arm64
+# it is the snap shim again, so verify the smoke test below actually passes on that combination
+# before relying on it.
+- name: Install Chromium (non-amd64)
+  apt:
+    name:  chromium
+    state: present
+  when: ansible_facts['architecture'] != 'x86_64'
+
+- name: Resolve the installed browser path
+  set_fact:
+    headless_browser_path: >-
+      {{ headless_browser_path_amd64
+         if ansible_facts['architecture'] == 'x86_64'
+         else headless_browser_path_other }}
+
+# The smoke test, not a formality: it is what catches a snap shim, a missing shared library or a
+# sandbox refusal here, during provisioning, instead of on the first customer download.
+- name: Verify the browser runs headless
+  command: >-
+    {{ headless_browser_path }}
+    --headless --no-sandbox --disable-gpu --disable-dev-shm-usage
+    --dump-dom about:blank
+  become_user: "{{ app_user }}"
+  environment:
+    HOME: /tmp
+  changed_when: false
+  register: headless_browser_smoke
+  failed_when: headless_browser_smoke.rc != 0
+
+- name: Report the browser path to configure
+  debug:
+    msg: >-
+      Headless browser ready at {{ headless_browser_path }} —
+      point the application's configuration at it (.NET/PuppeteerSharp: Render:BrowserExecutablePath).

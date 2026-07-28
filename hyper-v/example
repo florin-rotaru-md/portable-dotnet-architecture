@@ -226,6 +226,7 @@ applications:
     repo_url:      "https://github.com/florin-rotaru-md/statics.git"
     repo_branch:   "master"
     project_path:  "Apps/Waa/Waa.Server/Waa.Server.csproj"
+    headless_browser: true
     repo_token:    "{{ app_repo_token }}"
     appsettings_override:
       Serilog:

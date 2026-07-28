@@ -11,6 +11,14 @@ WorkingDirectory={{ apps_root }}/{{ app_name }}/slots/{{ slot }}
 ExecStart=/usr/bin/dotnet {{ apps_root }}/{{ app_name }}/slots/{{ slot }}/{{ app_assembly }}.dll
 EnvironmentFile={{ apps_root }}/{{ app_name }}/env/common.env
 EnvironmentFile={{ apps_root }}/{{ app_name }}/env/{{ slot }}.env
+{% if current_app.headless_browser | default(false) %}
+# Headless Chrome writes a profile, a cache and crash metadata under $HOME. The service user's real
+# home is outside ReadWritePaths, so ProtectSystem=strict leaves it read-only — point HOME at the
+# app's own runtime directory, which is already writable.
+Environment=HOME={{ apps_root }}/{{ app_name }}/runtime
+Environment=XDG_CONFIG_HOME={{ apps_root }}/{{ app_name }}/runtime/.config
+Environment=XDG_CACHE_HOME={{ apps_root }}/{{ app_name }}/runtime/.cache
+{% endif %}
 Restart=on-failure
 RestartSec=5
 KillSignal=SIGTERM
