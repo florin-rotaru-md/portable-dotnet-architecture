@@ -12,7 +12,7 @@
 |---|---|---|---|
 | VM storage | LVM-Thin (`nvme2-thin`) | **ZFS** (`apps`, `db`) | Proxmox replication works ONLY on ZFS |
 | VM CPU type | `host` | **`x86-64-v3`** | Different CPUs (Raptor Lake vs Arrow Lake) — `host` would crash a migrated VM |
-| Migration network | — | Direct 10G link: X550 ↔ Thunderbolt→10GbE adapter | Fast migration/replication; fallback: everything over 1G |
+| Migration network | — | 10G segment via SODOLA switch; corosync on a dedicated 1G direct link | Bandwidth for migration, quiet path for cluster heartbeat |
 
 ---
 
@@ -31,14 +31,74 @@ Write it with Rufus (DD Image mode).
 
 ### 0.3 Network plan
 
-| Role | Interface | pve1 | pve2 |
-|---|---|---|---|
-| Management + VMs | onboard 1GbE NIC → switch | 192.168.0.11/24 | 192.168.0.12/24 |
-| Migration + replication + cluster | X550 port 1 ↔ TB 10GbE adapter, **direct Cat6a cable** | 10.10.10.1/24 | 10.10.10.2/24 |
+Hardware: SODOLA/HRUI **SL-SWTGW2C80N** 10G switch (8× 10GBase-T, web managed, autonegotiating 100M/1G/2.5G/5G/10G) + Thunderbolt→10GbE adapter on pve2. The switch is *not* a router — the existing router stays the gateway.
 
-- Recommended adapter for pve2: QNAP QNA-T310G1T / OWC / Sonnet Solo 10G (AQC107 chipset, native `atlantic` kernel driver).
-- **Fallback without the adapter:** everything runs over 192.168.0.x — skip Stage 4, and use the management network for the cluster and Migration Settings. You can add the 10G link at any later point without rebuilding anything.
-- VMs keep the addressing scheme from the init doc: `.10` control, `.20` app, `.30` postgres.
+**Two cables per host, with deliberately assigned roles:**
+
+| Link | Cabling | Network | Role |
+|---|---|---|---|
+| **10G** | X550 port 1 (pve1) and TB adapter (pve2) → SODOLA switch → uplink into the existing router | 192.168.0.11 / .12 /24, gw 192.168.0.1 | `vmbr0`: management + VM traffic + migration + replication; corosync **Link 1** (backup) |
+| **1G** | onboard NICs, **direct cable host-to-host** (no switch) | 10.10.10.1 / .2 /24, no gateway | corosync **Link 0** (dedicated) |
+
+**Why corosync's primary link is the 1G direct cable, not the 10G:**
+corosync needs *consistent latency*, not bandwidth (it pushes a few KB/s). A dedicated link with no other traffic and no switch in the path is ideal. Sharing it with migration and VM traffic can introduce jitter and, in extreme cases, make corosync believe the peer node died. The 10G link stays configured as Link 1, so a cut direct cable fails over instantly.
+
+Bonus: the direct link doesn't depend on the switch. If the SODOLA dies, the cluster stays quorate and healthy — you only lose the UI and VM traffic until it's replaced. With both links through the switch, a dead switch would isolate the nodes from each other completely.
+
+**Other notes:**
+- The switch **must be on the UPS**. Otherwise it becomes a single point of failure sitting between two redundant nodes.
+- Uplink to the existing router will run at 1G — that's internet-bound traffic only. VM-to-VM traffic (`app` ↔ `postgres`) stays inside the switch at 10G regardless of which node each lands on after a failover.
+- Keep MTU at 1500 for now. Jumbo frames would help replication, but on a segment that also carries VM traffic and uplinks to the router, MTU mismatches cause subtle, hard-to-debug failures. Revisit only once everything is stable.
+- VMs keep the addressing scheme from the init doc: `.10` control, `.20` app, `.30` postgres — all on 192.168.0.0/24.
+
+**Fallback if the 10G gear isn't ready yet:** run everything over the 1G management network (192.168.0.x), single link, and skip Stage 4. You can add the 10G link and the second corosync link later without rebuilding anything.
+
+### 0.4 Physical cabling — what goes where
+
+```
+                    ┌─────────────────────────┐
+                    │   Existing ISP router    │  192.168.0.1
+                    │  (gateway + DHCP + 5G    │
+                    │   failover)              │
+                    └───────────┬─────────────┘
+                                │  ① Cat6a  (uplink, 1G or whatever the router has)
+                                │
+                    ┌───────────┴─────────────┐
+                    │  SODOLA SL-SWTGW2C80N   │   ← ON THE UPS
+                    │  8 × 10GBase-T          │
+                    └──┬──────────────────┬───┘
+                  ② Cat6a             ③ Cat6a
+                       │                  │
+        ┌──────────────┴───┐        ┌─────┴──────────────┐
+        │  pve1            │        │  pve2              │
+        │  ThinkStation    │        │  ZBook Fury G10    │
+        │                  │        │                    │
+        │  X550-T2 port 1 ─┘        └─ TB→10GbE adapter  │
+        │  X550-T2 port 2  (unused)   (Thunderbolt 4 port)│
+        │                  │        │                    │
+        │  onboard 1G ─────┼── ④ ───┼───── onboard 1G    │
+        └──────────────────┘        └────────────────────┘
+                         ④ Cat5e/6, DIRECT, no switch
+```
+
+**Cable checklist:**
+
+| # | From | To | Type | Purpose |
+|---|---|---|---|---|
+| ① | SODOLA, any port | Existing router LAN port | Cat6a | Internet / rest of the home network |
+| ② | pve1 — X550-T2 **port 1** | SODOLA, any port | Cat6a | `vmbr0`: management, VM traffic, migration, replication, corosync Link 1 |
+| ③ | pve2 — Thunderbolt→10GbE adapter (in a **TB4** port) | SODOLA, any port | Cat6a | Same as ② |
+| ④ | pve1 — **onboard** 1G RJ45 | pve2 — **onboard** 1G RJ45 | Cat5e or better | corosync Link 0 only — direct, no switch in between |
+
+**Power:** SODOLA switch, pve1, and the QDevice all go on the UPS. pve2 (the ZBook) can go on the UPS too, but its own battery already covers it.
+
+**Notes on the physical side:**
+- **X550-T2 port 2 stays empty.** Leave it for a future third node or an LACP pair — no reason to use it now.
+- **Which TB4 port on the ZBook:** either one works; prefer the one not shared with your dock/charger if you use one, to reduce contention. Plug the adapter in *before* booting the Proxmox installer so it's detected during install.
+- **Cable ④ needs no crossover cable.** Both NICs do Auto MDI/MDIX, so a regular patch cable works. Any leftover Cat5e is fine — corosync uses a few KB/s.
+- **Label the cables.** At 3AM during an incident, "which one is the corosync cable" is not a question you want to answer by tracing.
+- **Don't plug the onboard NICs into the switch.** That would put both corosync links behind the same device and defeat the redundancy the second cable exists for.
+- **Cat6a for ①②③** — Cat5e technically negotiates 10G only over very short runs; Cat6a is cheap and removes the doubt.
 
 ---
 
@@ -48,7 +108,8 @@ Write it with Rufus (DD Image mode).
 2. **Target Harddisk: disk 1 (OS).** Careful not to pick the data disks. Default filesystem (ext4/LVM).
 3. Romania / Europe/Bucharest.
 4. Root password + email.
-5. Network: the onboard NIC, hostname `pve1.local` / `pve2.local`, the management IP, gateway 192.168.0.1, DNS.
+5. Network: pick the **10G interface** if the installer detects it (X550 on pve1; the TB adapter on pve2 — plug it in *before* booting the installer). Hostname `pve1.local` / `pve2.local`, management IP 192.168.0.11 / .12, gateway 192.168.0.1, DNS.
+   - If the TB adapter isn't detected at install time, install using the onboard NIC and move the management IP onto the 10G interface in Stage 4 — nothing is lost.
 6. Install → reboot → remove the stick.
 
 Web access: `https://192.168.0.11:8006` (login `root`; the certificate warning is normal).
@@ -290,11 +351,33 @@ cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
 
 ---
 
-## Stage 4 — The direct 10G link (if you have the adapter)
+## Stage 4 — Network interfaces
 
-1. pve2: Thunderbolt adapter into a TB4 port. Cat6a cable: adapter ↔ X550 port 1 (pve1).
-2. On each node: **System → Network** → identify the interface (pve1: `enp…f0`; pve2: appears when the adapter is plugged in) → double-click → Autostart checked → IPv4/CIDR `10.10.10.1/24` and `10.10.10.2/24` respectively, no gateway → **Apply Configuration**.
-3. Test from the pve1 Shell: `ping 10.10.10.2`.
+### 4.1 The 10G segment (vmbr0 — management + VMs + migration)
+
+1. Connect pve1's X550 port 1 and pve2's Thunderbolt adapter to the SODOLA switch with Cat6a. Uplink one switch port to the existing router.
+2. On each node: **System → Network**. The bridge `vmbr0` should be tied to the 10G interface (pve1: `enp…f0`; pve2: the adapter, name like `enp…` or `enx…`).
+   - If the installer bound `vmbr0` to the onboard NIC instead, double-click `vmbr0` → change **Bridge ports** to the 10G interface name → Apply Configuration.
+3. `vmbr0` holds the management IP: 192.168.0.11 / .12 /24, gateway 192.168.0.1.
+4. Verify link speed:
+```bash
+ethtool <10g-interface> | grep -i speed     # expect 10000Mb/s
+```
+
+### 4.2 The dedicated corosync link (1G, direct cable)
+
+1. Run a single cable directly between the two onboard NICs — no switch. Auto MDI/MDIX handles the crossover, any Cat5e or better works.
+2. On each node: **System → Network** → double-click the onboard interface → check **Autostart** → IPv4/CIDR `10.10.10.1/24` (pve1) and `10.10.10.2/24` (pve2), **no gateway** → **Apply Configuration**.
+3. Test from the pve1 Shell:
+```bash
+ping 10.10.10.2
+```
+
+> This link carries corosync only. Don't bridge it, don't route through it, don't put VM traffic on it — its value is being quiet and predictable.
+
+### 4.3 UPS
+
+Plug the SODOLA switch into the UPS along with the nodes. A switch on unprotected power turns two redundant nodes into two isolated ones the moment the lights go out.
 
 ---
 
@@ -318,11 +401,26 @@ Verify: **Datacenter → Storage** — `apps` and `db` visible on both nodes.
 
 ## Stage 6 — Cluster
 
-**On pve1:** Datacenter → Cluster → **Create Cluster** → name `lab`, Link 0 = `10.10.10.1` (or the management IP in the no-10G variant; optionally Link 1 = the management IP for redundancy) → Create → **Join Information → Copy**.
+**On pve1:** Datacenter → Cluster → **Create Cluster** → name `lab`:
+- **Link 0** = `10.10.10.1` (the dedicated 1G direct link — corosync's primary)
+- **Link 1** = `192.168.0.11` (the 10G segment — backup path)
 
-**On pve2:** Datacenter → Cluster → **Join Cluster** → paste the info, pve1's root password, Link 0 = `10.10.10.2` → Join. The page will "freeze" (certificates change) — reload the browser.
+→ Create → **Join Information → Copy**.
 
-**Migration Settings:** Datacenter → Options → Migration Settings → Network = `10.10.10.0/24` (or the management network + a bandwidth limit of ~80 MB/s in the 1G-only variant).
+**On pve2:** Datacenter → Cluster → **Join Cluster** → paste the info, pve1's root password:
+- **Link 0** = `10.10.10.2`
+- **Link 1** = `192.168.0.12`
+
+→ Join. The page will "freeze" (certificates change) — reload the browser.
+
+Verify both rings are up:
+```bash
+corosync-cfgtool -s     # both LINK ID 0 and 1 should show "localhost on ... status = OK"
+```
+
+**Migration Settings:** Datacenter → Options → Migration Settings → Network = `192.168.0.0/24` (the 10G segment — migration wants bandwidth, corosync wants quiet; they belong on different links).
+
+Also set a bandwidth limit of ~500 MB/s there, so a large migration doesn't starve VM traffic sharing the same 10G segment.
 
 ---
 
@@ -636,7 +734,8 @@ pve2 dies suddenly (power cut, hardware fault, kernel panic):
 | **Clean shutdown** with `shutdown_policy=migrate` | VMs live-migrate automatically | **0** | **0** | None |
 | **Laptop battery hits 10%** | battery-check → clean shutdown → auto live-migration | **0** | **0** | None; plug power back in later |
 | **Node dies suddenly** | Fencing → HA restart on the healthy node | ~2-3 min | ≤ replication interval | None; verify afterward |
-| **Network cable between nodes pulled** (10G link only) | Cluster falls back to the management link if configured as Link 1 | 0 | 0 | Replace the cable |
+| **Direct corosync cable pulled** | corosync fails over to Link 1 (10G segment) | 0 | 0 | Replace the cable; check `corosync-cfgtool -s` |
+| **SODOLA switch dies** | corosync survives on Link 0 (direct cable), cluster stays quorate; UI and VM traffic unreachable | Service down until replaced | 0 | Replace the switch; nodes and VMs keep running throughout |
 | **QDevice down, both nodes up** | Cluster runs on 2/2 votes, everything normal | 0 | 0 | Restore the QDevice — you have no margin until then |
 | **QDevice down AND a node dies** | Surviving node has 1/3 votes → **no quorum, no automatic failover** | Until you intervene | ≤ replication interval | `pvecm expected 1` on the survivor (see 15.5) |
 | **Internet outage** | 5G router failover | ~30s | 0 | None |
@@ -678,6 +777,7 @@ Repeat test 3 once after any significant infrastructure change.
 
 ```bash
 pvecm status                  # Quorate: Yes, Total votes: 3
+corosync-cfgtool -s           # both LINK 0 and LINK 1 status = OK
 zpool status                  # no errors, no DEGRADED
 pvesr status                  # replication jobs OK, no stale entries
 ha-manager status             # HA services started, on which node
