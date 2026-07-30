@@ -12,7 +12,7 @@
 |---|---|---|---|
 | VM storage | LVM-Thin (`nvme2-thin`) | **ZFS** (`apps`, `db`) | Proxmox replication works ONLY on ZFS |
 | VM CPU type | `host` | **`x86-64-v3`** | Different CPUs (Raptor Lake vs Arrow Lake) — `host` would crash a migrated VM |
-| Migration network | — | 10G segment via SODOLA switch; corosync on a dedicated 1G direct link | Bandwidth for migration, quiet path for cluster heartbeat |
+| Migration network | — | Direct 10G cable (X550 ↔ TB adapter), no switch; 1G to the router as backup ring | Full 10G for migration/replication at zero extra cost, plus corosync redundancy |
 
 ---
 
@@ -31,74 +31,66 @@ Write it with Rufus (DD Image mode).
 
 ### 0.3 Network plan
 
-Hardware: SODOLA/HRUI **SL-SWTGW2C80N** 10G switch (8× 10GBase-T, web managed, autonegotiating 100M/1G/2.5G/5G/10G) + Thunderbolt→10GbE adapter on pve2. The switch is *not* a router — the existing router stays the gateway.
-
-**Two cables per host, with deliberately assigned roles:**
+No 10G switch (they're still expensive for what they'd add here). Instead: **two direct cables, two cables per host, zero extra hardware beyond the Thunderbolt adapter.**
 
 | Link | Cabling | Network | Role |
 |---|---|---|---|
-| **10G** | X550 port 1 (pve1) and TB adapter (pve2) → SODOLA switch → uplink into the existing router | 192.168.0.11 / .12 /24, gw 192.168.0.1 | `vmbr0`: management + VM traffic + migration + replication; corosync **Link 1** (backup) |
-| **1G** | onboard NICs, **direct cable host-to-host** (no switch) | 10.10.10.1 / .2 /24, no gateway | corosync **Link 0** (dedicated) |
+| **1G** | onboard NIC of each host → existing router / home switch | 192.168.0.11 / .12 /24, gw 192.168.0.1 | `vmbr0`: management + VM traffic + internet; corosync **Link 1** (backup) |
+| **10G** | pve1 X550 port 1 ↔ pve2 TB adapter, **direct cable, no switch** | 10.10.10.1 / .2 /24, **no gateway** | Migration + replication; corosync **Link 0** (primary) |
 
-**Why corosync's primary link is the 1G direct cable, not the 10G:**
-corosync needs *consistent latency*, not bandwidth (it pushes a few KB/s). A dedicated link with no other traffic and no switch in the path is ideal. Sharing it with migration and VM traffic can introduce jitter and, in extreme cases, make corosync believe the peer node died. The 10G link stays configured as Link 1, so a cut direct cable fails over instantly.
+**Why corosync's primary ring sits on the 10G direct link:** it's point-to-point, deterministic, and has no other tenants competing for it beyond migration bursts — which you cap anyway. The 1G side carries VM traffic *and* the nightly offsite sync to Digi Storage, so it's the link more likely to saturate. The 1G ring stays configured as Link 1, so if the direct cable is unplugged corosync fails over instantly.
 
-Bonus: the direct link doesn't depend on the switch. If the SODOLA dies, the cluster stays quorate and healthy — you only lose the UI and VM traffic until it's replaced. With both links through the switch, a dead switch would isolate the nodes from each other completely.
+**What you give up versus a 10G switch:** cross-node VM-to-VM traffic runs at 1G. In practice this almost never matters — `app` and `postgres` normally live on the same node (traffic never leaves the host), and after a failover they land on the same surviving node together. Only during a transient split does it apply.
+
+**What you gain:** no switch to buy, no switch to power, and no single device sitting between two redundant nodes.
 
 **Other notes:**
-- The switch **must be on the UPS**. Otherwise it becomes a single point of failure sitting between two redundant nodes.
-- Uplink to the existing router will run at 1G — that's internet-bound traffic only. VM-to-VM traffic (`app` ↔ `postgres`) stays inside the switch at 10G regardless of which node each lands on after a failover.
-- Keep MTU at 1500 for now. Jumbo frames would help replication, but on a segment that also carries VM traffic and uplinks to the router, MTU mismatches cause subtle, hard-to-debug failures. Revisit only once everything is stable.
+- **pve1's X550 port 2 stays empty** — spare for a future third node.
 - VMs keep the addressing scheme from the init doc: `.10` control, `.20` app, `.30` postgres — all on 192.168.0.0/24.
+- Keep MTU at 1500 to start. Jumbo frames (MTU 9000) are genuinely tempting on a dedicated point-to-point link like this one and carry little risk there, since nothing else shares the segment — but leave it until everything else is proven.
+- **Optional later:** a second bridge (`vmbr1`) on the 10G link with its own subnet, giving `app` and `postgres` a second NIC each so DB traffic runs at 10G even when the VMs are split across nodes. Extra complexity for a rare case — skip it for now.
 
-**Fallback if the 10G gear isn't ready yet:** run everything over the 1G management network (192.168.0.x), single link, and skip Stage 4. You can add the 10G link and the second corosync link later without rebuilding anything.
+**Fallback if the Thunderbolt adapter isn't ready yet:** run everything over the 1G network, single link, skip Stage 4.2. Add the 10G link later without rebuilding anything — the only change is one cluster setting and the interface config.
 
 ### 0.4 Physical cabling — what goes where
 
 ```
-                    ┌─────────────────────────┐
-                    │   Existing ISP router    │  192.168.0.1
-                    │  (gateway + DHCP + 5G    │
-                    │   failover)              │
-                    └───────────┬─────────────┘
-                                │  ① Cat6a  (uplink, 1G or whatever the router has)
-                                │
-                    ┌───────────┴─────────────┐
-                    │  SODOLA SL-SWTGW2C80N   │   ← ON THE UPS
-                    │  8 × 10GBase-T          │
-                    └──┬──────────────────┬───┘
-                  ② Cat6a             ③ Cat6a
-                       │                  │
-        ┌──────────────┴───┐        ┌─────┴──────────────┐
+                    ┌──────────────────────────┐
+                    │   Existing ISP router     │  192.168.0.1
+                    │  (gateway + DHCP + 5G     │
+                    │   failover)               │
+                    └──┬───────────────────┬───┘
+                    ①  │                   │  ②
+                 Cat5e/6                Cat5e/6
+                       │                   │
+        ┌──────────────┴───┐        ┌──────┴─────────────┐
         │  pve1            │        │  pve2              │
         │  ThinkStation    │        │  ZBook Fury G10    │
         │                  │        │                    │
-        │  X550-T2 port 1 ─┘        └─ TB→10GbE adapter  │
-        │  X550-T2 port 2  (unused)   (Thunderbolt 4 port)│
+        │  onboard 1G ─────┘        └───── onboard 1G    │
         │                  │        │                    │
-        │  onboard 1G ─────┼── ④ ───┼───── onboard 1G    │
+        │  X550-T2 port 1 ─┼── ③ ───┼─ TB4 → 10GbE adapt.│
+        │  X550-T2 port 2  │        │                    │
+        │     (unused)     │        │                    │
         └──────────────────┘        └────────────────────┘
-                         ④ Cat5e/6, DIRECT, no switch
+                    ③ Cat6a, DIRECT, no switch
 ```
 
 **Cable checklist:**
 
 | # | From | To | Type | Purpose |
 |---|---|---|---|---|
-| ① | SODOLA, any port | Existing router LAN port | Cat6a | Internet / rest of the home network |
-| ② | pve1 — X550-T2 **port 1** | SODOLA, any port | Cat6a | `vmbr0`: management, VM traffic, migration, replication, corosync Link 1 |
-| ③ | pve2 — Thunderbolt→10GbE adapter (in a **TB4** port) | SODOLA, any port | Cat6a | Same as ② |
-| ④ | pve1 — **onboard** 1G RJ45 | pve2 — **onboard** 1G RJ45 | Cat5e or better | corosync Link 0 only — direct, no switch in between |
+| ① | pve1 — **onboard** 1G RJ45 | Existing router / home switch | Cat5e or better | `vmbr0`: management, VM traffic, internet, corosync Link 1 |
+| ② | pve2 — **onboard** 1G RJ45 | Existing router / home switch | Cat5e or better | Same as ① |
+| ③ | pve1 — X550-T2 **port 1** | pve2 — Thunderbolt→10GbE adapter (in a **TB4** port) | **Cat6a** | Migration, replication, corosync Link 0 — direct, no switch |
 
-**Power:** SODOLA switch, pve1, and the QDevice all go on the UPS. pve2 (the ZBook) can go on the UPS too, but its own battery already covers it.
+**Power:** pve1 and the QDevice on the UPS. pve2 (the ZBook) can go on the UPS too, though its own battery already covers it. No switch to worry about — one less thing on the UPS and one less failure domain.
 
 **Notes on the physical side:**
-- **X550-T2 port 2 stays empty.** Leave it for a future third node or an LACP pair — no reason to use it now.
-- **Which TB4 port on the ZBook:** either one works; prefer the one not shared with your dock/charger if you use one, to reduce contention. Plug the adapter in *before* booting the Proxmox installer so it's detected during install.
-- **Cable ④ needs no crossover cable.** Both NICs do Auto MDI/MDIX, so a regular patch cable works. Any leftover Cat5e is fine — corosync uses a few KB/s.
-- **Label the cables.** At 3AM during an incident, "which one is the corosync cable" is not a question you want to answer by tracing.
-- **Don't plug the onboard NICs into the switch.** That would put both corosync links behind the same device and defeat the redundancy the second cable exists for.
-- **Cat6a for ①②③** — Cat5e technically negotiates 10G only over very short runs; Cat6a is cheap and removes the doubt.
+- **Cable ③ needs no crossover cable.** Both ends do Auto MDI/MDIX. Use Cat6a here — Cat5e negotiates 10G only over very short runs, and Cat6a is cheap enough to remove the doubt.
+- **Which TB4 port on the ZBook:** either works; prefer the one not shared with your dock or charger to reduce contention. Plug the adapter in *before* booting, so it's present at install and at every boot.
+- **Label the cables.** At 3AM during an incident, "which one is the corosync link" is not a question you want to answer by tracing.
+- **Don't route the 10G link through the router.** Its whole value is being a private, quiet, point-to-point path.
 
 ---
 
@@ -108,8 +100,8 @@ Bonus: the direct link doesn't depend on the switch. If the SODOLA dies, the clu
 2. **Target Harddisk: disk 1 (OS).** Careful not to pick the data disks. Default filesystem (ext4/LVM).
 3. Romania / Europe/Bucharest.
 4. Root password + email.
-5. Network: pick the **10G interface** if the installer detects it (X550 on pve1; the TB adapter on pve2 — plug it in *before* booting the installer). Hostname `pve1.local` / `pve2.local`, management IP 192.168.0.11 / .12, gateway 192.168.0.1, DNS.
-   - If the TB adapter isn't detected at install time, install using the onboard NIC and move the management IP onto the 10G interface in Stage 4 — nothing is lost.
+5. Network: pick the **onboard 1G NIC** (that's the management network). Hostname `pve1.local` / `pve2.local`, IP 192.168.0.11 / .12, gateway 192.168.0.1, DNS.
+   - The 10G interface is configured afterwards, in Stage 4.2 — the installer doesn't need it.
 6. Install → reboot → remove the stick.
 
 Web access: `https://192.168.0.11:8006` (login `root`; the certificate warning is normal).
@@ -353,31 +345,67 @@ cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
 
 ## Stage 4 — Network interfaces
 
-### 4.1 The 10G segment (vmbr0 — management + VMs + migration)
+All of this is done from the Proxmox UI: select the node → **System → Network**.
 
-1. Connect pve1's X550 port 1 and pve2's Thunderbolt adapter to the SODOLA switch with Cat6a. Uplink one switch port to the existing router.
-2. On each node: **System → Network**. The bridge `vmbr0` should be tied to the 10G interface (pve1: `enp…f0`; pve2: the adapter, name like `enp…` or `enx…`).
-   - If the installer bound `vmbr0` to the onboard NIC instead, double-click `vmbr0` → change **Bridge ports** to the 10G interface name → Apply Configuration.
-3. `vmbr0` holds the management IP: 192.168.0.11 / .12 /24, gateway 192.168.0.1.
-4. Verify link speed:
+### 4.1 Management network — `vmbr0` on the onboard NIC
+
+The installer already built this. Verify (and fix if needed):
+
+1. Select the row **`vmbr0`** → **Edit**:
+   - **IPv4/CIDR**: `192.168.0.11/24` (pve1) / `192.168.0.12/24` (pve2)
+   - **Gateway (IPv4)**: `192.168.0.1`
+   - **Bridge ports**: the onboard interface name (e.g. `eno1`, `enp0s31f6`)
+   - **Autostart**: checked · **VLAN aware**: unchecked
+2. **System → DNS** → Edit → DNS server 1: `192.168.0.1` (or `1.1.1.1`).
+
+### 4.2 The 10G direct link
+
+1. Connect pve1's X550 **port 1** to pve2's Thunderbolt adapter with a Cat6a cable. No switch.
+2. On each node: **System → Network** → find the 10G interface (pve1: `enp…f0`; pve2: the adapter, name like `enx…`) → **Edit**:
+   - **IPv4/CIDR**: `10.10.10.1/24` (pve1) / `10.10.10.2/24` (pve2)
+   - **Gateway (IPv4)**: **leave empty** — a node must have exactly one default gateway, and `vmbr0` already has it
+   - **Autostart**: checked
+3. Press **Apply Configuration** (the yellow banner at the top). No reboot needed — Proxmox applies live via ifupdown2.
+
+### 4.3 Verify
+
+Node → **Shell**:
 ```bash
-ethtool <10g-interface> | grep -i speed     # expect 10000Mb/s
+ip -br a                      # each interface with the expected address
+ip route | grep default       # exactly ONE line, via vmbr0
+ping -c3 10.10.10.2           # the direct link (from pve1)
+ping -c3 8.8.8.8              # the default route
+ethtool <10g-interface> | grep -i speed    # expect 10000Mb/s
 ```
 
-### 4.2 The dedicated corosync link (1G, direct cable)
+Two default routes is the classic mistake here, and it produces a cluster that misbehaves for no obvious reason. If `ip route` shows more than one, remove the gateway from the 10G interface.
 
-1. Run a single cable directly between the two onboard NICs — no switch. Auto MDI/MDIX handles the crossover, any Cat5e or better works.
-2. On each node: **System → Network** → double-click the onboard interface → check **Autostart** → IPv4/CIDR `10.10.10.1/24` (pve1) and `10.10.10.2/24` (pve2), **no gateway** → **Apply Configuration**.
-3. Test from the pve1 Shell:
-```bash
-ping 10.10.10.2
+### 4.4 For reference — the resulting config
+
+`/etc/network/interfaces` on pve1 ends up looking like this. Useful for verification, and editable directly if you prefer (apply with `ifreload -a`):
+
+```
+auto lo
+iface lo inet loopback
+
+iface eno1 inet manual              # onboard — bridge port, no IP of its own
+
+auto vmbr0
+iface vmbr0 inet static
+    address 192.168.0.11/24
+    gateway 192.168.0.1
+    bridge-ports eno1
+    bridge-stp off
+    bridge-fd 0
+
+auto enp2s0f0
+iface enp2s0f0 inet static
+    address 10.10.10.1/24           # 10G direct link — no gateway
 ```
 
-> This link carries corosync only. Don't bridge it, don't route through it, don't put VM traffic on it — its value is being quiet and predictable.
+pve2 is identical with `.12` / `10.10.10.2`, and different interface names.
 
-### 4.3 UPS
-
-Plug the SODOLA switch into the UPS along with the nodes. A switch on unprotected power turns two redundant nodes into two isolated ones the moment the lights go out.
+> If you lose the web UI after Apply Configuration, you changed the wrong bridge port. Go to the machine's physical console, fix `/etc/network/interfaces` with `nano`, then `ifreload -a`.
 
 ---
 
@@ -402,8 +430,8 @@ Verify: **Datacenter → Storage** — `apps` and `db` visible on both nodes.
 ## Stage 6 — Cluster
 
 **On pve1:** Datacenter → Cluster → **Create Cluster** → name `lab`:
-- **Link 0** = `10.10.10.1` (the dedicated 1G direct link — corosync's primary)
-- **Link 1** = `192.168.0.11` (the 10G segment — backup path)
+- **Link 0** = `10.10.10.1` (the 10G direct link — corosync's primary ring)
+- **Link 1** = `192.168.0.11` (the management network — backup ring)
 
 → Create → **Join Information → Copy**.
 
@@ -415,12 +443,12 @@ Verify: **Datacenter → Storage** — `apps` and `db` visible on both nodes.
 
 Verify both rings are up:
 ```bash
-corosync-cfgtool -s     # both LINK ID 0 and 1 should show "localhost on ... status = OK"
+corosync-cfgtool -s     # LINK ID 0 and LINK ID 1 both "status = OK"
 ```
 
-**Migration Settings:** Datacenter → Options → Migration Settings → Network = `192.168.0.0/24` (the 10G segment — migration wants bandwidth, corosync wants quiet; they belong on different links).
+**Migration Settings:** Datacenter → Options → Migration Settings → Network = `10.10.10.0/24`.
 
-Also set a bandwidth limit of ~500 MB/s there, so a large migration doesn't starve VM traffic sharing the same 10G segment.
+Set a bandwidth limit of ~800 MB/s there. The link is dedicated, so you don't need to protect VM traffic — but leaving headroom keeps corosync's primary ring free of jitter during a large replication.
 
 ---
 
@@ -450,61 +478,209 @@ pvecm status    # Total votes: 3, Quorate: Yes
 
 ## Stage 8 — Ubuntu template with cloud-init (on pve1)
 
-Download the Ubuntu Server ISO (https://ubuntu.com/download/server) → `local` storage → ISO Images → Upload (or Download from URL).
+The goal: one golden image, cloned three times. Every VM then differs only in CPU/RAM/IP, which cloud-init injects at first boot. Build it **once, on pve1** — clones can target either node.
 
+### 8.1 Get the ISO
+
+**Datacenter → pve1 → local → ISO Images → Download from URL** (faster than uploading from your PC). Grab the current Ubuntu Server LTS from https://ubuntu.com/download/server.
+ex: https://releases.ubuntu.com/26.04/ubuntu-26.04-live-server-amd64.iso
+Confirm the exact filename — you need it verbatim in the next step:
 ```bash
-ls /var/lib/vz/template/iso   # check the exact ISO filename
+ls /var/lib/vz/template/iso
+```
 
+### 8.2 Create the VM shell
+
+Proxmox Shell on pve1:
+```bash
 qm create 9000 \
   --name ubuntu-template \
+  --ostype l26 \
   --memory 4096 \
+  --sockets 1 \
   --cores 4 \
   --net0 virtio,bridge=vmbr0
 
 qm set 9000 --machine q35 && \
 qm set 9000 --bios seabios && \
 qm set 9000 --scsihw virtio-scsi-single && \
-qm set 9000 --scsi0 apps:32,discard=on,iothread=1 && \
+qm set 9000 --scsi0 apps:32,discard=on,ssd=1,iothread=1 && \
 qm set 9000 --cpu x86-64-v3 && \
 qm set 9000 --agent enabled=1 && \
-qm set 9000 --cdrom local:iso/ubuntu-24.04.4-live-server-amd64.iso && \
+qm set 9000 --cdrom local:iso/ubuntu-26.04-live-server-amd64.iso && \
 qm set 9000 --boot order="scsi0;ide2" && \
 qm set 9000 --bootdisk scsi0
 ```
 
-> Changes vs the init doc: `--scsi0 apps:32` (ZFS instead of `nvme2-thin`) and `--cpu x86-64-v3` set on the template — all clones inherit it and remain safely migratable between the two different CPUs.
+What each choice buys you:
 
-Ubuntu installation in the console (same as the init doc): Console → standard install, user/password `devops`, ✔ Install OpenSSH server, Skip Ubuntu Pro, reboot.
+| Flag | Why |
+|---|---|
+| `--cpu x86-64-v3` | **The migration-critical one.** Both CPUs support it; `host` would expose Raptor Lake / Arrow Lake differences and crash a migrated VM |
+| `--scsihw virtio-scsi-single` + `iothread=1` | Each disk gets its own I/O thread — matters for the Postgres clone |
+| `discard=on,ssd=1` | TRIM passthrough so deleted blocks are returned to the ZFS pool; `ssd=1` tells the guest it's flash |
+| `--agent enabled=1` | Lets Proxmox do graceful shutdowns, report the guest IP, and freeze the filesystem during snapshot backups |
+| `--machine q35` | Modern chipset; Proxmox pins the machine *version* on first start, which is exactly what keeps live migration safe across host upgrades |
+| `apps:32` | Small base disk on ZFS. Clones expand later (Stage 9) — never oversize the template |
 
-After the install, inside the VM (ssh `devops@<dhcp-ip>`, then `sudo -i`):
+### 8.3 Install Ubuntu
+
+**pve1 → 9000 → Console.** The disk is empty, so boot falls through to the CD: press **ESC** at the boot prompt and pick the DVD/CD entry.
+
+Installer answers:
+
+| Screen | Answer |
+|---|---|
+| Language / Keyboard | English → Done |
+| Type of install | Ubuntu Server (not minimized) → Done |
+| Network | Leave DHCP → Done |
+| Proxy / Mirror | Done → Done |
+| Guided storage | Accept defaults (LVM) → Done → **Continue** on the destructive-action warning |
+| Profile | name `devops`, server `devops`, user `devops`, password `devops` |
+| Ubuntu Pro | Skip for now |
+| SSH | ✔ **Install OpenSSH server** |
+| Snaps | Done |
+
+> Keep the LVM layout — Stage 9's postgres disk resize depends on it.
+
+Reboot when it finishes, log in at the console, and find the DHCP address:
 ```bash
-apt update && \
-apt upgrade -y && \
-apt install -y qemu-guest-agent cloud-init sudo curl wget bash-completion && \
-systemctl enable --now qemu-guest-agent && \
+ip a
+```
+
+### 8.4 Prepare the guest
+
+SSH in (`ssh devops@<dhcp-ip>`), then `sudo -i`.
+
+**a) Packages and guest agent:**
+```bash
+apt update && apt upgrade -y
+apt install -y qemu-guest-agent cloud-init sudo curl wget bash-completion
+systemctl enable --now qemu-guest-agent
+```
+
+**b) Undo the installer's cloud-init lockdown — do not skip this.**
+
+The Ubuntu ISO installer deliberately disables cloud-init's network handling after install. Leave it in place and every clone will ignore the IP you set in the Cloud-Init tab and silently come up on DHCP:
+
+```bash
+rm -f /etc/cloud/cloud.cfg.d/subiquity-disable-cloudinit-networking.cfg
+rm -f /etc/cloud/cloud.cfg.d/99-installer.cfg
+rm -f /etc/netplan/00-installer-config.yaml
+rm -f /etc/cloud/cloud-init.disabled
+```
+
+(The installer's netplan file goes too — otherwise it competes with the `50-cloud-init.yaml` that cloud-init generates.)
+
+**c) Enable the serial console** so Proxmox's xterm.js console works:
+```bash
+sed -i 's/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT="console=tty1 console=ttyS0,115200"/' /etc/default/grub
+sed -i 's/^#\?GRUB_TERMINAL=.*/GRUB_TERMINAL="console serial"/' /etc/default/grub
+update-grub
+```
+
+**d) Generalize — strip everything that must be unique per clone:**
+```bash
 apt clean && \
 journalctl --rotate && \
 journalctl --vacuum-time=1s && \
 cloud-init clean --logs && \
-history -c && \
+rm -f /etc/ssh/ssh_host_* && \
 truncate -s 0 /etc/machine-id && \
 rm -f /var/lib/dbus/machine-id && \
+ln -s /etc/machine-id /var/lib/dbus/machine-id && \
 rm -rf /tmp/* /var/tmp/* && \
+history -c && \
 sync
 ```
 
-Shutdown + cloud-init + convert to template (Proxmox Shell):
+> Why each removal matters: a shared `machine-id` makes clones request the *same* DHCP lease and confuses systemd journals; shared SSH host keys mean every VM presents the same fingerprint (both a security problem and a source of constant "host key changed" warnings). Both are regenerated automatically at first boot.
+
+Shut it down **from the Proxmox shell** (don't reboot the guest after cleaning, or it regenerates what you just stripped):
 ```bash
 qm shutdown 9000
+```
 
+### 8.5 Attach the cloud-init drive and set defaults
+
+Proxmox Shell:
+```bash
 qm set 9000 --delete ide2 && \
 qm set 9000 --ide2 apps:cloudinit && \
-qm set 9000 --serial0 socket --vga serial0 && \
+qm set 9000 --serial0 socket && \
 qm set 9000 --ipconfig0 ip=dhcp && \
+qm set 9000 --ciuser devops && \
+qm set 9000 --nameserver 192.168.0.1 && \
+qm set 9000 --searchdomain lan && \
 qm set 9000 --boot order='scsi0'
+```
 
+**SSH key instead of passwords** — do this now and every clone comes up key-only:
+```bash
+# on pve1, if you don't already have a key:
+test -f /root/.ssh/id_ed25519 || ssh-keygen -t ed25519 -N "" -f /root/.ssh/id_ed25519
+qm set 9000 --sshkeys /root/.ssh/id_ed25519.pub
+```
+
+You can add the control VM's key later too — `--sshkeys` takes a file, so append additional public keys to it and re-run the command.
+
+> Deviation from the init doc: it set `--vga serial0`, which blanks the graphical console on an ISO-installed Ubuntu (the installer doesn't configure a serial console). Here we keep the default VGA *and* add `serial0`, plus the grub change in 8.4c — so both consoles work.
+
+### 8.6 Convert to template
+
+```bash
 qm template 9000
 ```
+
+Irreversible: 9000 can no longer be started or edited as a VM. Everything from here is clones.
+
+### 8.7 Verify before you build on it
+
+```bash
+qm config 9000 | egrep 'cpu|scsi0|ide2|agent|template|ciuser'
+```
+
+Expected: `cpu: x86-64-v3`, `scsi0: apps:...`, `ide2: apps:...cloudinit,media=cdrom`, `agent: 1`, `template: 1`, `ciuser: devops`.
+
+Then a throwaway smoke test, because catching a broken template now saves rebuilding three VMs later:
+```bash
+qm clone 9000 999 --name smoke-test --full --storage apps
+qm set 999 --ipconfig0 ip=192.168.0.99/24,gw=192.168.0.1
+qm start 999
+```
+Check that it boots, takes **192.168.0.99** (not a DHCP address — that's the 8.4b check), accepts your SSH key, and reports its IP in the Proxmox summary page (that's the guest-agent check). Then:
+```bash
+qm stop 999 && qm destroy 999
+```
+
+### 8.8 Cluster note
+
+The template lives on pve1's local `apps` pool, so it exists only on pve1 — that's fine. In the clone dialog, **Mode: Full Clone** lets you pick either node as target; Proxmox streams the disk across for you. Linked clones can't leave the node, which is one more reason Stage 9 uses full clones throughout.
+
+If you'd rather have the template available locally on both nodes, just clone it to pve2 once and run `qm template` on the copy — but there's little to gain.
+
+### 8.9 Faster alternative: the Ubuntu cloud image
+
+If you ever rebuild the template, this route skips the 15-minute interactive install entirely — the image ships cloud-init ready, with none of the 8.4b cleanup needed:
+
+```bash
+cd /var/lib/vz/template/iso
+wget https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img
+
+qm create 9001 --name ubuntu-cloud-template --ostype l26 --memory 4096 \
+  --sockets 1 --cores 4 --net0 virtio,bridge=vmbr0 --machine q35 \
+  --scsihw virtio-scsi-single --cpu x86-64-v3 --agent enabled=1 \
+  --serial0 socket --vga serial0
+
+qm set 9001 --scsi0 apps:0,import-from=/var/lib/vz/template/iso/noble-server-cloudimg-amd64.img,discard=on,ssd=1,iothread=1
+qm set 9001 --ide2 apps:cloudinit --boot order='scsi0'
+qm set 9001 --ciuser devops --sshkeys /root/.ssh/id_ed25519.pub \
+  --nameserver 192.168.0.1 --searchdomain lan --ipconfig0 ip=dhcp
+qm disk resize 9001 scsi0 32G
+qm template 9001
+```
+
+Here `--vga serial0` **is** correct: cloud images have the serial console configured. Trade-off: no `qemu-guest-agent` preinstalled, so add it via a cloud-init custom snippet or on first boot per clone.
 
 ---
 
@@ -734,8 +910,9 @@ pve2 dies suddenly (power cut, hardware fault, kernel panic):
 | **Clean shutdown** with `shutdown_policy=migrate` | VMs live-migrate automatically | **0** | **0** | None |
 | **Laptop battery hits 10%** | battery-check → clean shutdown → auto live-migration | **0** | **0** | None; plug power back in later |
 | **Node dies suddenly** | Fencing → HA restart on the healthy node | ~2-3 min | ≤ replication interval | None; verify afterward |
-| **Direct corosync cable pulled** | corosync fails over to Link 1 (10G segment) | 0 | 0 | Replace the cable; check `corosync-cfgtool -s` |
-| **SODOLA switch dies** | corosync survives on Link 0 (direct cable), cluster stays quorate; UI and VM traffic unreachable | Service down until replaced | 0 | Replace the switch; nodes and VMs keep running throughout |
+| **10G direct cable pulled** | corosync fails over to Link 1 (1G); migration and replication fall back to 1G, slower but working | 0 | 0 | Replace the cable; check `corosync-cfgtool -s` |
+| **Thunderbolt adapter drops off** (pve2) | Same as above — the 10G link disappears, the 1G ring carries the cluster | 0 | 0 | Reseat the adapter; if it recurs, check `dmesg` and the interface name (see troubleshooting) |
+| **Home router / 1G switch dies** | corosync survives on Link 0 (direct 10G), cluster stays quorate and VMs keep running; no client access | Service down until replaced | 0 | Replace the router; nodes never stop |
 | **QDevice down, both nodes up** | Cluster runs on 2/2 votes, everything normal | 0 | 0 | Restore the QDevice — you have no margin until then |
 | **QDevice down AND a node dies** | Surviving node has 1/3 votes → **no quorum, no automatic failover** | Until you intervene | ≤ replication interval | `pvecm expected 1` on the survivor (see 15.5) |
 | **Internet outage** | 5G router failover | ~30s | 0 | None |
