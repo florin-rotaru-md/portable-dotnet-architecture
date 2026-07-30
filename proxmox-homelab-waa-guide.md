@@ -484,6 +484,7 @@ The goal: one golden image, cloned three times. Every VM then differs only in CP
 
 **Datacenter → pve1 → local → ISO Images → Download from URL** (faster than uploading from your PC). Grab the current Ubuntu Server LTS from https://ubuntu.com/download/server.
 ex: https://releases.ubuntu.com/26.04/ubuntu-26.04-live-server-amd64.iso
+
 Confirm the exact filename — you need it verbatim in the next step:
 ```bash
 ls /var/lib/vz/template/iso
@@ -507,7 +508,7 @@ qm set 9000 --scsihw virtio-scsi-single && \
 qm set 9000 --scsi0 apps:32,discard=on,ssd=1,iothread=1 && \
 qm set 9000 --cpu x86-64-v3 && \
 qm set 9000 --agent enabled=1 && \
-qm set 9000 --cdrom local:iso/ubuntu-26.04-live-server-amd64.iso && \
+qm set 9000 --cdrom local:iso/ubuntu-24.04.4-live-server-amd64.iso && \
 qm set 9000 --boot order="scsi0;ide2" && \
 qm set 9000 --bootdisk scsi0
 ```
@@ -535,13 +536,18 @@ Installer answers:
 | Type of install | Ubuntu Server (not minimized) → Done |
 | Network | Leave DHCP → Done |
 | Proxy / Mirror | Done → Done |
-| Guided storage | Accept defaults (LVM) → Done → **Continue** on the destructive-action warning |
+| Guided storage | Keep **Use an entire disk** + **Set up this disk as an LVM group** → Done |
+| Storage configuration | **Don't just accept it** — see the note below → Done → **Continue** on the destructive-action warning |
 | Profile | name `devops`, server `devops`, user `devops`, password `devops` |
 | Ubuntu Pro | Skip for now |
 | SSH | ✔ **Install OpenSSH server** |
 | Snaps | Done |
 
-> Keep the LVM layout — Stage 9's postgres disk resize depends on it.
+> **Keep the LVM layout** — Stage 9's postgres disk resize depends on it.
+
+> **Claim the whole volume group.** By default the installer allocates only about *half* the VG to the root logical volume — on a 32GB disk you end up with a ~15GB root and ~15GB sitting unused inside the VG. On the **Storage configuration** screen, select `ubuntu-lv` → **Edit** → set the size to the maximum offered → Done. Do it once here and every clone inherits a fully-used disk; skip it and you're running `lvextend` + `resize2fs` in all three VMs instead.
+
+**On the 32GB disk size:** it's a deliberate floor, not a guess. ZFS stores it sparsely, so a fresh Ubuntu consumes ~4-5GB regardless of the declared size — the number costs you nothing until it's written. Clones can only ever grow (1030 gets +608G in Stage 9), never shrink, so the template has to be the lowest common denominator. Below 32GB gets uncomfortable: at 16GB you're left with roughly 7GB of root after partitioning, which apt caches and journals fill faster than you'd like.
 
 Reboot when it finishes, log in at the console, and find the DHCP address:
 ```bash
@@ -808,12 +814,24 @@ If a node dies suddenly, HA VMs restart on the healthy node within ~2-3 minutes,
 
 ---
 
-## Stage 14 — Backup
+## Stage 14 — Backup & restore
 
-### 14.1 Local, on USB (from the init doc)
+### 14.1 The three tiers
+
+Each one answers a different disaster. None substitutes for another:
+
+| Tier | Interval | Protects against | Recovery time |
+|---|---|---|---|
+| **ZFS replication** (Stage 10) | 1-15 min | A node dying | ~2-3 min, automatic |
+| **Local backup** (USB) | Daily | Deletion, corruption, a bad deploy, ransomware | Minutes to an hour |
+| **Offsite copy** (Digi Storage) | Daily | Fire, theft, flood, both nodes gone | Hours (download-bound) |
+
+> Replication is **not** backup. It copies a `DROP TABLE` to the other node just as faithfully as it copies good data.
+
+### 14.2 Backup storage — the USB drive
 
 ```bash
-lsblk -f          # identify the USB disk (e.g. sdb2, NTFS)
+lsblk -f          # identify the USB disk (e.g. sdb2)
 blkid             # the partition UUID
 
 mkdir -p /mnt/usb-backup
@@ -829,32 +847,74 @@ mount -a
 pvesm add dir usb-backup --path /mnt/usb-backup --content backup
 ```
 
-Manual backup / restore:
+> **If the drive doesn't need to be Windows-readable, format it ext4 instead of NTFS.** `ntfs-3g` runs in userspace, is noticeably slower on multi-GB writes, and doesn't handle sparse files — an ext4 drive makes nightly backups quicker and smaller. The fstab line becomes `UUID=… /mnt/usb-backup ext4 defaults,nofail 0 2`.
+
+Attach the drive to **pve1** and leave it there. Backups run cluster-wide from whichever node holds each VM, but the job needs the storage to exist where it runs — so either mark the storage as restricted to pve1 (Datacenter → Storage → `usb-backup` → Nodes: pve1) and schedule the job on pve1, or plug a second drive into pve2 and repeat.
+
+### 14.3 The scheduled job
+
+**Datacenter → Backup → Add:**
+
+| Field | Value | Why |
+|---|---|---|
+| Node | pve1 (where the USB drive is) | |
+| Storage | `usb-backup` | |
+| Schedule | `02:00` daily | Quiet hours; well clear of the 04:00 offsite sync |
+| Selection mode | All (or explicitly 1010, 1020, 1030) | "All" automatically picks up VMs you add later |
+| Mode | **Snapshot** | The VM keeps running. With `qemu-guest-agent` installed (Stage 8.4a) Proxmox freezes the filesystem for the instant the snapshot is taken, so the image is filesystem-consistent, not just crash-consistent |
+| Compression | ZSTD | Best ratio-to-speed on this hardware |
+| Retention | keep-daily 7, keep-weekly 4, keep-monthly 3 | ~14 restore points across three months, without unbounded growth |
+| Notification | your email | |
+
+Two extras worth setting:
+- **Datacenter → Notifications** — make sure failures actually reach you. A backup job that has been failing quietly for three weeks is the classic way to discover you have no backups at the worst possible moment.
+- **Bandwidth limit** on the job (Advanced tab) if backups ever interfere with anything: `--bwlimit` in KB/s.
+
+### 14.4 On-demand backup (before anything risky)
+
+Always take one before a migration to new hardware, a major upgrade, or a schema change:
+
 ```bash
-vzdump 1020 --storage usb-backup --mode snapshot --compress zstd
-qmrestore /mnt/usb-backup/dump/vzdump-qemu-1020-*.vma.zst 1020
+vzdump 1030 --storage usb-backup --mode snapshot --compress zstd
 ```
 
-Recommended: **Datacenter → Backup → Add** — scheduled job (e.g. daily 02:00, all VMs, storage `usb-backup`, snapshot mode, zstd, retention e.g. 7).
+All three at once:
+```bash
+vzdump 1010 1020 1030 --storage usb-backup --mode snapshot --compress zstd
+```
 
-### 14.2 Offsite — Digi Storage via rclone
+### 14.5 A fourth tier for the database
+
+A VM image restores the whole machine — it cannot give you back one accidentally deleted table. Add a logical dump inside the postgres VM:
+
+```bash
+# inside 1030, as the postgres user
+mkdir -p /var/backups/pg
+pg_dumpall -f /var/backups/pg/all-$(date +\%F).sql   # \\%F escaped for cron
+find /var/backups/pg -name '*.sql' -mtime +14 -delete
+```
+Put that in a daily cron. The dumps live on the VM's disk, so they're swept up by the nightly VM backup and the offsite sync automatically — no extra plumbing. Restoring a single table then becomes a `psql` command instead of a full VM restore.
+
+### 14.6 Offsite — Digi Storage via rclone
 
 Digi Storage has native rclone support (the `digistorage` provider). First generate an app password: https://storage.rcs-rds.ro/app/admin/preferences/password
 
-On the node holding the backups:
+On pve1:
 ```bash
 apt install rclone -y
 rclone config
 # n (new) → name: digi → storage: koofr → provider: digistorage
 # user: <your Digi username> → password: <the generated app password>
 
-# Encryption layer on top (recommended — waa customer data shouldn't leave in cleartext):
+# Encryption layer on top (waa customer data shouldn't leave in cleartext):
 rclone config
 # n → name: digi-crypt → storage: crypt → remote: digi:proxmox-backups
-# → choose encryption passwords (WRITE THEM DOWN — without them the backups are unrecoverable)
+# → choose encryption passwords
 ```
 
-Automatic sync after the local backup (cron, e.g. daily 04:00):
+⚠️ **Write the encryption passwords down and store them somewhere that survives the house** — a password manager, or on paper away from the lab. Without them the offsite backups are mathematically unrecoverable, which turns your disaster tier into an expensive illusion.
+
+Automatic sync after the nightly backup:
 ```bash
 crontab -e
 ```
@@ -862,13 +922,128 @@ crontab -e
 0 4 * * * rclone sync /mnt/usb-backup/dump digi-crypt: --transfers 2 --log-file /var/log/rclone-backup.log
 ```
 
-Periodic restore test:
+Verify it's actually landing:
 ```bash
-rclone ls digi-crypt:
-rclone copy digi-crypt:vzdump-qemu-1030-<date>.vma.zst /tmp/restore-test/
+rclone ls digi-crypt: | tail
+tail -20 /var/log/rclone-backup.log
 ```
 
-> The full chain: replication (node↔node, minutes) → local USB backup (daily) → encrypted offsite copy on Digi Storage. Three tiers, three disaster types covered.
+---
+
+### 14.7 Restore — pick your scenario
+
+Backups in the UI: select the **storage** in the tree (not the VM) → **Backups** tab. Every archive is listed with its VM ID, date and size.
+
+#### A. Restore into a NEW VM ID (safest — start here)
+
+Use this when you want to inspect a backup, recover files, or test that a restore works, without touching the running VM.
+
+```bash
+qmrestore /mnt/usb-backup/dump/vzdump-qemu-1020-2026_07_29-02_00_01.vma.zst 1120 \
+  --storage apps --unique
+```
+
+- `1120` — a free VM ID, not the original
+- `--unique` — **important**: regenerates the MAC address so the clone doesn't collide with the still-running original
+- After it finishes, change the IP in **Cloud-Init** before starting it, or it will fight the original for `192.168.0.20`
+
+Copy out what you need, then `qm stop 1120 && qm destroy 1120`.
+
+#### B. Restore OVER an existing VM (in place)
+
+When the VM itself is broken and you want it back as it was. This **destroys the current disk** — take an on-demand backup first if there's anything salvageable.
+
+```bash
+# 1. Take the VM out of HA so it doesn't get restarted mid-restore
+ha-manager remove vm:1020
+
+# 2. Stop it
+qm stop 1020
+
+# 3. Restore
+qmrestore /mnt/usb-backup/dump/vzdump-qemu-1020-2026_07_29-02_00_01.vma.zst 1020 \
+  --storage apps --force
+
+# 4. Start and verify
+qm start 1020
+```
+
+Or from the UI: storage → Backups → select archive → **Restore** → target VM ID → tick *Force* → Restore.
+
+**Then finish the job** — see the post-restore checklist in 14.8.
+
+#### C. Restore onto the other node
+
+Same command, run from that node's shell, with the archive reachable from it. If the USB drive is only on pve1, copy the archive across first (the 10G link makes this quick):
+
+```bash
+# on pve2
+scp root@10.10.10.1:/mnt/usb-backup/dump/vzdump-qemu-1030-2026_07_29-02_00_01.vma.zst /var/lib/vz/dump/
+qmrestore /var/lib/vz/dump/vzdump-qemu-1030-2026_07_29-02_00_01.vma.zst 1030 --storage db --force
+```
+
+#### D. Recovering individual files
+
+Proxmox's single-file restore in the GUI needs Proxmox Backup Server; with plain vzdump archives, the pragmatic route is scenario **A**: restore to a spare VM ID, start it with the network detached (Hardware → Network Device → uncheck *Connected*), and pull the files out via the console or by attaching its disk to another VM.
+
+For the database specifically, the `pg_dumpall` files from 14.5 make this unnecessary — they're plain SQL sitting inside the restored disk.
+
+#### E. Restore from offsite
+
+```bash
+rclone ls digi-crypt:                                    # find the archive
+rclone copy digi-crypt:vzdump-qemu-1030-2026_07_29-02_00_01.vma.zst /mnt/usb-backup/dump/
+qmrestore /mnt/usb-backup/dump/vzdump-qemu-1030-2026_07_29-02_00_01.vma.zst 1030 --storage db --force
+```
+
+Decryption is transparent — rclone handles it as long as the `digi-crypt` remote is configured with the right passwords.
+
+#### F. Full disaster recovery (both nodes gone)
+
+The order matters:
+
+1. Install Proxmox on the replacement hardware (Stages 1-2).
+2. Recreate the ZFS pools with the **same names**, `apps` and `db` (Stage 5). Names are what everything else keys off.
+3. Install and configure rclone with the `digi-crypt` remote (14.6) — **this is the step that needs the encryption passwords you stored offsite.**
+4. Pull the archives down and `qmrestore` each VM.
+5. Rebuild the cluster, replication, and HA (Stages 6, 7, 10, 12) — these are configuration, not data, and take minutes.
+6. Point Cloudflare Tunnel at the restored app VM.
+
+Note what's *not* in this list: the frontend and invitations, which live on Cloudflare and were never affected.
+
+### 14.8 Post-restore checklist
+
+A restored VM comes back as a plain VM — the cluster machinery around it does not follow automatically:
+
+```bash
+# 1. Replication — the old job now points at a disk that no longer exists
+pvesr status
+# if the job errors, delete and recreate it (a full resync follows):
+pvesr delete <jobid>
+# then re-add from the UI: VM → Replication → Add
+
+# 2. HA — re-add if you removed it in step B.1
+ha-manager add vm:1020 --state started
+ha-manager status
+
+# 3. Guest agent reporting (confirms the VM booted properly)
+qm agent 1020 ping
+```
+
+Also check inside the VM:
+- The IP is what you expect (`ip a`) — a restore preserves the cloud-init config, but a `--unique` restore changes the MAC, which matters if anything upstream keys off it
+- `cloudflared` is running, if this is 1020
+- Postgres accepted the restore and recovered cleanly (`systemctl status postgresql`, then check the log tail for recovery messages)
+
+### 14.9 Restore drills
+
+A backup you have never restored is a hypothesis.
+
+- **Monthly:** scenario A on one VM — restore to a spare ID, boot it, confirm it works, destroy it. Ten minutes.
+- **Quarterly:** scenario E — pull one archive from Digi Storage and restore it. This is the only way to find out whether the encryption passwords still work *before* you need them.
+- **After any change** to storage layout, Proxmox major version, or backup configuration.
+
+Write down how long each takes. Those numbers are your real RTO, as opposed to the one you assume you have.
 
 ---
 
