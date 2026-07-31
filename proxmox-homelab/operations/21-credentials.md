@@ -12,9 +12,9 @@ Three kinds of SSH material, easy to conflate, with completely different loss pr
 |---|---|---|---|
 | **Your workstation's private key** (`~/.ssh/id_ed25519`) | Your PC | **Your identity.** Opens whatever it's authorized on | You knock on other doors (21.5) |
 | **control-ubuntu's private key** (`~/.ssh/id_ed25519_devops`) | VM 1010 | **Ansible's identity.** Every playbook run flows through it | Config management stops until restored |
-| **pve1 root's private key** (`/root/.ssh/id_ed25519`) | pve1 | Injected via `--sshkeys` ([9.5](../vms/09-ubuntu-template.md#95-attach-the-cloud-init-drive-and-set-defaults)) → opens **every VM** | One less recovery path; also: guard this one, it's a skeleton key |
+| **pve1 root's private key** (`/root/.ssh/id_ed25519`) | pve1 | Injected via `--sshkeys` ([9.4](../vms/09-ubuntu-template.md#94-cloud-init-defaults)) → opens **every VM** | One less recovery path; also: guard this one, it's a skeleton key |
 | **Public keys** in `~/.ssh/authorized_keys` | Each VM's disk | **The locks, not the keys.** Travel with the disk: replicated by Stage 12, backed up by Stage 17 | Nothing — regenerate from the role |
-| **Host keys** (`/etc/ssh/ssh_host_*`) | Each VM's disk | The **server's** identity toward you — they never authenticate *you*. Deliberately stripped in the template ([9.4d](../vms/09-ubuntu-template.md#94-prepare-the-guest)) so every clone generates unique ones at first boot | Nothing — regenerated automatically |
+| **Host keys** (`/etc/ssh/ssh_host_*`) | Each VM's disk | The **server's** identity toward you — they never authenticate *you*. The cloud image ships without them (and the ISO route strips them, [9.8e](../vms/09-ubuntu-template.md#98-the-alternative-interactive-iso-install)), so every clone generates unique ones at first boot | Nothing — regenerated automatically |
 
 And the non-SSH credentials, which get less attention and hurt more:
 
@@ -55,7 +55,7 @@ If `vault.yml` is ansible-vault-encrypted, its password joins the list — same 
 
 If the VMs are key-only and every key is lost, SSH is a wall. But the Proxmox console doesn't depend on SSH at all — it's a virtual keyboard plugged into the VM. It only helps if there's a password to type into it.
 
-That's what `--cipassword` on the template ([9.5](../vms/09-ubuntu-template.md#95-attach-the-cloud-init-drive-and-set-defaults)) is for: one strong password, set once, inherited by every clone, stored in the password manager. For VMs cloned before it was set:
+That's what `--cipassword` on the template ([9.4](../vms/09-ubuntu-template.md#94-cloud-init-defaults)) is for: one strong password, set once, inherited by every clone, stored in the password manager. For VMs cloned before it was set:
 
 ```bash
 qm set 1020 --cipassword '<strong password>'     # per VM; takes effect next boot

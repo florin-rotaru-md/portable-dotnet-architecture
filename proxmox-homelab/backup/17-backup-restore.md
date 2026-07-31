@@ -48,7 +48,7 @@ Attach the drive to **pve1** and leave it there. Backups run cluster-wide from w
 | Storage | `usb-backup` | |
 | Schedule | `03:00` daily | Quiet hours, and deliberately **after** the 02:15 in-VM Postgres dump ([17.5](#175-a-fourth-tier-for-the-database)) so the archive contains a fresh one — still well clear of the 04:00 offsite sync |
 | Selection mode | All (or explicitly 1010, 1020, 1030, 1040) | "All" automatically picks up VMs you add later |
-| Mode | **Snapshot** | The VM keeps running. With `qemu-guest-agent` installed (Stage 9.4a) Proxmox freezes the filesystem for the instant the snapshot is taken, so the image is filesystem-consistent, not just crash-consistent |
+| Mode | **Snapshot** | The VM keeps running. With `qemu-guest-agent` installed (Stage 9.2) Proxmox freezes the filesystem for the instant the snapshot is taken, so the image is filesystem-consistent, not just crash-consistent |
 | Compression | ZSTD | Best ratio-to-speed on this hardware |
 | Retention | keep-daily 7, keep-weekly 4, keep-monthly 3 | ~14 restore points across three months, without unbounded growth |
 | Notification | your email | |

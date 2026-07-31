@@ -18,7 +18,8 @@ The authoritative command-by-command walkthrough is [`native/example`](../../nat
 | `postgres_app_cidr` | empty (loopback only) | **`192.168.0.20/32`** — lets 1020 reach Postgres; the role writes it into `pg_hba.conf` and the firewall |
 | `use_cloudflared` | `false` | `true` + `cloudflare_token` in `vault.yml` — the tunnel lives inside 1020 ([why](cloudflare-tunnel.md)) |
 | `use_loki_grafana` / `monitoring_target` | `false` / — | `true` / **`monitoring`** — Loki + Grafana run on dedicated 1040 instead of alongside the app, see 11.7 |
-| sudoers / `growpart` prep steps | needed (hand-installed VM) | **skip** — cloud-init already set up `devops`, and the guest side of each disk resize is done by the `common` role during this very run ([Stage 10](10-vms.md#grow-the-disk--per-vm) only ran `qm resize`) |
+| `grow_root_filesystem` | `true` (LVM layout, the role grows it) | **`false`** — cloud-image clones have no LVM; cloud-init already grew each root at first boot ([Stage 10](10-vms.md#grow-the-disk--per-vm)), and the role's LVM chain has nothing to act on |
+| sudoers / `growpart` prep steps | needed (hand-installed VM) | **skip** — cloud-init created `devops` with passwordless sudo and grew the disks at first boot; nothing to prepare by hand |
 | SSH keys | generated in the walkthrough | already done at the end of [Stage 10](10-vms.md#ssh-keys) — reuse `~/.ssh/id_ed25519_devops` |
 
 ## 11.2 On control-ubuntu (1010)
@@ -65,6 +66,11 @@ Create both exactly as `native/example` shows, then apply the homelab deltas fro
 postgres_host: "192.168.0.30"
 postgres_app_cidr: "192.168.0.20/32"
 use_cloudflared: true
+
+# Cloud-image clones (Stage 9): root on a plain partition, grown by cloud-init
+# at every boot — the role's LVM growth chain would find nothing to grow.
+# Set true only for the ISO-alternative template (9.8g).
+grow_root_filesystem: false
 
 # ── Loki + Grafana on the dedicated monitoring VM (1040) ──────────────────────
 use_loki_grafana: true

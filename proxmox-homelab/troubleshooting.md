@@ -27,7 +27,7 @@
 - **No app logs in Grafana** → check in order: `alloy` active on 1020 (`systemctl status alloy`), the `[monitoring]` group exists in `hosts.ini` (Alloy auto-discovers 1040 from it — no group, no target), `loki_bind_address`/`grafana_bind_address` actually set to 1040's IP and not left on the loopback default (Stage 11.4/11.7).
 - **Grafana loads from the VM but not from my workstation** → `monitoring_allowed_cidr` unset or doesn't cover your subnet; the UFW rule on 1040 is what opens it beyond the VM itself (Stage 11.4).
 - **Postgres (1030) logs don't show up in Grafana** → expected today, not a bug: Alloy only runs on the app host (Play 2); 1030's logs stay in the journal — `journalctl -u postgresql@18-main` (Stage 11.7).
-- **`systemctl enable` says "the unit files have no installation config"** → that unit is *static* — it's meant to be started by something else (a udev rule, a timer, a target), not enabled. Use `systemctl start`; `qemu-guest-agent` is the one you'll meet here (Stage 9.4a). Beware `enable --now` on a static unit: the enable fails first, so it never starts either.
+- **`systemctl enable` says "the unit files have no installation config"** → that unit is *static* — it's meant to be started by something else (a udev rule, a timer, a target), not enabled. Use `systemctl start`; `qemu-guest-agent` is the one you'll meet here, on the ISO template route (Stage 9.8d — the primary route injects it without ever running systemctl). Beware `enable --now` on a static unit: the enable fails first, so it never starts either.
 
 ## Useful app debug commands
 ```bash

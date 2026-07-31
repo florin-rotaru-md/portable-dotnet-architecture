@@ -45,7 +45,7 @@ The result, in one paragraph: two nodes joined by a direct 10G cable (corosync L
 
 | | Covers |
 |---|---|
-| [Stage 9 — Ubuntu template](vms/09-ubuntu-template.md) | The golden image: install, cloud-init, generalization, console password, smoke test; the faster cloud-image alternative |
+| [Stage 9 — Ubuntu template](vms/09-ubuntu-template.md) | The golden image, built from Canonical's cloud image: guest-agent injection, cloud-init defaults, console password, smoke test; the interactive-ISO alternative |
 | [Stage 10 — The VMs](vms/10-vms.md) | Cloning 1010/1020/1030/1040, per-VM disk sizes (one `qm resize` each), Ansible control node, SSH keys |
 | [Stage 11 — First Ansible bootstrap](vms/11-bootstrap.md) | Filling the VMs: inventory, the split-VM variables, the monitoring VM (Loki + Grafana), `bootstrap.yml`, verification |
 | [Cloudflare Tunnel](vms/cloudflare-tunnel.md) | Why `cloudflared` runs inside the app VM, not on the host |
@@ -94,14 +94,14 @@ The whole build, in execution order, with the two deliberate "come back later" p
 - [ ] **6** ZFS pools `apps` + `db` — both nodes, identical names; **thin provision (6.1)** before any VM disk exists
 - [ ] **7** Cluster — two corosync rings, migration network
 - [ ] **8** QDevice — third vote
-- [ ] **9** Ubuntu template — *(9.6's template backup needs the USB drive; postponed to the 17 line below)*
+- [ ] **9** Ubuntu template from the cloud image — *(9.5's template backup needs the USB drive; postponed to the 17 line below)*
 - [ ] **10** Clone 1010/1020/1030/1040, `qm resize` each to its size, control node, SSH keys
 - [ ] **11** First Ansible bootstrap — the VMs get their contents; verify app + db + tunnel + Loki/Grafana
 - [ ] **12** Replication schedules per VM
 - [ ] **13** WAL stream to the QDevice — both ends, verified end to end
 - [ ] **14** First live migration — the ping test, both directions
 - [ ] **15** HA for 1020/1030 only — 1010 and 1040 deliberately stay out, `shutdown_policy=migrate`, notifications
-- [ ] **17** Backups — USB drive, nightly job, offsite rclone + crypt; **now take the template backup from 9.6**
+- [ ] **17** Backups — USB drive, nightly job, offsite rclone + crypt; **now take the template backup from 9.5**
 - [ ] **18.6** Pre-launch failover tests — all three, timed and written down
 - [ ] **17.9** First restore drill — `restore-drill`, before going live, not after
 - [ ] Go live 🎉

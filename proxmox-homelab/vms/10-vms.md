@@ -23,15 +23,15 @@ Then adjust each clone before first boot:
 | 1030 | postgres-ubuntu | **`db`** | 8 | 32 GiB | **640G** | 192.168.0.30/24, gw .1 |
 | 1040 | monitoring-ubuntu | `apps` | 2 | 4 GiB | **320G** | 192.168.0.40/24, gw .1 |
 
-1040 is the fourth, last VM: Loki + Grafana, wired up in [Stage 11](11-bootstrap.md#117-the-monitoring-vm-1040--loki--grafana). Its 320G looks generous next to 1010's 32G for the same CPU/RAM — but the `apps` pool is thin-provisioned ([Stage 6.1](../cluster/06-zfs-pools.md#61-thin-provisioning)), so a big declared ceiling costs nothing until logs actually fill it. Cheap headroom now beats a `qm resize` interruption later.
+1040 is the fourth, last VM: Loki + Grafana, wired up in [Stage 11](11-bootstrap.md#117-the-monitoring-vm-1040--loki--grafana). Its 320G looks generous next to 1010's 32G for the same CPU/RAM — but the `apps` pool is thin-provisioned ([Stage 6.1](../cluster/06-zfs-pools.md#61-thin-provisioning--set-it-before-any-vm-disk-exists)), so a big declared ceiling costs nothing until logs actually fill it. Cheap headroom now beats a `qm resize` interruption later.
 
 > ⚠️ Under Hardware → Processors, the type stays **x86-64-v3** (inherited from the template). Do NOT change it to `host` — the VM would no longer migrate safely between the two nodes.
 
 ## Grow the disk — per VM
 
-Every clone arrives with the template's 32GB floor. Each VM is then grown to the size *it* needs, which is why the template stays small: clones grow, never shrink, so a generous template would be a ceiling imposed on every VM you ever create ([9.3](09-ubuntu-template.md#93-install-ubuntu)).
+Every clone arrives with the template's 32GB floor. Each VM is then grown to the size *it* needs, which is why the template stays small: clones grow, never shrink, so a generous template would be a ceiling imposed on every VM you ever create ([9.3](09-ubuntu-template.md#93-create-the-vm-shell-around-it)).
 
-One command per VM, from the Proxmox Shell:
+One command per VM, from the Proxmox Shell — **before the first start**:
 
 | VM | Target | Command |
 |---|---|---|
@@ -42,23 +42,9 @@ One command per VM, from the Proxmox Shell:
 
 Absolute sizes, not `+N`: the target is what it is regardless of what the template happens to be, so these lines stay correct if the template is ever rebuilt at a different size. Grow-only — ZFS-backed disks cannot be shrunk, in Proxmox or anywhere else. (`qm` sizes are binary: `640G` is 640 × 1024³.)
 
-**The guest side is handled by Ansible.** `qm resize` enlarges the virtual disk; the partition, the LVM physical volume, the logical volume and the filesystem inside still have to follow, and cloud-init's `growpart` module won't do it because the root sits on LVM. So the `common` role does it — on every host, on every run:
+**The guest side happens by itself.** The cloud image's root sits on a plain partition, and cloud-init's `growpart` module runs at **every** boot — the first boot finds the bigger disk and grows the partition and filesystem into it. Nothing to run inside the guest, nothing to remember on VM number four; `df -h /` after boot is the proof, and the smoke test in [9.6](09-ubuntu-template.md#96-verify-before-you-build-on-it) already validated the mechanism. (Resized a disk while the VM was running? It's picked up on the next reboot.) This is also why [Stage 11](11-bootstrap.md#114-vaultyml-and-mainyml) sets `grow_root_filesystem: false`: the `common` role's growth chain exists for LVM layouts, and there's no LVM here to grow.
 
-```
-growpart /dev/sda 3 → pvresize /dev/sda3 → lvextend -l +100%FREE … → resize2fs …
-```
-
-All four are no-ops once the filesystem already fills the disk, which is what makes it safe to run unconditionally. That's deliberate: "grow the disk after resizing" is the kind of required step that gets forgotten on VM number four — 1040 included — and the failure shows up weeks later as a full root filesystem. Enforced by the playbook, it can't be forgotten.
-
-If you need it by hand (before the first Ansible run, or on a VM outside the inventory), `growpart` is already installed in the template:
-```bash
-lsblk    # confirm the layout: sda3 → ubuntu--vg-ubuntu--lv
-growpart /dev/sda 3 && \
-pvresize /dev/sda3 && \
-lvextend -l +100%FREE /dev/mapper/ubuntu--vg-ubuntu--lv && \
-resize2fs /dev/mapper/ubuntu--vg-ubuntu--lv
-```
-Don't skip `resize2fs` — `lvextend` alone grows the volume, but the filesystem doesn't see the new space until it's resized too.
+**ISO-alternative layouts only** ([9.8](09-ubuntu-template.md#98-the-alternative-interactive-iso-install)): there the root *is* on LVM, cloud-init can't grow it, and the `common` role does it on every playbook run — keep `grow_root_filesystem: true` and see [9.8g](09-ubuntu-template.md#98-the-alternative-interactive-iso-install) for the manual chain.
 
 ## Control node — Ansible
 

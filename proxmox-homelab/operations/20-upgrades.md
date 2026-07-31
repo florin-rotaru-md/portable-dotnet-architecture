@@ -142,7 +142,7 @@ qm snapshot 1030 pre-pg19 --description "postgres 18 -> 19, before pg_upgradeclu
 ansible postgres -m service -a 'name=postgresql state=started' -b
 ```
 
-`qemu-guest-agent` ([9.4](../vms/09-ubuntu-template.md#94-prepare-the-guest)) freezes the filesystem for a live snapshot, so a running snapshot would be consistent too — but stopping the service costs thirty seconds and makes the recovery path unambiguous. Do the cheap thing.
+`qemu-guest-agent` ([9.2](../vms/09-ubuntu-template.md#92-inject-the-guest-agent)) freezes the filesystem for a live snapshot, so a running snapshot would be consistent too — but stopping the service costs thirty seconds and makes the recovery path unambiguous. Do the cheap thing.
 
 > **HA will fight you if you stop the *VM*.** 1030 is an HA resource with desired state `started`; a `qm stop` gets undone by the HA manager within seconds. Before anything that stops the VM (including a rollback), tell HA first:
 > ```bash

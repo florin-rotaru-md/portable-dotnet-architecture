@@ -10,7 +10,9 @@ ansible_user: devops
 ssh_authorized_keys_exclusive: false
 
 # Grow the root partition/LVM/filesystem into whatever the hypervisor granted —
-# a no-op when nothing changed, so it runs on every host, every run.
+# a no-op when nothing changed, so it runs on every host, every run. LVM layouts
+# only: cloud-image guests grow themselves via cloud-init — set false there
+# (proxmox-homelab Stage 11).
 grow_root_filesystem: true
 
 # ── Infrastructure ─────────────────────────────────────────────────────────────

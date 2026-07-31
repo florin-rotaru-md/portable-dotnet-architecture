@@ -51,4 +51,4 @@ Two consequences worth understanding, because both bite silently:
 
 > **Re-check after the cluster is formed.** `/etc/pve/storage.cfg` is cluster-wide: when pve2 joins in [Stage 7](07-cluster.md) it adopts pve1's copy and discards its own. Set this on pve1, then confirm it survived the join — before any VM disk is created in Stage 9.
 
-**This is not overcommit.** The declared sizes fit both pools even if every guest filled its disk to the last byte: `apps` carries the template plus 1010, 1020 and the future 1040 — 512GB of ~1.8TB usable — and `db` carries 1030's 640GB alone. Thin provisioning here reclaims space that was never written; it isn't a bet that the VMs stay small. The per-VM sizes are set in [Stage 10](../vms/10-vms.md#grow-the-disk--per-vm).
+**This is not overcommit.** The declared sizes fit both pools even if every guest filled its disk to the last byte: `apps` carries the template plus 1010, 1020 and 1040 — 512GB of ~1.8TB usable — and `db` carries 1030's 640GB alone. Thin provisioning here reclaims space that was never written; it isn't a bet that the VMs stay small. The per-VM sizes are set in [Stage 10](../vms/10-vms.md#grow-the-disk--per-vm).
