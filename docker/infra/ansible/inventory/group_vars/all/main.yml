@@ -8,11 +8,20 @@ health_interval_seconds: 4
 # Global defaults used for all apps unless overridden per-app in applications[].
 
 # ── Postgres (runs as a Docker container on the same host) ─────────────────────
+# Minor upgrades: the tag pins major.postgis (18-3.6) and the compose task uses
+# pull: always, so every playbook run re-pulls the latest 18.x patch and
+# recreates the container if it changed. There is no unattended path here by
+# design — auto-recreating a database container without an operator watching is
+# not worth the risk. Majors are a deliberate act: new tag + dump/restore.
 postgres_image:     "postgis/postgis:18-3.6"
 postgres_host:      postgres          # Docker service name / internal DNS
 postgres_user:      appuser
 # postgres_password and postgres_root_password come from vault.yml
 backup_retention_days: 7
+
+# Nightly dump schedule (cron on the host).
+postgres_backup_hour:   "2"
+postgres_backup_minute: "30"
 
 # ── Cloudflare (optional) ──────────────────────────────────────────────────────
 use_cloudflared: false
@@ -21,6 +30,20 @@ use_cloudflared: false
 # ── Ansible service account ────────────────────────────────────────────────────
 ansible_user: devops
 # ansible_ssh_public_key comes from vault.yml — paste your controller's public key there
+
+# Additional authorized keys (workstation, break-glass kept offline). One key is
+# a single point of failure.
+# ansible_ssh_extra_public_keys:
+#   - "ssh-ed25519 AAAA... workstation"
+#   - "ssh-ed25519 AAAA... break-glass"
+
+# Once EVERY key you rely on is listed above, flip to true: keys not in the list
+# are removed on the next run — rotating a compromised key = one playbook run.
+ssh_authorized_keys_exclusive: false
+
+# The common role pins PasswordAuthentication no in sshd — a provider console
+# password never opens password auth over SSH.
+ssh_disable_password_auth: true
 
 # ── Firewall ───────────────────────────────────────────────────────────────────
 ufw_allowed_tcp_ports:

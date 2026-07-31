@@ -1,0 +1,14 @@
+// Managed by Ansible (postgres role) — do not edit by hand.
+// Adds the PGDG repository to unattended-upgrades so PostgreSQL MINOR
+// releases (e.g. 18.1 -> 18.2, the quarterly security fixes) install
+// automatically within ~24h of publication.
+//
+// A MAJOR upgrade can never arrive this way: the package name embeds the
+// major version (postgresql-{{ postgres_version }}), so a new major is a
+// different package that only a deliberate postgres_version bump installs.
+//
+// Note: installing a postgres minor restarts the cluster (seconds), at the
+// time apt-daily-upgrade.timer fires (~06:00 by default).
+Unattended-Upgrade::Origins-Pattern {
+        "origin=apt.postgresql.org";
+};

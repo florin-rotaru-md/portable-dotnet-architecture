@@ -47,9 +47,33 @@
   ufw:
     state: enabled
 
-- name: Set up SSH authorized key for {{ app_user }}
+# A console password (e.g. Proxmox --cipassword) must never open password auth
+# over SSH — cloud-init can flip ssh_pwauth on when a password is set. Pin
+# key-only; the password keeps working at the console, and nowhere else.
+- name: Keep SSH key-only (console password stays console-only)
+  copy:
+    dest:    /etc/ssh/sshd_config.d/99-key-only.conf
+    content: |
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+    owner: root
+    group: root
+    mode:  '0644'
+  when: ssh_disable_password_auth | default(true)
+  notify: reload ssh
+
+# Authorized keys are managed declaratively — add keys to
+# ansible_ssh_extra_public_keys (workstation key, break-glass key) instead of
+# editing ~/.ssh/authorized_keys by hand. One key is a single point of failure.
+# With ssh_authorized_keys_exclusive: true, keys NOT listed are removed on the
+# next run — key rotation becomes a playbook run. Enable it only after every
+# key you rely on is in the list.
+- name: Manage SSH authorized keys for {{ app_user }}
   authorized_key:
-    user:  "{{ app_user }}"
-    state: present
-    key:   "{{ ansible_ssh_public_key }}"
-  when: ansible_ssh_public_key is defined
+    user:      "{{ app_user }}"
+    state:     present
+    key:       "{{ _ssh_keys | join('\n') }}"
+    exclusive: "{{ ssh_authorized_keys_exclusive | default(false) }}"
+  vars:
+    _ssh_keys: "{{ ([ansible_ssh_public_key] if ansible_ssh_public_key is defined else []) + (ansible_ssh_extra_public_keys | default([])) }}"
+  when: _ssh_keys | length > 0

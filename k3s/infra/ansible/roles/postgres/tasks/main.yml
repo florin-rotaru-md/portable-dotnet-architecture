@@ -29,13 +29,49 @@
     state:    present
     filename: pgdg
 
+# state: latest so any playbook run converges to the current minor release.
+# It can never cross a major boundary — the package name embeds the major.
 - name: Install PostgreSQL and PostGIS
   apt:
     name:
       - "postgresql-{{ postgres_version }}"
       - "postgresql-{{ postgres_version }}-postgis-3"
-    state:        present
+    state:        latest
     update_cache: true
+
+# Automatic minor upgrades between playbook runs: unattended-upgrades with the
+# PGDG origin. Disable with postgres_auto_minor_upgrades: false in group_vars.
+- name: Install unattended-upgrades
+  apt:
+    name:  unattended-upgrades
+    state: present
+  when: postgres_auto_minor_upgrades | default(true)
+
+- name: Allow PGDG origin in unattended-upgrades
+  template:
+    src:   51pgdg-unattended-upgrades.j2
+    dest:  /etc/apt/apt.conf.d/51pgdg-unattended-upgrades
+    owner: root
+    group: root
+    mode:  '0644'
+  when: postgres_auto_minor_upgrades | default(true)
+
+- name: Enable daily unattended-upgrade runs
+  copy:
+    dest:    /etc/apt/apt.conf.d/20auto-upgrades
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+    owner: root
+    group: root
+    mode:  '0644'
+  when: postgres_auto_minor_upgrades | default(true)
+
+- name: Remove PGDG unattended-upgrades config when disabled
+  file:
+    path:  /etc/apt/apt.conf.d/51pgdg-unattended-upgrades
+    state: absent
+  when: not (postgres_auto_minor_upgrades | default(true))
 
 - name: Configure pg_hba.conf
   template:
@@ -105,11 +141,12 @@
     mode:  '0750'
   no_log: true
 
+# Schedule is policy, so it lives in group_vars; defaults keep 02:15.
 - name: Install S3 backup cron job
   cron:
     name:   "postgres nightly S3 backup"
     user:   postgres
-    minute: "15"
-    hour:   "2"
+    minute: "{{ postgres_backup_minute | default('15') }}"
+    hour:   "{{ postgres_backup_hour | default('2') }}"
     job:    "/opt/postgres/scripts/pg-backup.sh >> /opt/postgres/backups/cron.log 2>&1"
   no_log: true

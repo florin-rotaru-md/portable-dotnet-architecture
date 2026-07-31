@@ -10,6 +10,15 @@ postgres_private_ip: "10.10.0.50"   # internal bridge IP of the Postgres VM
 postgres_user:       appuser
 # postgres_password comes from vault.yml
 
+# Automatic MINOR upgrades via unattended-upgrades + PGDG origin (majors never
+# arrive this way — bumping postgres_version is always deliberate).
+postgres_auto_minor_upgrades: true
+
+# Nightly S3 dump schedule (cron on the postgres VM). Keep it BEFORE the
+# Proxmox vzdump job so every VM image contains a fresh dump.
+postgres_backup_hour:   "2"
+postgres_backup_minute: "15"
+
 # ── S3-compatible backup ───────────────────────────────────────────────────────
 # Works with any S3-compatible endpoint: AWS, Hetzner Object Storage, Backblaze B2, MinIO, etc.
 s3_bucket:   your-cluster-backups
@@ -27,3 +36,17 @@ flux_git_branch: master
 # ── Ansible service account ────────────────────────────────────────────────────
 ansible_user: ops
 # ansible_ssh_public_key comes from vault.yml — paste your controller's public key there
+
+# Additional authorized keys (workstation, break-glass kept offline). One key is
+# a single point of failure.
+# ansible_ssh_extra_public_keys:
+#   - "ssh-ed25519 AAAA... workstation"
+#   - "ssh-ed25519 AAAA... break-glass"
+
+# Once EVERY key you rely on is listed above, flip to true: keys not in the list
+# are removed on the next run — rotating a compromised key = one playbook run.
+ssh_authorized_keys_exclusive: false
+
+# The common role pins PasswordAuthentication no in sshd, so a console password
+# (Proxmox --cipassword) never opens password auth over SSH.
+ssh_disable_password_auth: true

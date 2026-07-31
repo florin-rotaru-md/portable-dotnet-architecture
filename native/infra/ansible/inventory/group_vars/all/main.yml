@@ -3,6 +3,21 @@
 ansible_user: devops
 # ansible_ssh_public_key comes from vault.yml — paste your controller's public key there
 
+# Additional authorized keys (workstation, break-glass kept offline). One key is
+# a single point of failure. Public keys — safe in git, or next to
+# ansible_ssh_public_key in vault.yml.
+# ansible_ssh_extra_public_keys:
+#   - "ssh-ed25519 AAAA... workstation"
+#   - "ssh-ed25519 AAAA... break-glass"
+
+# Once EVERY key you rely on is listed above, flip to true: keys not in the list
+# are removed on the next run — rotating a compromised key = one playbook run.
+ssh_authorized_keys_exclusive: false
+
+# The common role pins PasswordAuthentication no in sshd, so a console password
+# (Proxmox --cipassword) never opens password auth over SSH.
+ssh_disable_password_auth: true
+
 # ── Apps (required) ───────────────────────────────────────────────────────────
 app_user: devops
 app_log_root: /var/log
@@ -48,6 +63,20 @@ postgis_major_version: "3"
 postgres_user:    myapp
 backup_retention_days: 7
 # postgres_password comes from vault.yml
+
+# Automatic MINOR upgrades (e.g. 18.1 -> 18.2, the quarterly security fixes):
+# the role installs with state: latest AND configures unattended-upgrades with
+# the PGDG origin, so minors land within ~24h without a playbook run. A MAJOR
+# can never arrive automatically — the package name embeds the major version,
+# so a new major always requires a deliberate postgres_version bump.
+# The minor install restarts the cluster briefly (~06:00, apt-daily-upgrade.timer).
+postgres_auto_minor_upgrades: true
+
+# Nightly logical dump schedule (cron on the postgres host).
+# Ordering contract: in-VM dump BEFORE the VM-image backup, which runs BEFORE
+# any offsite sync — so every image/offsite copy contains a fresh dump.
+postgres_backup_hour:   "2"
+postgres_backup_minute: "15"
 
 # postgres_host: IP or hostname that the app VM uses to reach PostgreSQL.
 #   - Single-VM deploy (app + postgres on same host): keep 127.0.0.1

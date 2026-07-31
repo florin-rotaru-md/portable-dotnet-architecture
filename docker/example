@@ -94,6 +94,11 @@ git clone https://github.com/florin-rotaru-md/portable-dotnet-architecture
 cat << 'EOF' > ~/src/portable-dotnet-architecture/docker/infra/ansible/inventory/group_vars/all/vault.yml
 ansible_ssh_public_key:  "{{ lookup('file', '~/.ssh/id_ed25519_devops.pub') }}"
 
+# Additional authorized keys — workstation, break-glass kept offline.
+# ansible_ssh_extra_public_keys:
+#   - "ssh-ed25519 AAAA... workstation"
+#   - "ssh-ed25519 AAAA... break-glass"
+
 postgres_root_password:  "postgres"    # POSTGRES_PASSWORD for the postgres container
 postgres_password:       "postgres"    # password for postgres_user
 
@@ -117,11 +122,17 @@ health_max_attempts: 16
 health_interval_seconds: 4
 
 # ── Postgres (runs as a Docker container on the same host) ─────────────────────
+# Minors: the tag pins major.postgis; every playbook run re-pulls the latest
+# 18.x patch (pull: always). Majors are deliberate: new tag + dump/restore.
 postgres_image:     "postgis/postgis:18-3.6"
 postgres_host:      postgres          # Docker service name / internal DNS
 postgres_user:      postgres
 # postgres_password and postgres_root_password come from vault.yml
 backup_retention_days: 7
+
+# Nightly dump schedule (cron on the host).
+postgres_backup_hour:   "2"
+postgres_backup_minute: "30"
 
 # ── Cloudflare (optional) ──────────────────────────────────────────────────────
 use_cloudflared: false
@@ -129,7 +140,11 @@ use_cloudflared: false
 
 # ── Ansible service account ────────────────────────────────────────────────────
 ansible_user: devops
-# ansible_ssh_public_key comes from vault.yml — paste your controller's public key there
+# ansible_ssh_public_key (+ optional ansible_ssh_extra_public_keys) come from vault.yml
+
+# Once EVERY key you rely on is listed in vault.yml, flip to true: keys not in
+# the list are removed on the next run — key rotation = one playbook run.
+ssh_authorized_keys_exclusive: false
 
 # ── Firewall ───────────────────────────────────────────────────────────────────
 ufw_allowed_tcp_ports:

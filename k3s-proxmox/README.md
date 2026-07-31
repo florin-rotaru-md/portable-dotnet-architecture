@@ -119,6 +119,10 @@ ansible_ssh_public_key: "ssh-ed25519 AAAA...  control-ubuntu"
 # or use a Ansible lookup: "{{ lookup('file', '~/.ssh/id_ed25519_devops.pub') }}"
 ```
 
+**More than one key, and rotation.** One key is a single point of failure — the `common` role manages `authorized_keys` declaratively and takes a list via `ansible_ssh_extra_public_keys` (workstation key, break-glass key kept offline). Once every key you rely on is listed, set `ssh_authorized_keys_exclusive: true` in `main.yml`: keys **not** in the list are removed on the next run, so rotating a compromised key is *delete the line, run the playbook*.
+
+> **Credentials that must live outside this environment** (password manager, ideally plus paper): the private keys, `vault.yml` contents, the vault password itself if encrypted — and the Proxmox root password plus any VM `--cipassword` (the console is your no-SSH recovery path). Recovery credentials must never exist only inside the thing they recover. The role also pins SSH to key-only, so a console password can never open password auth over SSH.
+
 ```bash
 cd ~/src/portable-dotnet-architecture/k3s-proxmox/infra/ansible
 cp --update=none inventory/group_vars/all/vault.yml.example inventory/group_vars/all/vault.yml

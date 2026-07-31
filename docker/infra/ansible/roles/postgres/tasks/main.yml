@@ -95,10 +95,11 @@
     group: "{{ app_user }}"
     mode:  '0755'
 
+# Schedule is policy, so it lives in group_vars; defaults keep 02:30.
 - name: Schedule nightly backup cron job
   cron:
     name:   "postgres backup all databases"
-    minute: "30"
-    hour:   "2"
+    minute: "{{ postgres_backup_minute | default('30') }}"
+    hour:   "{{ postgres_backup_hour | default('2') }}"
     user:   "{{ app_user }}"
     job:    "/opt/postgres/scripts/pg-backup.sh >> /opt/postgres/backups/cron.log 2>&1"

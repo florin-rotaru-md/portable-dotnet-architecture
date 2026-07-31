@@ -22,13 +22,49 @@
     state:    present
     filename: pgdg
 
+# state: latest so any playbook run converges to the current minor release.
+# It can never cross a major boundary — the package name embeds the major.
 - name: Install PostgreSQL and PostGIS
   apt:
     name:
       - "postgresql-{{ postgres_version }}"
       - "postgresql-{{ postgres_version }}-postgis-{{ postgis_major_version }}"
-    state:        present
+    state:        latest
     update_cache: true
+
+# Automatic minor upgrades between playbook runs: unattended-upgrades with the
+# PGDG origin. Disable with postgres_auto_minor_upgrades: false in group_vars.
+- name: Install unattended-upgrades
+  apt:
+    name:  unattended-upgrades
+    state: present
+  when: postgres_auto_minor_upgrades | default(true)
+
+- name: Allow PGDG origin in unattended-upgrades
+  template:
+    src:   51pgdg-unattended-upgrades.j2
+    dest:  /etc/apt/apt.conf.d/51pgdg-unattended-upgrades
+    owner: root
+    group: root
+    mode:  '0644'
+  when: postgres_auto_minor_upgrades | default(true)
+
+- name: Enable daily unattended-upgrade runs
+  copy:
+    dest:    /etc/apt/apt.conf.d/20auto-upgrades
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+    owner: root
+    group: root
+    mode:  '0644'
+  when: postgres_auto_minor_upgrades | default(true)
+
+- name: Remove PGDG unattended-upgrades config when disabled
+  file:
+    path:  /etc/apt/apt.conf.d/51pgdg-unattended-upgrades
+    state: absent
+  when: not (postgres_auto_minor_upgrades | default(true))
 
 - name: Configure pg_hba.conf (local md5 auth)
   template:
@@ -147,10 +183,13 @@
     group: postgres
     mode:  '0750'
 
+# Schedule is policy, so it lives in group_vars. The default 02:15 is part of
+# the backup ordering contract: in-VM dump BEFORE the hypervisor/VM backup,
+# which in turn runs BEFORE any offsite sync.
 - name: Install backup cron job
   cron:
     name:   "postgres nightly backup"
     user:   postgres
-    minute: "15"
-    hour:   "2"
+    minute: "{{ postgres_backup_minute | default('15') }}"
+    hour:   "{{ postgres_backup_hour | default('2') }}"
     job:    "/opt/postgres/scripts/pg-backup.sh >> {{ postgres_backup_dir }}/cron.log 2>&1"

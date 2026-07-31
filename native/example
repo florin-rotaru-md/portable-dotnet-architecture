@@ -65,6 +65,11 @@ git clone https://github.com/florin-rotaru-md/portable-dotnet-architecture
 cat << 'EOF' > ~/src/portable-dotnet-architecture/native/infra/ansible/inventory/group_vars/all/vault.yml
 ansible_ssh_public_key:  "{{ lookup('file', '~/.ssh/id_ed25519_devops.pub') }}"
 
+# Additional authorized keys — workstation, break-glass kept offline.
+# ansible_ssh_extra_public_keys:
+#   - "ssh-ed25519 AAAA... workstation"
+#   - "ssh-ed25519 AAAA... break-glass"
+
 postgres_password: "postgres"
 
 # Required for private repos used in first auto-deploy.
@@ -79,6 +84,11 @@ cat << 'EOF' > ~/src/portable-dotnet-architecture/native/infra/ansible/inventory
 ---
 # ── Ansible service account ────────────────────────────────────────────────────
 ansible_user: devops
+# ansible_ssh_public_key (+ optional ansible_ssh_extra_public_keys) come from vault.yml
+
+# Once EVERY key you rely on is listed in vault.yml, flip to true: keys not in
+# the list are removed on the next run — key rotation = one playbook run.
+ssh_authorized_keys_exclusive: false
 
 # ── Infrastructure ─────────────────────────────────────────────────────────────
 app_user: devops
@@ -90,6 +100,14 @@ postgres_version: "18"
 postgis_major_version: "3"
 postgres_user:    postgres
 backup_retention_days: 7
+
+# Minor releases (18.1 -> 18.2) install automatically via unattended-upgrades
+# with the PGDG origin; majors always require a deliberate postgres_version bump.
+postgres_auto_minor_upgrades: true
+
+# Nightly logical dump schedule — keep it BEFORE any VM-image backup.
+postgres_backup_hour:   "2"
+postgres_backup_minute: "15"
 
 # ── Cloudflare (optional) ──────────────────────────────────────────────────────
 use_cloudflared: false

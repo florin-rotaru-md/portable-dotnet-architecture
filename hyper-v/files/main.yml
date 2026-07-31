@@ -3,6 +3,11 @@
 
 # ── Ansible service account ────────────────────────────────────────────────────
 ansible_user: devops
+# ansible_ssh_public_key (+ optional ansible_ssh_extra_public_keys) come from vault.yml
+
+# Once EVERY key you rely on is listed in vault.yml, flip to true: keys not in
+# the list are removed on the next run — key rotation = one playbook run.
+ssh_authorized_keys_exclusive: false
 
 # ── Infrastructure ─────────────────────────────────────────────────────────────
 app_user: devops
@@ -15,6 +20,14 @@ postgres_version: "18"
 postgis_major_version: "3"
 postgres_user: postgres
 backup_retention_days: 7
+
+# Minor releases (18.1 -> 18.2) install automatically via unattended-upgrades
+# with the PGDG origin; majors always require a deliberate postgres_version bump.
+postgres_auto_minor_upgrades: true
+
+# Nightly logical dump schedule — keep it BEFORE any VM-image/checkpoint backup.
+postgres_backup_hour:   "2"
+postgres_backup_minute: "15"
 
 # IP that the app VM uses to reach the postgres VM.
 # Update to match the static IP you assigned to postgres-ubuntu in Hyper-V.

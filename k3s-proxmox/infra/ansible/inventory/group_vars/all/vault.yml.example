@@ -2,6 +2,15 @@
 # Copy to vault.yml and fill in values.
 # Encrypt with: ansible-vault encrypt vault.yml
 
+# Controller public key installed into the service account's authorized_keys
+ansible_ssh_public_key: "{{ lookup('file', '~/.ssh/id_ed25519_devops.pub') }}"
+
+# Additional authorized keys — workstation, break-glass kept offline.
+# See ssh_authorized_keys_exclusive in main.yml for declarative rotation.
+# ansible_ssh_extra_public_keys:
+#   - "ssh-ed25519 AAAA... workstation"
+#   - "ssh-ed25519 AAAA... break-glass"
+
 postgres_password: "change-me-strong-password"
 
 s3_access_key: "AKIAIOSFODNN7EXAMPLE"
