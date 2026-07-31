@@ -8,7 +8,7 @@ The template is built from **Canonical's cloud image**, not the installer ISO. T
 
 ## 9.1 Get the image
 
-**a) Get the ISO.** **Datacenter → pve1 → local → ISO Images → Download from URL**, URL: https://cloud-images.ubuntu.com/releases/26.04/release/ubuntu-26.04-server-cloudimg-amd64.img. Confirm the filename: `ls /var/lib/vz/template/iso`.
+**Get the ISO.** **Datacenter → pve1 → local → ISO Images → Download from URL**, URL: https://cloud-images.ubuntu.com/releases/26.04/release/ubuntu-26.04-server-cloudimg-amd64.img. Confirm the filename: `ls /var/lib/vz/template/iso`.
 
 On pve1's shell:
 
