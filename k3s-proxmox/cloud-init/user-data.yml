@@ -32,7 +32,9 @@ packages:
   - qemu-guest-agent    # required for Proxmox agent communication
 
 runcmd:
-  - systemctl enable --now qemu-guest-agent
+  # start, not enable: qemu-guest-agent.service is static (no [Install] section)
+  # and is started by a udev rule on every boot once the virtio port is present
+  - systemctl start qemu-guest-agent
   - ufw allow 22/tcp
   - ufw --force enable
   - sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config

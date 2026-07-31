@@ -49,7 +49,10 @@ The defaults do the right thing from here: when the UPS reports *on battery + lo
 
 ```bash
 upsc ups@localhost | grep -E 'ups.status|battery.charge|battery.runtime'
+systemctl is-enabled nut-server nut-monitor    # expect "enabled" on both
 ```
+
+Confirm the enablement rather than assume it: unlike `qemu-guest-agent` ([9.4](../vms/09-ubuntu-template.md#94-prepare-the-guest)) these units aren't static, but NUT packaging has moved around across releases and some versions wire them up through `nut.target` instead of `multi-user.target`. If either reports something other than `enabled`, `systemctl enable nut.target` covers that variant — and a safety net that doesn't come back after a reboot is no safety net at all.
 
 `ups.status: OL` means on line power. Pull the UPS's **input** plug for a few seconds: the status flips to `OB`, and back to `OL` when you reconnect. That proves the data path; the full-drain path is tested once, below.
 

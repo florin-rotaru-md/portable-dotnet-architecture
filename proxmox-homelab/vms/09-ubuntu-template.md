@@ -97,8 +97,10 @@ SSH in (`ssh devops@<dhcp-ip>`), then `sudo -i`.
 ```bash
 apt update && apt upgrade -y
 apt install -y qemu-guest-agent cloud-init cloud-guest-utils sudo curl wget bash-completion
-systemctl enable --now qemu-guest-agent
+systemctl start qemu-guest-agent
 ```
+
+> `start`, not `enable --now`. `qemu-guest-agent.service` is a **static** unit — it has no `[Install]` section, so there is nothing to enable: a udev rule starts it at every boot as soon as the virtio serial port appears, which is exactly the condition under which it can work at all. `systemctl enable` on it fails with *"The unit files have no installation config"*, and because `--now` runs the enable first, the service doesn't get started either. The same shape applies to any static unit — `systemctl is-enabled <unit>` printing `static` is the tell.
 
 `cloud-guest-utils` is what provides `growpart`. Every clone is grown to its own size in Stage 10, so putting it in the template means the growth step never has to `apt install` anything first — including on a VM whose disk filled up, which is exactly when apt is least likely to cooperate.
 
