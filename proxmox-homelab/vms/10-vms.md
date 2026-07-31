@@ -2,7 +2,18 @@
 
 *Part of the [Proxmox homelab guide](../README.md).*
 
-All via cloning. **The short way:** [`create-vms`](../scripts/README.md) (installed in Stage 2.4, run on pve1) does this entire stage's hypervisor side in one attended run — clone, CPU/RAM, static IP, disk growth, in the right order, from the same table below. It skips VM IDs that already exist, so it also finishes an interrupted run or recreates missing VMs after a disaster. Read on anyway: the table is the specification (script and table are kept in sync — change one, change the other), and the manual path is what you fall back to when you want to deviate from it.
+All via cloning. **The short way:** [`create-vms`](../scripts/README.md) (run on pve1) does this entire stage's hypervisor side in one attended run — clone, CPU/RAM, static IP, disk growth, in the right order, from the same table below. It skips VM IDs that already exist, so it also finishes an interrupted run or recreates missing VMs after a disaster.
+
+```bash
+# installed by Stage 2.4, so it works from anywhere:
+create-vms
+
+# or straight from the repo clone, if the helper scripts aren't installed yet:
+cd /root/src/portable-dotnet-architecture/proxmox-homelab/scripts
+./create-vms.sh
+```
+
+Read on anyway: the table is the specification (script and table are kept in sync — change one, change the other), and the manual path is what you fall back to when you want to deviate from it.
 
 **The manual way** — for each VM: right-click on **9000** → **Clone**, and in the dialog:
 
