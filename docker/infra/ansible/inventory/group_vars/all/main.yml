@@ -45,6 +45,11 @@ ssh_authorized_keys_exclusive: false
 # password never opens password auth over SSH.
 ssh_disable_password_auth: true
 
+# The common role grows the root partition/LVM/filesystem into whatever disk the
+# hypervisor granted — a no-op when nothing changed. Flip off only for hosts
+# whose disk layout is managed some other way.
+grow_root_filesystem: true
+
 # ── Firewall ───────────────────────────────────────────────────────────────────
 ufw_allowed_tcp_ports:
   - "22"

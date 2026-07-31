@@ -46,11 +46,9 @@ sudo apt update && \
 sudo apt upgrade -y && \
 sudo apt install -y openssh-server cloud-guest-utils
 
-# Optional if the virtual disk was expanded after install
-lsblk
-sudo growpart /dev/sda 3
-sudo lvextend -l +100%FREE /dev/ubuntu-vg/ubuntu-lv
-sudo resize2fs /dev/ubuntu-vg/ubuntu-lv
+# If the virtual disk was expanded after install, no manual growing is needed:
+# the common role grows partition/LVM/filesystem on every playbook run
+# (grow_root_filesystem in main.yml).
 
 # If you will connect as the default Ubuntu user on first bootstrap,
 # verify it has passwordless sudo or knows the sudo password.
@@ -65,11 +63,8 @@ sudo apt update && \
 sudo apt upgrade -y && \
 sudo apt install -y openssh-server cloud-guest-utils
 
-# Optional if the virtual disk was expanded after install
-lsblk
-sudo growpart /dev/sda 3
-sudo lvextend -l +100%FREE /dev/ubuntu-vg/ubuntu-lv
-sudo resize2fs /dev/ubuntu-vg/ubuntu-lv
+# Disk growth is handled by the common role on every playbook run — see the
+# app-ubuntu note above.
 
 # Optional: verify the dedicated Postgres backup disk is visible and unformatted.
 # It should appear as /dev/sdb with no partitions and an empty TYPE.
@@ -154,6 +149,10 @@ ansible_user: devops
 # Once EVERY key you rely on is listed in vault.yml, flip to true: keys not in
 # the list are removed on the next run — key rotation = one playbook run.
 ssh_authorized_keys_exclusive: false
+
+# Grow the root partition/LVM/filesystem into whatever the hypervisor granted —
+# a no-op when nothing changed, so it runs on every host, every run.
+grow_root_filesystem: true
 
 # ── Infrastructure ─────────────────────────────────────────────────────────────
 app_user: devops

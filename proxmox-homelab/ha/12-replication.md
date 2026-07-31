@@ -11,6 +11,7 @@ The replication interval **is** your data-loss window on an unplanned failover, 
 | 1030 postgres | `*/1` (every minute) | Live application writes — the data you actually can't afford to lose |
 | 1020 app | `*/5` | Mostly stateless; holds little unique state |
 | 1010 control | `*/15` or `*/30` | Tooling only, rebuildable |
+| 1040 monitoring | `*/30` | Logs, not source data — losing half an hour of history on a failover is a non-event, and it's the largest disk of the four (Stage 10), so the longest interval keeps its replication traffic proportionate |
 
 The first run copies the whole disk (takes a while); after that only deltas (seconds). On the 10G link a minute's worth of Postgres writes is nothing.
 

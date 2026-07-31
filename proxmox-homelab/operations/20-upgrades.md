@@ -118,7 +118,7 @@ done
 ansible postgres -b -m shell -a 'du -sh /var/lib/postgresql/18/main; df -h /var/lib/postgresql'
 ```
 
-Want ≥ 2× the data directory free. The 640GB disk from [Stage 10](../vms/10-vms.md#resize-the-postgres-disk-after-cloning) makes this a formality at this app's size, but check rather than assume.
+Want ≥ 2× the data directory free. The 640GB disk from [Stage 10](../vms/10-vms.md#grow-the-disk--per-vm) makes this a formality at this app's size, but check rather than assume.
 
 ### Step 2. The safety net — three layers, take all three
 
@@ -309,7 +309,7 @@ The shape generalizes: *rehearse on a restored copy → snapshot → change → 
 
 > **The ownership boundary.** The two Proxmox hosts are managed by hand; everything inside the VMs comes from `native/infra/ansible`. That's why Stages 16 and 19 are shell procedures on the node while Stage 20 is a variable bump plus a playbook run. Keep the boundary clean: don't hand-edit `/etc/postgresql/*` on 1030, and don't try to bring the hypervisors under Ansible for the sake of symmetry — two nodes configured twice a decade is not a fleet.
 
-**Ubuntu release upgrade inside a VM** (26.04 → 26.04): same procedure, `do-release-upgrade` in place of `pg_upgradecluster`. Upgrade the app VM and the database VM in separate windows, never together — with two changes in flight you can't tell which one broke. There's one interaction specific to this role: the PGDG apt line is templated from `ansible_facts['distribution_release']`, so it still says `noble` after the OS moves on. Re-run `bootstrap.yml --limit postgres` afterwards to rewrite `/etc/apt/sources.list.d/pgdg.list` for the new release, before the next `apt update` starts resolving against a stale suite.
+**Ubuntu release upgrade inside a VM** (26.04 → nn.nn): same procedure, `do-release-upgrade` in place of `pg_upgradecluster`. Upgrade the app VM and the database VM in separate windows, never together — with two changes in flight you can't tell which one broke. There's one interaction specific to this role: the PGDG apt line is templated from `ansible_facts['distribution_release']`, so it still says `noble` after the OS moves on. Re-run `bootstrap.yml --limit postgres` afterwards to rewrite `/etc/apt/sources.list.d/pgdg.list` for the new release, before the next `apt update` starts resolving against a stale suite.
 
 **.NET runtime upgrades** follow the identical pattern one variable over — `dotnet_version` in the same `group_vars` file, then `bootstrap.yml --limit app`. Bump one thing per window.
 

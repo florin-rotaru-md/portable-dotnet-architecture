@@ -46,7 +46,9 @@ sda                         8:0    0  32G  0 disk
   └─ubuntu--vg-ubuntu--lv 252:0    0  15G  0 lvm  /
 sr0                        11:0    1   4M  0 rom
 
-growpart /dev/sda 3
+# A root LV smaller than the disk (like the 15G-of-30G above) needs no manual
+# fixing: the common role grows partition/PV/LV/filesystem on every playbook
+# run (grow_root_filesystem in main.yml).
 
 on control vm:
 ---
@@ -145,6 +147,10 @@ ansible_user: devops
 # Once EVERY key you rely on is listed in vault.yml, flip to true: keys not in
 # the list are removed on the next run — key rotation = one playbook run.
 ssh_authorized_keys_exclusive: false
+
+# Grow the root partition/LVM/filesystem into whatever the hypervisor granted —
+# a no-op when nothing changed, so it runs on every host, every run.
+grow_root_filesystem: true
 
 # ── Firewall ───────────────────────────────────────────────────────────────────
 ufw_allowed_tcp_ports:

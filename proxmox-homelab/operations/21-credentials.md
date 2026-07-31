@@ -23,7 +23,7 @@ And the non-SSH credentials, which get less attention and hurt more:
 | Proxmox root password (×2 nodes) | The hypervisors, web UI and console | Password manager |
 | VM `--cipassword` | The console login — the no-SSH recovery path (21.4) | Password manager |
 | rclone crypt passwords | The **entire offsite tier** ([17.6](../backup/17-backup-restore.md#176-offsite--digi-storage-via-rclone)) | Password manager **+ paper** |
-| `vault.yml` contents (postgres password, tokens) — and the vault password if encrypted | The application layer | Repo (encrypted) + password manager |
+| `vault.yml` contents (postgres password, tokens, `grafana_admin_password`) — and the vault password if encrypted | The application layer | Repo (encrypted) + password manager |
 | `walreceiver` password | The WAL stream to the QDevice ([13](../ha/13-wal-stream.md)) — replication-only role, no data access; loss = recreate it and update the QDevice's `.pgpass`, a non-event | vault.yml + password manager |
 
 ## 21.2 What a restore actually gives back

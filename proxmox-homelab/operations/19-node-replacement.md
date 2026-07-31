@@ -22,7 +22,7 @@ Assume below you're replacing **pve2**. Replacing pve1 is symmetric.
 
 ```bash
 # On-demand backup of everything — you have replication and this is still worth 10 minutes
-vzdump 1010 1020 1030 --storage usb-backup --mode snapshot --compress zstd
+vzdump 1010 1020 1030 1040 --storage usb-backup --mode snapshot --compress zstd
 
 # Write down the config you'll need to recreate
 cat /etc/pve/corosync.conf | grep -A4 "node {"
@@ -109,7 +109,7 @@ corosync-cfgtool -s           # both rings OK
 
 ### 7. Recreate replication
 
-VM → **Replication → Add** → target: the new node → the schedules from Stage 12 (`*/1` for 1030, `*/5` for 1020, `*/15` for 1010).
+VM → **Replication → Add** → target: the new node → the schedules from Stage 12 (`*/1` for 1030, `*/5` for 1020, `*/15` for 1010, `*/30` for 1040).
 
 The first run is a **full transfer**, not a delta — every VM disk crosses the wire. Over the 10G direct link expect roughly 10-20 minutes for a few hundred GB; the Postgres disk dominates. VMs keep running throughout.
 

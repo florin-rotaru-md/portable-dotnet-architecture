@@ -18,7 +18,7 @@ A two-node Proxmox VE cluster for a self-hosted app: ZFS replication, HA with au
 | VM CPU type | `host` | **`x86-64-v3`** | Different CPUs (Raptor Lake vs Arrow Lake) — `host` would crash a migrated VM |
 | Migration network | Everything over the 1G LAN | Direct 10G cable (X550 ↔ TB adapter), no switch; 1G to the router as backup ring | Full 10G for migration/replication at zero extra cost, plus corosync redundancy |
 
-The result, in one paragraph: two nodes joined by a direct 10G cable (corosync Link 0, migration, replication) and by the home LAN (vmbr0, corosync Link 1), with a QDevice holding the third vote. Three VMs — `1010 control` (Ansible), `1020 app` (.NET + nginx + cloudflared), `1030 postgres` — replicate between nodes every 1–15 minutes; HA restarts `app` and `postgres` on the surviving node in ~2–3 minutes if a node dies. Backups go to a USB disk nightly and encrypted to Digi Storage offsite.
+The result, in one paragraph: two nodes joined by a direct 10G cable (corosync Link 0, migration, replication) and by the home LAN (vmbr0, corosync Link 1), with a QDevice holding the third vote. Four VMs — `1010 control` (Ansible), `1020 app` (.NET + nginx + cloudflared), `1030 postgres`, `1040 monitoring` (Loki + Grafana) — replicate between nodes every 1–30 minutes depending on the VM; HA restarts `app` and `postgres` on the surviving node in ~2–3 minutes if a node dies, while `control` and `monitoring` stay out of HA and are started by hand if their node goes down. Backups go to a USB disk nightly and encrypted to Digi Storage offsite.
 
 ## The guide
 
@@ -46,8 +46,8 @@ The result, in one paragraph: two nodes joined by a direct 10G cable (corosync L
 | | Covers |
 |---|---|
 | [Stage 9 — Ubuntu template](vms/09-ubuntu-template.md) | The golden image: install, cloud-init, generalization, console password, smoke test; the faster cloud-image alternative |
-| [Stage 10 — The VMs](vms/10-vms.md) | Cloning 1010/1020/1030, growing the postgres disk to 1T, Ansible control node, SSH keys |
-| [Stage 11 — First Ansible bootstrap](vms/11-bootstrap.md) | Filling the VMs: inventory, the split-VM variables, `bootstrap.yml`, verification |
+| [Stage 10 — The VMs](vms/10-vms.md) | Cloning 1010/1020/1030/1040, per-VM disk sizes (one `qm resize` each), Ansible control node, SSH keys |
+| [Stage 11 — First Ansible bootstrap](vms/11-bootstrap.md) | Filling the VMs: inventory, the split-VM variables, the monitoring VM (Loki + Grafana), `bootstrap.yml`, verification |
 | [Cloudflare Tunnel](vms/cloudflare-tunnel.md) | Why `cloudflared` runs inside the app VM, not on the host |
 
 ### [ha/](ha/) — replication, migration, failover
@@ -95,12 +95,12 @@ The whole build, in execution order, with the two deliberate "come back later" p
 - [ ] **7** Cluster — two corosync rings, migration network
 - [ ] **8** QDevice — third vote
 - [ ] **9** Ubuntu template — *(9.6's template backup needs the USB drive; postponed to the 17 line below)*
-- [ ] **10** Clone 1010/1020/1030, grow 1030 to 1T, control node, SSH keys
-- [ ] **11** First Ansible bootstrap — the VMs get their contents; verify app + db + tunnel
+- [ ] **10** Clone 1010/1020/1030/1040, `qm resize` each to its size, control node, SSH keys
+- [ ] **11** First Ansible bootstrap — the VMs get their contents; verify app + db + tunnel + Loki/Grafana
 - [ ] **12** Replication schedules per VM
 - [ ] **13** WAL stream to the QDevice — both ends, verified end to end
 - [ ] **14** First live migration — the ping test, both directions
-- [ ] **15** HA for 1020/1030, `shutdown_policy=migrate`, notifications
+- [ ] **15** HA for 1020/1030 only — 1010 and 1040 deliberately stay out, `shutdown_policy=migrate`, notifications
 - [ ] **17** Backups — USB drive, nightly job, offsite rclone + crypt; **now take the template backup from 9.6**
 - [ ] **18.6** Pre-launch failover tests — all three, timed and written down
 - [ ] **17.9** First restore drill — `restore-drill`, before going live, not after

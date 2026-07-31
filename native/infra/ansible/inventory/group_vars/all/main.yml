@@ -18,6 +18,12 @@ ssh_authorized_keys_exclusive: false
 # (Proxmox --cipassword) never opens password auth over SSH.
 ssh_disable_password_auth: true
 
+# The common role grows the root partition/LVM/filesystem into whatever disk the
+# hypervisor granted (e.g. qm resize) — a no-op when nothing changed. Required on
+# every VM cloned from the small template; flip off only for hosts whose disk
+# layout is managed some other way.
+grow_root_filesystem: true
+
 # ── Apps (required) ───────────────────────────────────────────────────────────
 app_user: devops
 app_log_root: /var/log

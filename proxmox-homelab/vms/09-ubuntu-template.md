@@ -28,7 +28,7 @@ qm create 9000 \
 qm set 9000 --machine q35 && \
 qm set 9000 --bios seabios && \
 qm set 9000 --scsihw virtio-scsi-single && \
-qm set 9000 --scsi0 apps:320,discard=on,ssd=1,iothread=1 && \
+qm set 9000 --scsi0 apps:32,discard=on,ssd=1,iothread=1 && \
 qm set 9000 --cpu x86-64-v3 && \
 qm set 9000 --agent enabled=1 && \
 qm set 9000 --cdrom local:iso/ubuntu-26.04-live-server-amd64.iso && \
@@ -45,7 +45,7 @@ What each choice buys you:
 | `discard=on,ssd=1` | TRIM passthrough so deleted blocks are returned to the ZFS pool; `ssd=1` tells the guest it's flash. Requires the thin provisioning from [6.1](../cluster/06-zfs-pools.md#61-thin-provisioning--set-it-before-any-vm-disk-exists) — on a thick zvol it's a no-op |
 | `--agent enabled=1` | Lets Proxmox do graceful shutdowns, report the guest IP, and freeze the filesystem during snapshot backups |
 | `--machine q35` | Modern chipset; Proxmox pins the machine *version* on first start, which is exactly what keeps live migration safe across host upgrades |
-| `apps:320` | The base disk every clone inherits, sized for the two app-side VMs. Thin-provisioned, so it costs ~5GB of real NVMe until something writes to it. Only 1030 grows beyond this (Stage 10) |
+| `apps:32` | Deliberately the smallest disk any VM needs. Clones can only ever grow, so the template is the floor — each VM is then grown to its own size in [Stage 10](../vms/10-vms.md#grow-the-disk--per-vm) |
 
 ## 9.3 Install Ubuntu
 
@@ -66,26 +66,23 @@ Installer answers:
 | SSH | ✔ **Install OpenSSH server** |
 | Snaps | Done |
 
-> **Keep the LVM layout** — Stage 10's postgres disk resize depends on it.
+> **Keep the LVM layout** — [Stage 10's per-VM disk growth](10-vms.md#grow-the-disk--per-vm) depends on it, as does the Ansible role that enforces it.
 
-> **Claim the whole volume group.** By default the installer gives the root logical volume only about *half* the VG and leaves the rest idle inside it — on this disk that's roughly 160GB stranded. On the **Storage configuration** screen, select `ubuntu-lv` → **Edit**. Exactly one field changes:
+> **Claim the whole volume group.** By default the installer gives the root logical volume only about *half* the VG and leaves the rest idle inside it — on a 32GB disk, a 30GB partition carrying a **15GB** root, which is the layout `native/example` documents. On the **Storage configuration** screen, select `ubuntu-lv` → **Edit**. Exactly one field changes:
 >
 > - **Size** → retype it as the figure from the `(max …)` label, **including the `G` suffix**. A bare number is read as *bytes*, so `320` doesn't mean 320G — the installer clamps it and the label still reads the maximum, which looks like the edit worked.
 > - **Format** → leave **`ext4`**. Not a preference: Stage 10 grows the postgres filesystem with `resize2fs`, which handles ext2/3/4 only. Choose xfs here and that step fails, on a filesystem that also can't be shrunk back.
 > - **Name** / **Mount** → untouched: `ubuntu-lv`, `/`.
 >
-> Do it once here and every clone inherits a fully-used disk; skip it and you're running `lvextend` + `resize2fs` in all three VMs instead.
+> Do it here and the floor every clone starts from is 30GB instead of 15GB. That's what turns a forgotten resize into a non-event rather than a full root filesystem.
 
-**On the disk sizes — 320GB here, 1TB for postgres in Stage 10.** Two constraints fix them. Clones can only ever *grow*, never shrink, so the template must be the smallest disk any VM needs: 320GB is the app-side figure, and only 1030 is grown afterwards. And thin provisioning ([6.1](../cluster/06-zfs-pools.md#61-thin-provisioning--set-it-before-any-vm-disk-exists)) makes the declared number a ceiling rather than a cost — a fresh Ubuntu writes ~5GB whatever you put here, so `control-ubuntu` carrying a 320GB disk it will never fill is free.
+**On the 32GB size — it's a floor, not an estimate.** Clones can only ever *grow*, never shrink, so the template has to be the smallest disk any VM will need. `control-ubuntu` runs on exactly this and is never resized; everything else is grown to its own target in [Stage 10](10-vms.md#grow-the-disk--per-vm).
 
-Free, but still bounded on purpose: with every guest full and one node holding every VM, `apps` carries the template plus 1010 and 1020 — 960GB of ~1.8TB usable — and `db` carries 1030's 1TB. Both pools land near half, which leaves headroom for replication snapshots and keeps ZFS clear of the fragmentation cliff it hits past ~80%.
+Sizing the template generously *looks* free — thin provisioning ([6.1](../cluster/06-zfs-pools.md#61-thin-provisioning--set-it-before-any-vm-disk-exists)) means unwritten space costs nothing on the pool — but it hands every future VM a ceiling it never asked for, and the figure can only ever ratchet upward. A logging VM that wants 320GB and a control VM that wants 32GB cannot both be served by one inherited number. Per-VM growth costs one command at the hypervisor and none inside the guest ([the playbook handles that](10-vms.md#grow-the-disk--per-vm)); a too-large template costs you the choice permanently.
 
-**Want a different figure?** Change the *disk*, not the LV, and do it before the install writes partitions. The chain is `LV ≤ VG ≤ partition ≤ virtual disk`, so typing a larger number into the installer does nothing at all — the `(max …)` label doesn't move until the disk underneath it does:
-```bash
-qm stop 9000
-qm resize 9000 scsi0 512G     # absolute; grow only — a shrink is rejected
-```
-Then boot the ISO again and redo 9.3. Fifteen minutes, versus a template every clone is stuck with.
+Going *below* 32GB is where it gets uncomfortable: at 16GB you're left with roughly 7GB of root after partitioning, which apt caches and journals fill faster than you'd like.
+
+> **The trap, if you ever do resize the template:** change the *disk*, not the LV, and do it before the install writes partitions. The chain is `LV ≤ VG ≤ partition ≤ virtual disk`, so typing a bigger number into the installer accomplishes nothing — the `(max …)` label doesn't move until the disk underneath it does (`qm stop 9000 && qm resize 9000 scsi0 <size>`, absolute, grow-only).
 
 Reboot when it finishes, log in at the console, and find the DHCP address:
 ```bash
@@ -99,9 +96,11 @@ SSH in (`ssh devops@<dhcp-ip>`), then `sudo -i`.
 **a) Packages and guest agent:**
 ```bash
 apt update && apt upgrade -y
-apt install -y qemu-guest-agent cloud-init sudo curl wget bash-completion
+apt install -y qemu-guest-agent cloud-init cloud-guest-utils sudo curl wget bash-completion
 systemctl enable --now qemu-guest-agent
 ```
+
+`cloud-guest-utils` is what provides `growpart`. Every clone is grown to its own size in Stage 10, so putting it in the template means the growth step never has to `apt install` anything first — including on a VM whose disk filled up, which is exactly when apt is least likely to cooperate.
 
 **b) Undo the installer's cloud-init lockdown — do not skip this.**
 
@@ -234,7 +233,7 @@ qm set 9001 --ide2 apps:cloudinit --boot order='scsi0'
 qm set 9001 --ciuser devops --sshkeys /root/.ssh/id_ed25519.pub \
   --nameserver 192.168.0.1 --searchdomain lan --ipconfig0 ip=dhcp
 qm set 9001 --cipassword '<strong password>'   # console safety net — Stage 21.4
-qm disk resize 9001 scsi0 320G
+qm disk resize 9001 scsi0 32G
 qm template 9001
 ```
 

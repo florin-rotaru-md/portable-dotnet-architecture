@@ -2,7 +2,7 @@
 
 *Part of the [Proxmox homelab guide](../README.md).*
 
-Stages 9–10 produced three empty Ubuntu machines. Everything that makes them *useful* — Postgres + PostGIS, the .NET app with blue/green deploys, nginx, `cloudflared`, the nightly database dump, SSH key management — is installed by the Ansible project in [`native/infra/ansible`](../../native/infra/ansible), run from control-ubuntu (1010). This stage is that first run.
+Stages 9–10 produced four empty Ubuntu machines. Everything that makes them *useful* — Postgres + PostGIS, the .NET app with blue/green deploys, nginx, `cloudflared`, the nightly database dump, Loki + Grafana, SSH key management — is installed by the Ansible project in [`native/infra/ansible`](../../native/infra/ansible), run from control-ubuntu (1010). This stage is that first run.
 
 It sits **before replication (Stage 12) on purpose**: finish the machines first, then wire redundancy around them. Replicating, HA-protecting and failover-testing VMs that don't run anything yet just means doing parts of Stages 12–18 twice.
 
@@ -12,12 +12,13 @@ The authoritative command-by-command walkthrough is [`native/example`](../../nat
 
 | Topic | `native/example` (single VPS) | This homelab |
 |---|---|---|
-| Topology | app + postgres on one VM | app = **1020** (.20), postgres = **1030** (.30) |
-| `hosts.ini` | one `[app]` host | `[app]` and `[postgres]` groups — see 11.3 |
+| Topology | app + postgres on one VM | app = **1020** (.20), postgres = **1030** (.30), monitoring = **1040** (.40) |
+| `hosts.ini` | one `[app]` host | `[app]`, `[postgres]` and `[monitoring]` groups — see 11.3 |
 | `postgres_host` | `127.0.0.1` | **`192.168.0.30`** — the app's connection strings point here |
 | `postgres_app_cidr` | empty (loopback only) | **`192.168.0.20/32`** — lets 1020 reach Postgres; the role writes it into `pg_hba.conf` and the firewall |
 | `use_cloudflared` | `false` | `true` + `cloudflare_token` in `vault.yml` — the tunnel lives inside 1020 ([why](cloudflare-tunnel.md)) |
-| sudoers / `growpart` prep steps | needed (hand-installed VM) | **skip** — cloud-init already set up `devops`, and the postgres disk was grown in [Stage 10](10-vms.md#resize-the-postgres-disk-after-cloning) |
+| `use_loki_grafana` / `monitoring_target` | `false` / — | `true` / **`monitoring`** — Loki + Grafana run on dedicated 1040 instead of alongside the app, see 11.7 |
+| sudoers / `growpart` prep steps | needed (hand-installed VM) | **skip** — cloud-init already set up `devops`, and the guest side of each disk resize is done by the `common` role during this very run ([Stage 10](10-vms.md#grow-the-disk--per-vm) only ran `qm resize`) |
 | SSH keys | generated in the walkthrough | already done at the end of [Stage 10](10-vms.md#ssh-keys) — reuse `~/.ssh/id_ed25519_devops` |
 
 ## 11.2 On control-ubuntu (1010)
@@ -38,15 +39,20 @@ cat << 'EOF' > ~/src/portable-dotnet-architecture/native/infra/ansible/inventory
 
 [postgres]
 192.168.0.30 ansible_user=devops ansible_private_key_file=~/.ssh/id_ed25519_devops
+
+[monitoring]
+192.168.0.40 ansible_user=devops ansible_private_key_file=~/.ssh/id_ed25519_devops
 EOF
 ```
 
-Sanity check before anything else — both VMs reachable, passwordless sudo working:
+The `[monitoring]` group is what turns on [Play 3](../../native/infra/ansible/playbooks/bootstrap.yml) — an empty or missing group makes that play match zero hosts and no-op, which is how `use_loki_grafana: false` behaves everywhere else in this repo. Defining it here is what makes 1040 real.
+
+Sanity check before anything else — all three VMs reachable, passwordless sudo working:
 
 ```bash
 cd ~/src/portable-dotnet-architecture/native/infra/ansible
 ansible all -m ping
-ansible all -b -m command -a whoami        # expect: root, twice
+ansible all -b -m command -a whoami        # expect: root, three times
 ```
 
 > If the `-b` check prompts for a password, cloud-init didn't grant `devops` passwordless sudo on that clone. Fix it once, over SSH: `echo 'devops ALL=(ALL) NOPASSWD: ALL' | sudo tee /etc/sudoers.d/devops && sudo chmod 440 /etc/sudoers.d/devops`.
@@ -59,12 +65,20 @@ Create both exactly as `native/example` shows, then apply the homelab deltas fro
 postgres_host: "192.168.0.30"
 postgres_app_cidr: "192.168.0.20/32"
 use_cloudflared: true
+
+# ── Loki + Grafana on the dedicated monitoring VM (1040) ──────────────────────
+use_loki_grafana: true
+monitoring_target: monitoring
+loki_bind_address: "192.168.0.40"          # default is loopback-only — wrong for a split VM
+grafana_bind_address: "192.168.0.40"       # same reason
+monitoring_allowed_cidr: "192.168.0.0/24"  # who may reach Grafana through UFW
 ```
 
 and in `vault.yml`, alongside the keys and `postgres_password`:
 
 ```yaml
-cloudflare_token: "eyJhIjoi..."        # the tunnel token for the app
+cloudflare_token: "eyJhIjoi..."               # the tunnel token for the app
+grafana_admin_password: "<strong password>"   # min. 12 chars — the role asserts on this
 ```
 
 Two rules worth internalizing now, because they outlive this stage:
@@ -79,7 +93,7 @@ cd ~/src/portable-dotnet-architecture/native/infra/ansible
 ansible-playbook playbooks/bootstrap.yml --diff
 ```
 
-The first run takes a while: PGDG + PostGIS on 1030, the .NET SDK on 1020, and — because `repo_url`/`project_path` are set — the **first application deploy**, straight into the blue slot. `--diff` shows every file it writes; on a fresh VM that's a lot of output, and that's fine. (Don't use `--check` with this role set — [Stage 20.3 step 4](../operations/20-upgrades.md#step-4-bump-the-variable-run-the-playbook) explains why it breaks.)
+The first run takes a while: PGDG + PostGIS on 1030, the .NET SDK on 1020, Docker + Loki + Grafana on 1040, and — because `repo_url`/`project_path` are set — the **first application deploy**, straight into the blue slot. All three plays run from this one invocation; there's no separate command for the monitoring VM. `--diff` shows every file it writes; on a fresh VM that's a lot of output, and that's fine. (Don't use `--check` with this role set — [Stage 20.3 step 4](../operations/20-upgrades.md#step-4-bump-the-variable-run-the-playbook) explains why it breaks.)
 
 Re-running it later is always safe — that's the point of it being the single owner of in-VM state.
 
@@ -96,6 +110,26 @@ curl -s -H "Host: api.example.com" http://192.168.0.20/.well-known/ready    # ex
 
 # Tunnel up (on 1020), then the real test: the public URL in a browser
 ssh devops@192.168.0.20 'systemctl is-active cloudflared'
+
+# Loki + Grafana up (on 1040), and app logs already arriving
+ssh devops@192.168.0.40 'cd /opt/monitoring && docker compose ps'
+ssh devops@192.168.0.20 'systemctl is-active alloy'
+curl -s 'http://192.168.0.40:3100/loki/api/v1/label/service/values'
+# expect {"status":"success","data":["api.example.com"]} — one entry per app in `applications[]`
 ```
 
-All four green → the machines are done. From here on, **change VM state via the playbook, not by hand** ([the ownership boundary, 20.5](../operations/20-upgrades.md#205-the-same-pattern-applied-elsewhere)) — and continue with [Stage 12](../ha/12-replication.md), which replicates disks that now hold their real content.
+All green → the machines are done. From here on, **change VM state via the playbook, not by hand** ([the ownership boundary, 20.5](../operations/20-upgrades.md#205-the-same-pattern-applied-elsewhere)) — and continue with [Stage 12](../ha/12-replication.md), which replicates disks that now hold their real content.
+
+## 11.7 The monitoring VM (1040) — Loki + Grafana
+
+The Ansible side of this needed no new code: `monitoring` and `alloy` are existing, generic roles ([`roles/monitoring`](../../native/infra/ansible/roles/monitoring), [`roles/alloy`](../../native/infra/ansible/roles/alloy)) that already support exactly this split — a dedicated log-collection VM instead of running Loki alongside the app. Everything in 11.3/11.4 above is the homelab-specific wiring; this section is what that wiring buys you and what it doesn't, yet.
+
+**What happens automatically, from the one playbook run in 11.5:**
+
+- 1040 gets Docker, Loki and Grafana (Play 3), bound to its own LAN IP so 1020 can reach it and your workstation can reach Grafana — the `monitoring_allowed_cidr` UFW rule is what makes the second part true; without it Grafana listens but nothing outside the VM can connect.
+- 1020's Alloy config **auto-discovers** 1040: `config.alloy.j2` reads `groups['monitoring'][0]`'s address at render time, so defining the `[monitoring]` group in `hosts.ini` is the only wiring the app side needs. You do not set `alloy_loki_url` by hand — that variable exists only to *override* the discovery, for cases this homelab doesn't have.
+- Grafana ships with the Loki datasource pre-provisioned (`grafana-datasource-loki.yml.j2`) — open `http://192.168.0.40:3000`, log in as `admin` / the `grafana_admin_password` from vault, and the app's logs are already queryable under `{service="api.example.com"}` (or whatever `domain` you set per app in `applications[]`).
+
+**What does *not* ship logs yet, and why that's a deliberate stop here rather than an oversight:** Play 1 (postgres) runs only `common` + `postgres` — the `alloy` role isn't in that play, so 1030's Postgres logs stay local (`journalctl -u postgresql@{{ postgres_version }}-main`) and don't reach Grafana. Wiring that up means teaching Alloy to scrape journald instead of files (Postgres on Ubuntu logs to the journal, not a file, unless `logging_collector` is turned on) — a real change to a role shared by every setup in this repo, not a homelab-only tweak. Doing it well is worth its own change, reviewed on its own; bolting it on here to make 1040's job description technically complete would be exactly the kind of half-finished feature this guide tries to avoid. Until then, `journalctl` on 1030 (and `cluster-health`'s existing checks) remain how you look at database-side problems.
+
+**Why 1040 stays out of HA:** see [Stage 15.1](../ha/15-ha.md#151-which-vms-get-ha). Short version — it's an observability tool, not something users depend on; losing dashboards for the few minutes a manual restart takes is a cost worth paying for one less moving part during an actual incident.

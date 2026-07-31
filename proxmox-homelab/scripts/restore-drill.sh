@@ -11,7 +11,7 @@
 # /var/log/restore-drill.log. On failure the drill VM is KEPT for inspection.
 #
 # Usage: restore-drill [vmid] [--keep]
-#   vmid      which VM's backup to drill (default: rotates 1010/1020/1030 by month)
+#   vmid      which VM's backup to drill (default: rotates 1010/1020/1030/1040 by month)
 #   --keep    don't destroy the drill VM on success (inspect it, then
 #             qm stop <id> && qm destroy <id>)
 
@@ -32,8 +32,8 @@ for a in "$@"; do
 done
 
 if [ -z "$VMID" ]; then
-    set -- 1010 1020 1030
-    shift $(( $(date +%-m) % 3 ))
+    set -- 1010 1020 1030 1040
+    shift $(( $(date +%-m) % 4 ))
     VMID=$1
     echo "No VM given — this month's rotation picks $VMID."
 fi

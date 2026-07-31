@@ -19,7 +19,7 @@
 
 set -uo pipefail
 
-VMS="1010 1020 1030"
+VMS="1010 1020 1030 1040"
 CONFIG_HOSTS="pve1 pve2"
 MAX_AGE_H=26                    # nightly jobs → anything older than ~a day is stale
 MIN_SIZE_MB=100                 # a vzdump smaller than this is almost certainly broken

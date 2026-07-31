@@ -30,7 +30,7 @@ No 10G switch (they're still expensive for what they'd add here). Instead: **two
 
 **Other notes:**
 - **pve1's X550 port 2 stays empty** — spare for a future third node.
-- VM addressing scheme: `.10` control, `.20` app, `.30` postgres — all on 192.168.0.0/24.
+- VM addressing scheme: `.10` control, `.20` app, `.30` postgres, `.40` monitoring — all on 192.168.0.0/24.
 - Keep MTU at 1500 to start. Jumbo frames (MTU 9000) are genuinely tempting on a dedicated point-to-point link like this one and carry little risk there, since nothing else shares the segment — but leave it until everything else is proven.
 - **Optional later:** a second bridge (`vmbr1`) on the 10G link with its own subnet, giving `app` and `postgres` a second NIC each so DB traffic runs at 10G even when the VMs are split across nodes. Extra complexity for a rare case — skip it for now.
 

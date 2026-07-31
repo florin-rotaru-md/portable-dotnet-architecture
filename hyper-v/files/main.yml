@@ -9,6 +9,10 @@ ansible_user: devops
 # the list are removed on the next run — key rotation = one playbook run.
 ssh_authorized_keys_exclusive: false
 
+# Grow the root partition/LVM/filesystem into whatever the hypervisor granted —
+# a no-op when nothing changed, so it runs on every host, every run.
+grow_root_filesystem: true
+
 # ── Infrastructure ─────────────────────────────────────────────────────────────
 app_user: devops
 apps_root: /opt/apps

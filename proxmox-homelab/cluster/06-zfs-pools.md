@@ -33,7 +33,7 @@ Verify: **Datacenter → Storage** — `apps` and `db` visible on both nodes.
 
 ## 6.1 Thin provisioning — set it before any VM disk exists
 
-The **Add Storage** checkbox above registers each pool with `sparse` **off**, which is the Proxmox default and the wrong one here. A thick zvol carries a ZFS `refreservation` equal to its declared size, so the 320GB template disk in [Stage 9](../vms/09-ubuntu-template.md#92-create-the-vm-shell) would claim 320GB of real NVMe the moment it's created — for a filesystem holding about 5GB.
+The **Add Storage** checkbox above registers each pool with `sparse` **off**, which is the Proxmox default and the wrong one here. A thick zvol carries a ZFS `refreservation` equal to its declared size, so the 640GB postgres disk from [Stage 10](../vms/10-vms.md#grow-the-disk--per-vm) would claim 640GB of real NVMe the day it's created — for a database that starts near empty.
 
 Turn it on now, while both pools are still empty. `sparse` applies only to volumes created *after* it's set, and at this point there is nothing to migrate:
 
@@ -51,4 +51,4 @@ Two consequences worth understanding, because both bite silently:
 
 > **Re-check after the cluster is formed.** `/etc/pve/storage.cfg` is cluster-wide: when pve2 joins in [Stage 7](07-cluster.md) it adopts pve1's copy and discards its own. Set this on pve1, then confirm it survived the join — before any VM disk is created in Stage 9.
 
-**This is not overcommit.** The declared sizes fit both pools even if every guest filled its disk to the last byte: `apps` holds the template plus 1010 and 1020 (960GB of ~1.8TB usable), `db` holds 1030 alone (1TB of the same). Thin provisioning here reclaims space that was never written; it isn't a bet that the VMs stay small. The arithmetic is in [Stage 9.3](../vms/09-ubuntu-template.md#93-install-ubuntu).
+**This is not overcommit.** The declared sizes fit both pools even if every guest filled its disk to the last byte: `apps` carries the template plus 1010, 1020 and the future 1040 — 512GB of ~1.8TB usable — and `db` carries 1030's 640GB alone. Thin provisioning here reclaims space that was never written; it isn't a bet that the VMs stay small. The per-VM sizes are set in [Stage 10](../vms/10-vms.md#grow-the-disk--per-vm).

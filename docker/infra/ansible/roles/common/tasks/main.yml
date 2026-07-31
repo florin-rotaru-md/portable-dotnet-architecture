@@ -15,6 +15,72 @@
     state: present
     update_cache: true
 
+# Guests are typically cloned or created small and grown at the hypervisor
+# afterwards. Inside, the partition / PV / LV / filesystem still have to follow,
+# and cloud-init's growpart module won't do it because root sits on LVM. Every
+# step below is a no-op once the filesystem already fills the disk, so this runs
+# on every host, every time — a required step that can't be forgotten on the
+# next VM. Set grow_root_filesystem: false to opt out.
+- name: Grow the root filesystem into the whole disk
+  when: grow_root_filesystem | default(true)
+  block:
+    - name: Ensure growpart is available
+      apt:
+        name: cloud-guest-utils
+        state: present
+
+    - name: Grow partition, physical volume, logical volume and filesystem
+      shell:
+        executable: /bin/bash
+        cmd: |
+          set -euo pipefail
+
+          lv=$(findmnt -no SOURCE /)
+          case "$lv" in
+            /dev/mapper/*) ;;
+            *) echo "SKIP: root ($lv) is not an LVM volume"; exit 0 ;;
+          esac
+
+          vg=$(lvs --noheadings -o vg_name "$lv" | tr -d '[:space:]')
+
+          # One PV is the layout the template produces. More than one means
+          # somebody added a disk to the VG by hand — bail out rather than guess.
+          if [ "$(pvs --noheadings -o pv_name -S "vg_name=$vg" | wc -l)" -ne 1 ]; then
+            echo "SKIP: VG $vg spans multiple physical volumes — grow it by hand"
+            exit 0
+          fi
+
+          pv=$(pvs --noheadings -o pv_name -S "vg_name=$vg" | tr -d '[:space:]')
+          disk="/dev/$(lsblk -no pkname "$pv" | tr -d '[:space:]')"
+          partnum=${pv#"$disk"}
+          partnum=${partnum//[!0-9]/}
+
+          before=$(findmnt -bno SIZE /)
+
+          # growpart exits 1 with NOCHANGE when the partition is already maximal
+          if ! out=$(growpart "$disk" "$partnum" 2>&1); then
+            grep -q NOCHANGE <<<"$out" || { echo "$out" >&2; exit 1; }
+          fi
+
+          pvresize "$pv"
+
+          # lvextend exits 5 when there are no free extents to take
+          if ! out=$(lvextend -l +100%FREE "$lv" 2>&1); then
+            grep -qi -e 'matches existing size' -e 'Insufficient free space' <<<"$out" \
+              || { echo "$out" >&2; exit 1; }
+          fi
+
+          resize2fs "$lv"
+
+          after=$(findmnt -bno SIZE /)
+          if [ "$before" = "$after" ]; then
+            echo "NOCHANGE: root already fills the disk ($after bytes)"
+          else
+            echo "GREW: $before -> $after bytes"
+          fi
+      register: grow_root_result
+      changed_when: "'GREW:' in grow_root_result.stdout"
+
 - name: Ensure app user group exists
   group:
     name: "{{ app_user }}"
