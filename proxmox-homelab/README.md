@@ -6,7 +6,7 @@ A two-node Proxmox VE cluster for the waa app: ZFS replication, HA with automati
 
 - **Node 1 `pve1`** — ThinkStation P2 Gen 2, Core Ultra 7 265, 64GB, 3× NVMe, Intel X550-T2
 - **Node 2 `pve2`** — HP ZBook Fury G10 16", i9-13850HX, 64GB, 3× NVMe, Thunderbolt 4 (role: failover)
-- QDevice: any always-on third device (Raspberry Pi / mini PC / VM on another system)
+- QDevice: mini PC — Core Ultra 5 225U, 16GB DDR5, 2TB NVMe. Holds the third vote *and* the continuous WAL archive ([Stage 10b](ha/10b-wal-stream.md))
 - ~5h UPS, router with tested 5G failover (~30s), Cloudflare Tunnel already in place
 
 ## Design decisions (vs the defaults you'd otherwise pick)
@@ -54,6 +54,7 @@ The result, in one paragraph: two nodes joined by a direct 10G cable (corosync L
 | | Covers |
 |---|---|
 | [Stage 10 — Replication](ha/10-replication.md) | Per-VM schedules — the interval *is* your data-loss window |
+| [Stage 10b — WAL stream](ha/10b-wal-stream.md) | Postgres WAL → QDevice, continuously: the failover minute becomes recoverable seconds, plus a 7-day any-second PITR window |
 | [Stage 11 — First live migration](ha/11-live-migration.md) | The ping test |
 | [Stage 12 — HA](ha/12-ha.md) | Which VMs get HA, `shutdown_policy=migrate`, notifications |
 | [Stage 15 — Failover mechanics](ha/15-failover.md) | How detection/fencing/recovery actually work, the full scenario table with RTO/RPO, forcing quorum, the pre-launch test plan, periodic health checks |
@@ -96,6 +97,7 @@ The whole build, in execution order, with the two deliberate "come back later" p
 - [ ] **9** Clone 1010/1020/1030, resize postgres disk, control node, SSH keys
 - [ ] **9b** First Ansible bootstrap — the VMs get their contents; verify app + db + tunnel
 - [ ] **10** Replication schedules per VM
+- [ ] **10b** WAL stream to the QDevice — both ends, verified end to end
 - [ ] **11** First live migration — the ping test, both directions
 - [ ] **12** HA for 1020/1030, `shutdown_policy=migrate`, notifications
 - [ ] **14** Backups — USB drive, nightly job, offsite rclone + crypt; **now take the template backup from 8.6**
@@ -109,7 +111,7 @@ The whole build, in execution order, with the two deliberate "come back later" p
 - **A node just died:** [15.2](ha/15-failover.md#152-anatomy-of-an-unplanned-failover) for what's happening on its own, [15.3](ha/15-failover.md#153-scenario-table) for your row, [15.5](ha/15-failover.md#155-emergency-forcing-quorum) only if the QDevice is also down.
 - **A node comes back after weeks:** [13.2](operations/13-maintenance.md#132-returning-a-node-after-a-long-outage-days-to-weeks) — order matters: rejoin → update → replicate → migrate.
 - **Locked out / lost a key:** [18.5](operations/18-credentials.md#185-recovery-scenarios--what-losing-each-thing-actually-means) has the way back for each case.
-- **Restoring anything:** [14.7](backup/14-backup-restore.md#147-restore--pick-your-scenario) — pick scenario A–F, then the [post-restore checklist](backup/14-backup-restore.md#148-post-restore-checklist).
+- **Restoring anything:** [14.7](backup/14-backup-restore.md#147-restore--pick-your-scenario) — pick scenario A–G, then the [post-restore checklist](backup/14-backup-restore.md#148-post-restore-checklist).
 - **Something looks wrong:** `cluster-health` on either node ([what it checks](scripts/README.md)), then [troubleshooting](troubleshooting.md).
 
 ## Relationship to the rest of the repo

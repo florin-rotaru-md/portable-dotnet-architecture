@@ -65,7 +65,7 @@ With this stage done, a power outage needs zero human action at any point:
 | Power returns | pve1 powers on (BIOS *restore on AC*, [Stage 0.1](00-preparation.md#01-bios)), pve2 powers on (*Wake on AC*), QDevice boots; HA starts 1020 + 1030 automatically | HA desired state = `started` |
 | Afterward | 1010 stays off until you start it — by design ([12.1](../ha/12-ha.md#121-which-vms-get-ha)); run the health check script and move on | |
 
-One caveat at the tail: the QDevice loses power hard when the UPS dies. For a Raspberry Pi that occasionally costs an SD card — keep its setup trivially reflashable ([Stage 7](../cluster/07-qdevice.md) is three commands), or use a mini PC / VM where the concern doesn't apply.
+One note at the tail: the QDevice loses power hard when the UPS dies. For this build's box (NVMe mini PC) that's a non-event — the filesystem takes it fine, and `pg-receivewal` ([Stage 10b](../ha/10b-wal-stream.md)) reconnects at boot and resumes from its slot, no action needed. Check for a "power on after AC loss" BIOS setting on it too, so all three machines come back unattended.
 
 ## 3b.5 Test it once, for real
 

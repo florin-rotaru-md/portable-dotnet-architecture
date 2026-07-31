@@ -16,4 +16,4 @@ The first run copies the whole disk (takes a while); after that only deltas (sec
 
 > After a failover or migration, replication jobs **reverse direction automatically** — you don't reconfigure anything. The cluster knows the VM now lives on the other node and replicates back toward the recovered one.
 
-> While the target node is unreachable, the job keeps retrying and the source **holds on to its last successful replication snapshot** — which pins every block written since. Over hours that's invisible; over weeks it grows without bound. See [13.2](../operations/13-maintenance.md#132-returning-a-node-after-a-long-outage-days-to-weeks) for what to watch and how to bring a long-absent node back.
+> While the target node is unreachable, the job keeps retrying and the source **holds on to its last successful replication snapshot** — which pins every block written since. Over hours that's invisible; over weeks it grows without bound. See [14.2](../operations/14-maintenance.md#142-returning-a-node-after-a-long-outage-days-to-weeks) for what to watch and how to bring a long-absent node back.

@@ -24,6 +24,7 @@ And the non-SSH credentials, which get less attention and hurt more:
 | VM `--cipassword` | The console login — the no-SSH recovery path (18.4) | Password manager |
 | rclone crypt passwords | The **entire offsite tier** ([14.6](../backup/14-backup-restore.md#146-offsite--digi-storage-via-rclone)) | Password manager **+ paper** |
 | `vault.yml` contents (postgres password, tokens) — and the vault password if encrypted | The application layer | Repo (encrypted) + password manager |
+| `walreceiver` password | The WAL stream to the QDevice ([10b](../ha/10b-wal-stream.md)) — replication-only role, no data access; loss = recreate it and update the QDevice's `.pgpass`, a non-event | vault.yml + password manager |
 
 ## 18.2 What a restore actually gives back
 

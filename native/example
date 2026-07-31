@@ -77,6 +77,9 @@ app_repo_token: "ghp_real_token_here"
 
 # Required only when use_cloudflared: true
 # cloudflare_token: "eyJhIjoiABCD..."
+
+# Required only when postgres_wal_stream_enabled: true
+# postgres_wal_stream_password: "change-me-strong-password"
 EOF
 
 
@@ -108,6 +111,20 @@ postgres_auto_minor_upgrades: true
 # Nightly logical dump schedule — keep it BEFORE any VM-image backup.
 postgres_backup_hour:   "2"
 postgres_backup_minute: "15"
+
+# ── WAL streaming to a third box (optional) ────────────────────────────────────
+# Streams the write-ahead log to an always-on receiver (pg_receivewal), so an
+# unplanned failover loses seconds instead of the VM-replication interval.
+# Receiver setup + the recovery procedure: proxmox-homelab/ha/10b-wal-stream.md
+postgres_wal_stream_enabled: false
+postgres_wal_stream_user: "walreceiver"
+postgres_wal_stream_slot: "wal_archive"
+# The receiver's address as a CIDR, e.g. "192.168.0.5/32" (the QDevice)
+postgres_wal_stream_cidr: ""
+# Safety valve: max WAL retained for a disconnected receiver, so a dead
+# receiver breaks the stream instead of filling the database disk.
+postgres_max_slot_wal_keep_size: "10GB"
+# postgres_wal_stream_password comes from vault.yml when enabled
 
 # ── Cloudflare (optional) ──────────────────────────────────────────────────────
 use_cloudflared: false

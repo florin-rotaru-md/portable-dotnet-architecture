@@ -6,3 +6,6 @@ host    all             all             ::1/128                 scram-sha-256
 {% if postgres_app_cidr | default('') | length > 0 %}
 host    all             all             {{ postgres_app_cidr }}             scram-sha-256
 {% endif %}
+{% if postgres_wal_stream_enabled | default(false) and postgres_wal_stream_cidr | default('') | length > 0 %}
+host    replication     {{ postgres_wal_stream_user }}        {{ postgres_wal_stream_cidr }}             scram-sha-256
+{% endif %}

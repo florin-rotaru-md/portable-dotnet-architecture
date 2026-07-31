@@ -1,8 +1,8 @@
-# Stage 13 — Hardware maintenance procedure (zero downtime)
+# Stage 14 — Hardware maintenance procedure (zero downtime)
 
 *Part of the [waa Proxmox homelab guide](../README.md).*
 
-## 13.1 Planned maintenance, same day
+## 14.1 Planned maintenance, same day
 
 1. Live-migrate all VMs off the target node (one by one or Bulk Migrate).
 2. `pvecm status` — quorum OK (the QDevice holds the third vote).
@@ -11,7 +11,7 @@
 5. Power the node back on — it rejoins automatically, replication resumes.
 6. Rebalance the VMs if you want.
 
-## 13.2 Returning a node after a long outage (days to weeks)
+## 14.2 Returning a node after a long outage (days to weeks)
 
 Step 5 above assumes the node was gone for an hour. If it was gone for two weeks — a dead PSU waiting on a part, a laptop you took on a trip, an RMA — the cluster mechanics are identical but three things have drifted underneath you. Nothing here is dangerous *if* you take it in order; the failure mode is doing it in the wrong order and discovering the problem mid-migration.
 

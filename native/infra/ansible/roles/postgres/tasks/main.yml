@@ -81,7 +81,9 @@
     regexp: '^#?listen_addresses\s*='
     line:   "listen_addresses = '*'"
   notify: restart postgresql
-  when: postgres_app_cidr | default('') | length > 0
+  when: >-
+    (postgres_app_cidr | default('') | length > 0)
+    or (postgres_wal_stream_enabled | default(false))
 
 - name: Allow PostgreSQL port through UFW from app subnet
   ufw:
@@ -90,6 +92,114 @@
     proto: tcp
     src:   "{{ postgres_app_cidr }}"
   when: postgres_app_cidr | default('') | length > 0
+
+# ── WAL streaming to an external receiver (optional) ──────────────────────────
+# Lets an always-on third box run pg_receivewal against a physical replication
+# slot, holding the last seconds of WAL that a VM-level failover would lose.
+# Receiver setup + recovery procedure: proxmox-homelab/ha/10b-wal-stream.md
+
+- name: Validate WAL stream secret
+  assert:
+    that:
+      - postgres_wal_stream_password is defined
+      - postgres_wal_stream_password | string | trim | length > 0
+      - postgres_wal_stream_cidr | default('') | length > 0
+    fail_msg: >-
+      postgres_wal_stream_enabled is true — define postgres_wal_stream_password
+      in vault.yml and postgres_wal_stream_cidr (the receiver's address, /32) in
+      group_vars.
+  no_log: true
+  when: postgres_wal_stream_enabled | default(false)
+
+- name: Allow PostgreSQL port through UFW from the WAL receiver
+  ufw:
+    rule:  allow
+    port:  "5432"
+    proto: tcp
+    src:   "{{ postgres_wal_stream_cidr }}"
+  when: postgres_wal_stream_enabled | default(false)
+
+# The safety valve: a receiver that stays down keeps the slot pinned, and a
+# pinned slot retains WAL without bound. This caps it — the stream breaks
+# instead of the database disk filling. Recovery from a broken stream is cheap
+# (the receiver just reconnects and starts fresh); a full disk is an outage.
+- name: Cap WAL retained for a disconnected receiver
+  lineinfile:
+    path:   "/etc/postgresql/{{ postgres_version }}/main/postgresql.conf"
+    regexp: '^#?max_slot_wal_keep_size\s*='
+    line:   "max_slot_wal_keep_size = {{ postgres_max_slot_wal_keep_size | default('10GB') }}"
+  notify: restart postgresql
+  when: postgres_wal_stream_enabled | default(false)
+
+- name: Check if WAL stream user exists
+  command:
+    argv:
+      - runuser
+      - -u
+      - postgres
+      - --
+      - psql
+      - -tAc
+      - "SELECT 1 FROM pg_roles WHERE rolname='{{ postgres_wal_stream_user }}'"
+  register: pg_wal_user_check
+  changed_when: false
+  when: postgres_wal_stream_enabled | default(false)
+
+- name: Create WAL stream user (replication-only, no database access)
+  command:
+    argv:
+      - runuser
+      - -u
+      - postgres
+      - --
+      - psql
+      - -c
+      - "CREATE USER {{ postgres_wal_stream_user }} WITH REPLICATION PASSWORD '{{ postgres_wal_stream_password }}'"
+  when:
+    - postgres_wal_stream_enabled | default(false)
+    - pg_wal_user_check.stdout != '1'
+  no_log: true
+
+- name: Ensure WAL stream user password and attributes
+  command:
+    argv:
+      - runuser
+      - -u
+      - postgres
+      - --
+      - psql
+      - -c
+      - "ALTER ROLE {{ postgres_wal_stream_user }} WITH LOGIN REPLICATION PASSWORD '{{ postgres_wal_stream_password }}'"
+  no_log: true
+  when: postgres_wal_stream_enabled | default(false)
+
+- name: Check if WAL replication slot exists
+  command:
+    argv:
+      - runuser
+      - -u
+      - postgres
+      - --
+      - psql
+      - -tAc
+      - "SELECT 1 FROM pg_replication_slots WHERE slot_name='{{ postgres_wal_stream_slot }}'"
+  register: pg_wal_slot_check
+  changed_when: false
+  when: postgres_wal_stream_enabled | default(false)
+
+- name: Create physical replication slot for the WAL receiver
+  command:
+    argv:
+      - runuser
+      - -u
+      - postgres
+      - --
+      - psql
+      - -c
+      - "SELECT pg_create_physical_replication_slot('{{ postgres_wal_stream_slot }}')"
+  when:
+    - postgres_wal_stream_enabled | default(false)
+    - pg_wal_slot_check.stdout != '1'
 
 - name: Ensure PostgreSQL is enabled and started
   service:

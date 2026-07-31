@@ -111,6 +111,27 @@ else
     fi
 fi
 
+# ── WAL stream to the QDevice (10b) — slot active and not lagging ─────────────
+# Freshness can't be judged by file age (no traffic → no writes, by design), so
+# ask the primary: is the receiver connected, and how far behind is the slot?
+WAL_SLOT=wal_archive
+WAL_LAG_WARN_MB=64
+WAL_STATE=$(ssh -o BatchMode=yes -o ConnectTimeout=5 "devops@$PG_VM_IP" \
+    "sudo -u postgres psql -tAc \"select active::text || '|' || coalesce(pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn)::bigint / 1024 / 1024, -1) from pg_replication_slots where slot_name='$WAL_SLOT'\"" 2>/dev/null | tr -d '[:space:]')
+if [ -z "$WAL_STATE" ]; then
+    ok "wal-stream: no '$WAL_SLOT' slot on $PG_VM_IP — Stage 10b not enabled (fine if that's intentional)"
+else
+    WAL_ACTIVE=${WAL_STATE%%|*}
+    WAL_LAG_MB=${WAL_STATE##*|}
+    if [ "$WAL_ACTIVE" != "true" ] && [ "$WAL_ACTIVE" != "t" ]; then
+        fail "wal-stream: slot '$WAL_SLOT' INACTIVE — pg-receivewal on the QDevice is down; RPO is back to ~1 min and WAL is accumulating toward the 10GB cap (10b.5)"
+    elif [ "${WAL_LAG_MB:-0}" -gt "$WAL_LAG_WARN_MB" ]; then
+        warn "wal-stream: receiver connected but ${WAL_LAG_MB}MB behind — check the QDevice's disk and network (10b.3)"
+    else
+        ok "wal-stream: receiver connected, ${WAL_LAG_MB}MB behind"
+    fi
+fi
+
 # ── The fourth tier: in-VM Postgres dumps (14.5) ──────────────────────────────
 # Uses the host root key, which cloud-init authorized in every VM (18.1).
 PG_NEWEST_TS=$(ssh -o BatchMode=yes -o ConnectTimeout=5 "devops@$PG_VM_IP" \

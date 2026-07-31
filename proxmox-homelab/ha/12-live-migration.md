@@ -1,4 +1,4 @@
-# Stage 11 — First live migration 🎯
+# Stage 12 — First live migration 🎯
 
 *Part of the [waa Proxmox homelab guide](../README.md).*
 

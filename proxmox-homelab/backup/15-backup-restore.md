@@ -9,6 +9,7 @@ Each one answers a different disaster. None substitutes for another:
 | Tier | Interval | Protects against | Recovery time |
 |---|---|---|---|
 | **ZFS replication** (Stage 10) | 1-15 min | A node dying | ~2-3 min, automatic |
+| **WAL stream → QDevice** ([Stage 10b](../ha/10b-wal-stream.md)) | Continuous (~seconds) | The last minute a failover would otherwise lose; also unlocks any-second PITR | Minutes ([scenario G](#g-replaying-the-last-seconds-after-a-failover-wal-from-the-qdevice)) |
 | **Local backup** (USB) | Daily | Deletion, corruption, a bad deploy, ransomware | Minutes to an hour |
 | **Offsite copy** (Digi Storage) | Daily | Fire, theft, flood, both nodes gone | Hours (download-bound) |
 
@@ -202,6 +203,37 @@ The order matters:
 
 Note what's *not* in this list: the frontend and invitations, which live on Cloudflare and were never affected.
 
+### G. Replaying the last seconds after a failover (WAL from the QDevice)
+
+Requires [Stage 10b](../ha/10b-wal-stream.md). The situation: a node died, HA restarted 1030 from a replica up to a minute old, and that minute held writes that matter. The missing seconds exist in the QDevice's WAL archive — the work is standing up a scratch database that replays to the moment of death, then taking what you need from it.
+
+**Build the replayed copy:**
+
+```bash
+# 1. Restore last night's 1030 archive to a spare ID — the base must be OLDER
+#    than the failover, on the same timeline; the 03:00 vzdump qualifies
+qmrestore /mnt/usb-backup/dump/vzdump-qemu-1030-<last-night>.vma.zst 1130 --storage apps --unique
+# give it a spare IP via Cloud-Init (say .130) before starting — 17.3 step 0 shows this pattern
+
+# 2. Inside 1130: stop postgres, bring the WAL over, arm recovery
+systemctl stop postgresql
+rsync -a walarchive@<qdevice-ip>:/var/lib/wal-archive/ /var/lib/postgresql/wal-replay/
+chown -R postgres:postgres /var/lib/postgresql/wal-replay
+sudo -u postgres tee -a /etc/postgresql/18/main/postgresql.conf << 'EOF'
+restore_command = 'cp /var/lib/postgresql/wal-replay/%f %p'
+EOF
+sudo -u postgres touch /var/lib/postgresql/18/main/recovery.signal
+systemctl start postgresql            # replays everything up to seconds before the death
+tail -f /var/log/postgresql/*.log     # watch for "archive recovery complete"
+```
+
+**Then pick the path that matches what happened since the failover:**
+
+- **The live 1030 has already taken new writes** (the normal case — HA had it back in ~3 minutes): extract the delta from 1130 — the rows stamped in the lost window — and merge them into the live database (`pg_dump -t <table>` + `INSERT … ON CONFLICT`, or by hand for a handful of RSVPs). Merging is an application-level judgment call: inserts are mechanical, updated rows need a decision about which version wins. Then destroy 1130.
+- **The live 1030 has no new writes yet** (you stopped the app slots fast, or the outage is ongoing): don't merge — swap. Stop the app, verify 1130's row counts against live, and promote the replayed copy to be the real 1030 (restore it over per [scenario B](#b-restore-over-an-existing-vm-in-place), or re-IP it). Zero loss, no reconciliation.
+
+**The same recipe is general PITR:** add `recovery_target_time = '2026-07-30 14:31:50+03'` (and `recovery_target_action = 'promote'`) next to `restore_command`, and 1130 stands up as of any second the 7-day archive covers — the "undo the 14:32 mistake" path, with the damage inspected on a scratch VM before you commit to anything.
+
 ## 14.8 Post-restore checklist
 
 A restored VM comes back as a plain VM — the cluster machinery around it does not follow automatically:
@@ -231,7 +263,7 @@ Also check inside the VM:
 A backup you have never restored is a hypothesis.
 
 - **Monthly:** scenario A on one VM — restore to a spare ID, boot it, confirm it works, destroy it. Ten minutes — or one command: [`restore-drill`](../scripts/README.md) does exactly this (NIC disconnected, guest-agent boot proof, auto-cleanup) and logs the measured RTO to `/var/log/restore-drill.log`.
-- **Quarterly:** scenario E — pull one archive from Digi Storage and restore it. This is the only way to find out whether the encryption passwords still work *before* you need them.
+- **Quarterly:** scenario E — pull one archive from Digi Storage and restore it. This is the only way to find out whether the encryption passwords still work *before* you need them. If [10b](../ha/10b-wal-stream.md) is enabled, run scenario G's replay against the drill VM while it's up — that proves the WAL archive actually replays, not just accumulates.
 - **After any change** to storage layout, Proxmox major version, or backup configuration.
 
 Write down how long each takes. Those numbers are your real RTO, as opposed to the one you assume you have.

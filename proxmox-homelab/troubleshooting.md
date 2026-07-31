@@ -21,6 +21,9 @@
 - **pve1 died hard when the UPS ran dry** → NUT not installed or not answering; `upsc ups@localhost` should say `OL` (Stage 3b).
 - **A VM with an unexpected 19xx ID exists** → a restore drill that failed (kept for inspection) or ran with `--keep`; look, then `qm stop <id> && qm destroy <id>` (scripts/README).
 - **No morning mail, ever, even when something's wrong** → root's mail isn't reaching you — the cron checks *and* backup/replication notifications all depend on it (Stage 12.3).
+- **`backup-verify` says the WAL slot is inactive** → `pg-receivewal` on the QDevice is down — `systemctl status pg-receivewal` there; if it loops, it's `.pgpass`, `pg_hba`, or the network (Stage 10b.3/10b.5).
+- **`pg_wal` growing on 1030** → the WAL receiver has been down a while; the slot retains WAL up to `max_slot_wal_keep_size` (10GB), then breaks the stream instead of the disk. Fix the receiver, then drop + recreate the slot (Stage 10b.5).
+- **After a Postgres major, the WAL stream won't reconnect** → the QDevice's client is the old major; install the matching `postgresql-client-NN` (Stage 10b.5 / 17.3).
 
 ## Useful app debug commands
 ```bash

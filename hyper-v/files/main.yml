@@ -38,6 +38,20 @@ postgres_host: "192.168.0.22"
 # Must include the app VM IP (192.168.0.21).
 postgres_app_cidr: "192.168.0.0/24"
 
+# ── WAL streaming to a third box (optional) ────────────────────────────────────
+# Streams the write-ahead log to an always-on receiver (pg_receivewal), so an
+# unplanned failover loses seconds instead of the VM-replication interval.
+# Receiver setup + the recovery procedure: proxmox-homelab/ha/10b-wal-stream.md
+postgres_wal_stream_enabled: false
+postgres_wal_stream_user: "walreceiver"
+postgres_wal_stream_slot: "wal_archive"
+# The receiver's address as a CIDR, e.g. "192.168.0.5/32" (the QDevice)
+postgres_wal_stream_cidr: ""
+# Safety valve: max WAL retained for a disconnected receiver, so a dead
+# receiver breaks the stream instead of filling the database disk.
+postgres_max_slot_wal_keep_size: "10GB"
+# postgres_wal_stream_password comes from vault.yml when enabled
+
 # ── Postgres backup disk (optional, recommended on Hyper-V) ───────────────────
 # Attach a second VHDX (or pass-through disk) to the postgres VM, pointing to a
 # different physical disk than the OS VHDX. The role will mkfs.ext4 it on first

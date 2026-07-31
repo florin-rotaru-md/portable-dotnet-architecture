@@ -21,3 +21,5 @@ Verify:
 ```bash
 pvecm status    # Total votes: 3, Quorate: Yes
 ```
+
+The QDevice earns its keep twice: besides the third vote, it later receives the continuous Postgres WAL stream ([Stage 10b](../ha/10b-wal-stream.md)) — the box (Core Ultra 5 225U, 16GB, 2TB NVMe) has headroom for both without noticing.

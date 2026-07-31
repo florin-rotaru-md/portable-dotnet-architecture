@@ -19,5 +19,8 @@ postgres_password: "change-me-strong-password"
 # Required only when use_cloudflared: true
 # cloudflare_token: "eyJhIjoiABCD..."
 
+# Required only when postgres_wal_stream_enabled: true
+# postgres_wal_stream_password: "change-me-strong-password"
+
 # Required only when use_loki_grafana: true
 # grafana_admin_password: "change-me-strong-password"
