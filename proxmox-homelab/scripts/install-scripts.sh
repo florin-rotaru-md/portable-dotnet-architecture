@@ -12,7 +12,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-for f in cluster-health.sh backup-verify.sh pve-config-backup.sh node-return.sh restore-drill.sh; do
+for f in cluster-health.sh backup-verify.sh pve-config-backup.sh node-return.sh restore-drill.sh create-vms.sh; do
     install -m 755 "$f" "/usr/local/sbin/${f%.sh}"
 done
 
@@ -32,6 +32,6 @@ MAILTO=root
 30 7 * * * root /usr/local/sbin/backup-verify  --quiet
 EOF
 
-echo "Installed to /usr/local/sbin: cluster-health backup-verify pve-config-backup node-return restore-drill"
+echo "Installed to /usr/local/sbin: cluster-health backup-verify pve-config-backup node-return restore-drill create-vms"
 echo "Scheduled via /etc/cron.d/pve-helper-scripts (config backup 02:40, health 07:00, backup check 07:30)"
-echo "Not scheduled on purpose: node-return and restore-drill are attended operations."
+echo "Not scheduled on purpose: node-return, restore-drill and create-vms are attended operations."

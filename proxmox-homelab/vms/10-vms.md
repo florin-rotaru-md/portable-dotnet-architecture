@@ -2,7 +2,9 @@
 
 *Part of the [Proxmox homelab guide](../README.md).*
 
-All via cloning — for each VM: right-click on **9000** → **Clone**, and in the dialog:
+All via cloning. **The short way:** [`create-vms`](../scripts/README.md) (installed in Stage 2.4, run on pve1) does this entire stage's hypervisor side in one attended run — clone, CPU/RAM, static IP, disk growth, in the right order, from the same table below. It skips VM IDs that already exist, so it also finishes an interrupted run or recreates missing VMs after a disaster. Read on anyway: the table is the specification (script and table are kept in sync — change one, change the other), and the manual path is what you fall back to when you want to deviate from it.
+
+**The manual way** — for each VM: right-click on **9000** → **Clone**, and in the dialog:
 
 | Field | Value |
 |---|---|
@@ -31,7 +33,7 @@ Then adjust each clone before first boot:
 
 Every clone arrives with the template's 32GB floor. Each VM is then grown to the size *it* needs, which is why the template stays small: clones grow, never shrink, so a generous template would be a ceiling imposed on every VM you ever create ([9.3](09-ubuntu-template.md#93-create-the-vm-shell-around-it)).
 
-One command per VM, from the Proxmox Shell — **before the first start**:
+One command per VM, from the Proxmox Shell — **before the first start** (`create-vms` has already done these if you took the short way):
 
 | VM | Target | Command |
 |---|---|---|

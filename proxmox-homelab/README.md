@@ -77,7 +77,7 @@ The result, in one paragraph: two nodes joined by a direct 10G cable (corosync L
 
 ### [scripts/](scripts/) — speed for the operational side
 
-One command each for the daily question (`cluster-health`), the protection question (`backup-verify`), the hosts' only backup (`pve-config-backup`), and the two riskiest procedures made guided (`node-return`, `restore-drill`). Installed on both nodes in [Stage 2.4](setup/02-post-install.md#24-install-the-helper-scripts-both-nodes); details in [scripts/README.md](scripts/README.md).
+One command each for the daily question (`cluster-health`), the protection question (`backup-verify`), the hosts' only backup (`pve-config-backup`), the two riskiest procedures made guided (`node-return`, `restore-drill`), and Stage 10's four clones (`create-vms`). Installed on both nodes in [Stage 2.4](setup/02-post-install.md#24-install-the-helper-scripts-both-nodes); details in [scripts/README.md](scripts/README.md).
 
 ### [troubleshooting.md](troubleshooting.md) — symptom → cause, one line each
 
@@ -95,7 +95,7 @@ The whole build, in execution order, with the two deliberate "come back later" p
 - [ ] **7** Cluster — two corosync rings, migration network
 - [ ] **8** QDevice — third vote
 - [ ] **9** Ubuntu template from the cloud image — *(9.5's template backup needs the USB drive; postponed to the 17 line below)*
-- [ ] **10** Clone 1010/1020/1030/1040, `qm resize` each to its size, control node, SSH keys
+- [ ] **10** The four VMs — `create-vms` (or clone + resize by hand), then control node, SSH keys
 - [ ] **11** First Ansible bootstrap — the VMs get their contents; verify app + db + tunnel + Loki/Grafana
 - [ ] **12** Replication schedules per VM
 - [ ] **13** WAL stream to the QDevice — both ends, verified end to end
