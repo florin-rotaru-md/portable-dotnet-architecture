@@ -33,6 +33,8 @@ corosync has no membership expiry. The node authenticates with the cluster key i
 
 Order matters: **rejoin → align versions → replicate → only then migrate.**
 
+> The whole sequence below is wrapped in [`node-return`](../scripts/README.md) (installed in Stage 2.4), which checks each gate and refuses to continue until it passes — run that, and keep reading so you know what it's gating. `node-return --check` reports the gates without changing anything.
+
 ```bash
 # 1. Power it on. On the returning node:
 pvecm status                      # Quorate: Yes, Total votes: 3

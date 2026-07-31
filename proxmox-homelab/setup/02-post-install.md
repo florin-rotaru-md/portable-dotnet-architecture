@@ -33,3 +33,19 @@ lsblk                        # all 3 NVMe drives visible
 ```
 
 If an NVMe drive is missing from `lsblk`, it's almost always VMD/RST still enabled in BIOS (Stage 0.1) — fix that before going further, not after.
+
+## 2.4 Install the helper scripts (both nodes)
+
+The repo ships a small set of host-side scripts — a one-command health check, backup freshness verification, a nightly archive of the host's own config, and guided versions of the two riskiest procedures (node return, restore drill). What each does and when: [`scripts/README.md`](../scripts/README.md).
+
+```bash
+apt install -y git smartmontools
+mkdir -p /root/src && cd /root/src
+git clone https://github.com/florin-rotaru-md/portable-dotnet-architecture
+cd portable-dotnet-architecture/proxmox-homelab/scripts
+./install-scripts.sh
+```
+
+This installs them into `/usr/local/sbin` (so `cluster-health` works from anywhere) and schedules the recurring ones via `/etc/cron.d/pve-helper-scripts`. To update later: `cd /root/src/portable-dotnet-architecture && git pull && proxmox-homelab/scripts/install-scripts.sh`.
+
+Right now, most `cluster-health` lines will be warnings — no cluster, no pools, no replication yet. That's expected; it becomes the daily "is everything fine" command once the build reaches Stage 12. Run it after each stage from here on and watch warnings turn into `[ OK ]` lines as the pieces come up.

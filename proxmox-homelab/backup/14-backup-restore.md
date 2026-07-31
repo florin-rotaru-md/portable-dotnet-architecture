@@ -105,12 +105,12 @@ rclone config
 
 ⚠️ **Write the encryption passwords down and store them somewhere that survives the house** — a password manager, or on paper away from the lab. Without them the offsite backups are mathematically unrecoverable, which turns your disaster tier into an expensive illusion.
 
-Automatic sync after the nightly backup:
+Automatic sync after the nightly backup — the whole drive, not just `dump/`, so the host-config archives from [`pve-config-backup.sh`](../scripts/pve-config-backup.sh) ride along:
 ```bash
 crontab -e
 ```
 ```
-0 4 * * * rclone sync /mnt/usb-backup/dump digi-crypt: --transfers 2 --log-file /var/log/rclone-backup.log
+0 4 * * * rclone sync /mnt/usb-backup digi-crypt: --transfers 2 --log-file /var/log/rclone-backup.log
 ```
 
 Verify it's actually landing:
@@ -130,7 +130,7 @@ Backups in the UI: select the **storage** in the tree (not the VM) → **Backups
 Use this when you want to inspect a backup, recover files, or test that a restore works, without touching the running VM.
 
 ```bash
-qmrestore /mnt/usb-backup/dump/vzdump-qemu-1020-2026_07_29-02_00_01.vma.zst 1120 \
+qmrestore /mnt/usb-backup/dump/vzdump-qemu-1020-2026_07_29-03_00_01.vma.zst 1120 \
   --storage apps --unique
 ```
 
@@ -152,7 +152,7 @@ ha-manager remove vm:1020
 qm stop 1020
 
 # 3. Restore
-qmrestore /mnt/usb-backup/dump/vzdump-qemu-1020-2026_07_29-02_00_01.vma.zst 1020 \
+qmrestore /mnt/usb-backup/dump/vzdump-qemu-1020-2026_07_29-03_00_01.vma.zst 1020 \
   --storage apps --force
 
 # 4. Start and verify
@@ -169,8 +169,8 @@ Same command, run from that node's shell, with the archive reachable from it. If
 
 ```bash
 # on pve2
-scp root@10.10.10.1:/mnt/usb-backup/dump/vzdump-qemu-1030-2026_07_29-02_00_01.vma.zst /var/lib/vz/dump/
-qmrestore /var/lib/vz/dump/vzdump-qemu-1030-2026_07_29-02_00_01.vma.zst 1030 --storage db --force
+scp root@10.10.10.1:/mnt/usb-backup/dump/vzdump-qemu-1030-2026_07_29-03_00_01.vma.zst /var/lib/vz/dump/
+qmrestore /var/lib/vz/dump/vzdump-qemu-1030-2026_07_29-03_00_01.vma.zst 1030 --storage db --force
 ```
 
 ### D. Recovering individual files
@@ -182,9 +182,9 @@ For the database specifically, the nightly dumps from [14.5](#145-a-fourth-tier-
 ### E. Restore from offsite
 
 ```bash
-rclone ls digi-crypt:                                    # find the archive
-rclone copy digi-crypt:vzdump-qemu-1030-2026_07_29-02_00_01.vma.zst /mnt/usb-backup/dump/
-qmrestore /mnt/usb-backup/dump/vzdump-qemu-1030-2026_07_29-02_00_01.vma.zst 1030 --storage db --force
+rclone ls digi-crypt:dump                                # find the archive
+rclone copy digi-crypt:dump/vzdump-qemu-1030-2026_07_29-03_00_01.vma.zst /mnt/usb-backup/dump/
+qmrestore /mnt/usb-backup/dump/vzdump-qemu-1030-2026_07_29-03_00_01.vma.zst 1030 --storage db --force
 ```
 
 Decryption is transparent — rclone handles it as long as the `digi-crypt` remote is configured with the right passwords.
@@ -230,7 +230,7 @@ Also check inside the VM:
 
 A backup you have never restored is a hypothesis.
 
-- **Monthly:** scenario A on one VM — restore to a spare ID, boot it, confirm it works, destroy it. Ten minutes.
+- **Monthly:** scenario A on one VM — restore to a spare ID, boot it, confirm it works, destroy it. Ten minutes — or one command: [`restore-drill`](../scripts/README.md) does exactly this (NIC disconnected, guest-agent boot proof, auto-cleanup) and logs the measured RTO to `/var/log/restore-drill.log`.
 - **Quarterly:** scenario E — pull one archive from Digi Storage and restore it. This is the only way to find out whether the encryption passwords still work *before* you need them.
 - **After any change** to storage layout, Proxmox major version, or backup configuration.
 

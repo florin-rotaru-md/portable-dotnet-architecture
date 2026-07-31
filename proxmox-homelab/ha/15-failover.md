@@ -39,9 +39,9 @@ pve2 dies suddenly (power cut, hardware fault, kernel panic):
 | **QDevice down, both nodes up** | Cluster runs on 2/2 votes, everything normal | 0 | 0 | Restore the QDevice — you have no margin until then |
 | **QDevice down AND a node dies** | Surviving node has 1/3 votes → **no quorum, no automatic failover** | Until you intervene | ≤ replication interval | `pvecm expected 1` on the survivor (see 15.5) |
 | **Internet outage** | 5G router failover | ~30s | 0 | None |
-| **Power outage** | UPS ~5h, then ZBook battery, then graceful shutdown | 0 while power lasts | 0 | None |
+| **Power outage** | UPS ~5h; pve2's battery script and pve1's NUT ([3b](../setup/03b-ups.md)) each shut their node down cleanly; everything powers back on and HA restarts the VMs when mains return | 0 while power lasts | 0 | None |
 | **A data disk fails** | That pool is lost on that node; VMs fail | Minutes | ≤ replication interval | Migrate/restart VMs on the other node, replace the disk, recreate the pool, re-enable replication |
-| **The OS disk fails** | That node is down; HA takes over | ~2-3 min | ≤ replication interval | Reinstall Proxmox, `zpool import apps db`, rejoin cluster |
+| **The OS disk fails** | That node is down; HA takes over | ~2-3 min | ≤ replication interval | Reinstall Proxmox on a new OS disk and rejoin — this is a node replacement, follow [16.2](../operations/16-node-replacement.md#162-approach-a--clean-swap-step-by-step) (delnode first, then rejoin; the data pools survive and re-import) |
 | **Ransomware / accidental deletion** | Replication faithfully replicates the damage | — | — | **Restore from backup** (Stage 14) — this is why replication isn't backup |
 | **Fire, theft, flood** | Both nodes gone | — | — | **Offsite restore** from Digi Storage (Stage 14.2) |
 
@@ -75,6 +75,8 @@ Repeat test 3 once after any significant infrastructure change.
 
 ## 15.7 Health checks worth running periodically
 
+All of these (plus pool capacity, pinned snapshots, version skew, NVMe wear and power state) are wrapped in one command — [`cluster-health`](../scripts/README.md), installed in Stage 2.4 and run daily by cron. The underlying commands, for when you want to look at one of them directly:
+
 ```bash
 pvecm status                  # Quorate: Yes, Total votes: 3
 corosync-cfgtool -s           # both LINK 0 and LINK 1 status = OK
@@ -84,4 +86,4 @@ ha-manager status             # HA services started, on which node
 qm list                       # VMs running where you expect
 ```
 
-Add `zpool scrub apps` / `zpool scrub db` monthly (or a cron job) to catch silent disk corruption early.
+Monthly scrubs catch silent disk corruption early — and Proxmox already ships them: `zfsutils-linux` installs a cron (`/etc/cron.d/zfsutils-linux`) that scrubs every healthy pool on the second Sunday of the month. Verify it's there rather than adding a second one; `zpool status` shows the last scrub date per pool.

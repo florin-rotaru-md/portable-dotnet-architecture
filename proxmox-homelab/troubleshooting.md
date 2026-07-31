@@ -18,6 +18,9 @@
 - **Postgres minors aren't arriving automatically** → `postgres_auto_minor_upgrades` off, or unattended-upgrades broken. `sudo unattended-upgrade --dry-run -d | grep -i postgres` on 1030 and check `/var/log/unattended-upgrades/` (Stage 17.2).
 - **Locked out of a VM over SSH** → Proxmox console + the `--cipassword` (Stage 18.4). No cipassword set → mount the VM disk from the hypervisor and edit `authorized_keys` by hand.
 - **SSH accepts a password and it shouldn't** → `/etc/ssh/sshd_config.d/99-key-only.conf` missing (cloud-init flipped `ssh_pwauth` on) — re-run the playbook; the `common` role pins key-only (Stage 18.4).
+- **pve1 died hard when the UPS ran dry** → NUT not installed or not answering; `upsc ups@localhost` should say `OL` (Stage 3b).
+- **A VM with an unexpected 19xx ID exists** → a restore drill that failed (kept for inspection) or ran with `--keep`; look, then `qm stop <id> && qm destroy <id>` (scripts/README).
+- **No morning mail, ever, even when something's wrong** → root's mail isn't reaching you — the cron checks *and* backup/replication notifications all depend on it (Stage 12.3).
 
 ## Useful app debug commands
 ```bash

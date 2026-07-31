@@ -68,3 +68,5 @@ ssh-copy-id -i ~/.ssh/id_ed25519_devops.pub devops@192.168.0.30
 ssh devops@192.168.0.20 hostname
 ssh devops@192.168.0.30 hostname
 ```
+
+Three empty machines, reachable and key-authenticated — [Stage 9b](09b-bootstrap.md) fills them.
