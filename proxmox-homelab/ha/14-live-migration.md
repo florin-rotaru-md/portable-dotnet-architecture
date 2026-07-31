@@ -1,4 +1,4 @@
-# Stage 12 — First live migration 🎯
+# Stage 14 — First live migration 🎯
 
 *Part of the [Proxmox homelab guide](../README.md).*
 

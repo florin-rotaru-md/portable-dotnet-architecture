@@ -1,4 +1,4 @@
-# Stage 6 — Cluster
+# Stage 7 — Cluster
 
 *Part of the [Proxmox homelab guide](../README.md).*
 

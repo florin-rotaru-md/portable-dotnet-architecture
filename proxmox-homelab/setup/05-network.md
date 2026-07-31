@@ -1,10 +1,10 @@
-# Stage 4 — Network interfaces
+# Stage 5 — Network interfaces
 
 *Part of the [Proxmox homelab guide](../README.md).*
 
 All of this is done from the Proxmox UI: select the node → **System → Network**.
 
-## 4.1 Management network — `vmbr0` on the onboard NIC
+## 5.1 Management network — `vmbr0` on the onboard NIC
 
 The installer already built this. Verify (and fix if needed):
 
@@ -15,7 +15,7 @@ The installer already built this. Verify (and fix if needed):
    - **Autostart**: checked · **VLAN aware**: unchecked
 2. **System → DNS** → Edit → DNS server 1: `192.168.0.1` (or `1.1.1.1`).
 
-## 4.2 The 10G direct link
+## 5.2 The 10G direct link
 
 1. Connect pve1's X550 **port 1** to pve2's Thunderbolt adapter with a Cat6a cable. No switch.
 2. On each node: **System → Network** → find the 10G interface (pve1: `enp…f0`; pve2: the adapter, name like `enx…`) → **Edit**:
@@ -24,7 +24,7 @@ The installer already built this. Verify (and fix if needed):
    - **Autostart**: checked
 3. Press **Apply Configuration** (the yellow banner at the top). No reboot needed — Proxmox applies live via ifupdown2.
 
-## 4.3 Verify
+## 5.3 Verify
 
 Node → **Shell**:
 ```bash
@@ -37,7 +37,7 @@ ethtool <10g-interface> | grep -i speed    # expect 10000Mb/s
 
 Two default routes is the classic mistake here, and it produces a cluster that misbehaves for no obvious reason. If `ip route` shows more than one, remove the gateway from the 10G interface.
 
-## 4.4 For reference — the resulting config
+## 5.4 For reference — the resulting config
 
 `/etc/network/interfaces` on pve1 ends up looking like this. Useful for verification, and editable directly if you prefer (apply with `ifreload -a`):
 

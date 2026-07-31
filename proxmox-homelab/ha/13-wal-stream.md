@@ -1,21 +1,21 @@
-# Stage 11 — WAL streaming to the QDevice (RPO: from ~1 minute to seconds)
+# Stage 13 — WAL streaming to the QDevice (RPO: from ~1 minute to seconds)
 
 *Part of the [Proxmox homelab guide](../README.md).*
 
-[Stage 10](10-replication.md)'s `*/1` schedule is the floor for VM-level replication: an unplanned failover loses up to ~a minute of writes, and [16.4](16-failover.md#164-what-failover-does-not-cover) says so honestly. This stage shrinks that window to **seconds** without touching the failover model: Postgres streams its write-ahead log to a receiver on the QDevice, continuously. When a node dies, HA still restarts 1030 from the ZFS replica exactly as before — but the seconds the replica is missing now exist on a third machine, and [scenario G](../backup/15-backup-restore.md#g-replaying-the-last-seconds-after-a-failover-wal-from-the-qdevice) replays them.
+[Stage 12](12-replication.md)'s `*/1` schedule is the floor for VM-level replication: an unplanned failover loses up to ~a minute of writes, and [18.4](18-failover.md#184-what-failover-does-not-cover) says so honestly. This stage shrinks that window to **seconds** without touching the failover model: Postgres streams its write-ahead log to a receiver on the QDevice, continuously. When a node dies, HA still restarts 1030 from the ZFS replica exactly as before — but the seconds the replica is missing now exist on a third machine, and [scenario G](../backup/17-backup-restore.md#g-replaying-the-last-seconds-after-a-failover-wal-from-the-qdevice) replays them.
 
 Why this variant and not a hot standby or synchronous replication: the stream is **event-driven and one-directional** — no writes means nothing flows (a few keepalive bytes), so it adds no pressure to either node, day or night. There's no promote/failback machinery to operate, no second database to keep in your head, and a receiver outage degrades you back to exactly today's RPO instead of blocking writes. The QDevice — a mini PC with a Core Ultra 5 225U, 16GB DDR5 and a 2TB NVMe — takes the entire cost, and barely notices: WAL at this scale is megabytes per day against two terabytes of disk.
 
-## 11.1 Enable it on the database side
+## 13.1 Enable it on the database side
 
-The `postgres` role owns everything on 1030 ([the ownership boundary](../operations/18-upgrades.md#185-the-same-pattern-applied-elsewhere)) and already knows how to do this — it's one switch plus the receiver's address. In `group_vars/all/main.yml`:
+The `postgres` role owns everything on 1030 ([the ownership boundary](../operations/20-upgrades.md#205-the-same-pattern-applied-elsewhere)) and already knows how to do this — it's one switch plus the receiver's address. In `group_vars/all/main.yml`:
 
 ```yaml
 postgres_wal_stream_enabled: true
-postgres_wal_stream_cidr: "<qdevice-ip>/32"     # same IP as in Stage 7
+postgres_wal_stream_cidr: "<qdevice-ip>/32"     # same IP as in Stage 8
 ```
 
-and in `vault.yml` (generate something long; it also goes in the password manager — it's now part of the [19.1 inventory](../operations/19-credentials.md#191-inventory--what-exists-and-where-it-lives)):
+and in `vault.yml` (generate something long; it also goes in the password manager — it's now part of the [21.1 inventory](../operations/21-credentials.md#211-inventory--what-exists-and-where-it-lives)):
 
 ```yaml
 postgres_wal_stream_password: "<strong password>"
@@ -34,12 +34,12 @@ Verify the slot exists:
 
 ```bash
 ssh devops@192.168.0.30 "sudo -u postgres psql -tAc \"select slot_name, active from pg_replication_slots\""
-# wal_archive | f        ← inactive until the receiver connects (11.3)
+# wal_archive | f        ← inactive until the receiver connects (13.3)
 ```
 
-## 11.2 The receiver on the QDevice
+## 13.2 The receiver on the QDevice
 
-The QDevice is hand-managed, like the Proxmox hosts — this section *is* its documentation (it joins `/etc/pve` in no backup, so [`pve-config-backup`](../scripts/README.md)'s philosophy applies: keep this reproducible from the guide). PGDG's client must match the server's major version — today `postgresql-client-18`, and bumping it is part of any [Stage 18.3](../operations/18-upgrades.md#183-major-upgrade--the-procedure) major upgrade.
+The QDevice is hand-managed, like the Proxmox hosts — this section *is* its documentation (it joins `/etc/pve` in no backup, so [`pve-config-backup`](../scripts/README.md)'s philosophy applies: keep this reproducible from the guide). PGDG's client must match the server's major version — today `postgresql-client-18`, and bumping it is part of any [Stage 20.3](../operations/20-upgrades.md#203-major-upgrade--the-procedure) major upgrade.
 
 ```bash
 # PGDG repo (same as the role configures on 1030), then the matching client
@@ -77,14 +77,14 @@ EOF
 systemctl daemon-reload
 systemctl enable --now pg-receivewal
 
-# Retention: 7 days. Not for space (2TB yawns at this) — it's the PITR window (11.4).
+# Retention: 7 days. Not for space (2TB yawns at this) — it's the PITR window (13.4).
 # -name '*.partial' is the segment being written right now; never touch it.
 cat << 'EOF' > /etc/cron.d/wal-archive-prune
 30 5 * * * walarchive find /var/lib/wal-archive -type f ! -name '*.partial' -mtime +7 -delete
 EOF
 ```
 
-## 11.3 Verify — both ends, then end to end
+## 13.3 Verify — both ends, then end to end
 
 ```bash
 # QDevice: service up, a .partial segment present
@@ -103,13 +103,13 @@ ls -l --time-style=full-iso /var/lib/wal-archive | tail -2         # mtime just 
 
 From here, [`backup-verify`](../scripts/README.md) checks the stream daily: slot active, lag bounded — silence-proof, like every other tier.
 
-## 11.4 What this buys beyond the failover minute
+## 13.4 What this buys beyond the failover minute
 
-The same archive is a **general point-in-time recovery window**: the nightly 03:00 vzdump of 1030 is a base, and the QDevice holds every WAL byte since. Restore last night's archive to a spare VM ID ([15.7 A](../backup/15-backup-restore.md#a-restore-into-a-new-vm-id-safest--start-here)), point `restore_command` at the archive with a `recovery_target_time`, and you can stand the database up **as of any second in the last 7 days** — "undo the bad migration that ran at 14:32" territory, which no amount of replication gives you. The mechanics are the same as scenario G with one extra line; G documents both.
+The same archive is a **general point-in-time recovery window**: the nightly 03:00 vzdump of 1030 is a base, and the QDevice holds every WAL byte since. Restore last night's archive to a spare VM ID ([17.7 A](../backup/17-backup-restore.md#a-restore-into-a-new-vm-id-safest--start-here)), point `restore_command` at the archive with a `recovery_target_time`, and you can stand the database up **as of any second in the last 7 days** — "undo the bad migration that ran at 14:32" territory, which no amount of replication gives you. The mechanics are the same as scenario G with one extra line; G documents both.
 
-## 11.5 Failure modes, stated plainly
+## 13.5 Failure modes, stated plainly
 
-- **Receiver down (QDevice off, service dead, network):** nothing breaks. Postgres holds WAL for it, up to 10GB; the receiver reconnects and resumes from the slot's bookmark. Your RPO is back to Stage 10's ~1 minute while it lasts — `backup-verify` flags it the next morning.
+- **Receiver down (QDevice off, service dead, network):** nothing breaks. Postgres holds WAL for it, up to 10GB; the receiver reconnects and resumes from the slot's bookmark. Your RPO is back to Stage 12's ~1 minute while it lasts — `backup-verify` flags it the next morning.
 - **Receiver down past the 10GB cap:** the slot is invalidated — the deliberate trade (a broken stream over a full `db` disk). Recover: fix the receiver, then on 1030 drop and recreate the slot (`select pg_drop_replication_slot('wal_archive'); select pg_create_physical_replication_slot('wal_archive')` — or just re-run the playbook after dropping) and restart `pg-receivewal`.
-- **Postgres major upgrade:** install the new `postgresql-client-NN` on the QDevice as part of the Stage 18 rehearsal, not after.
+- **Postgres major upgrade:** install the new `postgresql-client-NN` on the QDevice as part of the Stage 20 rehearsal, not after.
 - **Turning it off:** `postgres_wal_stream_enabled: false`, run the playbook, then drop the slot by hand — a slot nobody reads is the one thing the playbook won't remove for you.

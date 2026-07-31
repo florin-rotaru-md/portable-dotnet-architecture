@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# cluster-health.sh — the 16.7 health checks as one command, plus the ones that
+# cluster-health.sh — the 18.7 health checks as one command, plus the ones that
 # are easy to forget: pool capacity, pinned snapshots, version skew between the
 # nodes, NVMe wear, power state. Run it on either node; a few checks are
 # node-aware (UPS on pve1, battery on pve2).
@@ -39,7 +39,7 @@ if echo "$PVECM" | grep -q 'Quorate:.*Yes'; then
         warn "quorum: quorate but only $TOTAL/$EXPECTED votes — a node or the QDevice is missing; no margin until it's back"
     fi
 else
-    fail "quorum: NOT quorate — see 16.5 before touching anything"
+    fail "quorum: NOT quorate — see 18.5 before touching anything"
 fi
 
 # ── Corosync rings ────────────────────────────────────────────────────────────
@@ -61,9 +61,9 @@ fi
 for pool in $POOLS; do
     CAP=$(zpool list -H -o capacity "$pool" 2>/dev/null | tr -d '%')
     if [ -z "$CAP" ]; then
-        fail "zfs: pool '$pool' not found — replication has nowhere to go (Stage 5)"
+        fail "zfs: pool '$pool' not found — replication has nowhere to go (Stage 6)"
     elif [ "$CAP" -ge "$CAPACITY_WARN" ]; then
-        warn "zfs: pool '$pool' at ${CAP}% — investigate before it becomes an outage (pinned snapshots? see 14.2)"
+        warn "zfs: pool '$pool' at ${CAP}% — investigate before it becomes an outage (pinned snapshots? see 16.2)"
     else
         ok "zfs: pool '$pool' at ${CAP}%"
     fi
@@ -72,7 +72,7 @@ done
 BIG_SNAPS=$(zfs list -t snapshot -H -o name,used 2>/dev/null | awk -v lim="$SNAPSHOT_WARN_GB" '
     /G$/ { gsub(/G$/, "", $2); if ($2 + 0 > lim) print $1 " (" $2 "G)" }')
 if [ -n "$BIG_SNAPS" ]; then
-    warn "zfs: large pinned snapshot(s): $(echo "$BIG_SNAPS" | tr '\n' ' ')— a stale replication or forgotten qm snapshot (14.2 / 18.3)"
+    warn "zfs: large pinned snapshot(s): $(echo "$BIG_SNAPS" | tr '\n' ' ')— a stale replication or forgotten qm snapshot (16.2 / 20.3)"
 else
     ok "zfs: no oversized snapshots"
 fi
@@ -111,7 +111,7 @@ if [ -n "$PEER_ADDR" ]; then
     elif [ "$PEER_VER" = "$LOCAL_VER" ]; then
         ok "versions: both nodes on $LOCAL_VER"
     else
-        warn "versions: skew — local $LOCAL_VER vs peer $PEER_VER. Migrate old→new only; align before returning workload (14.2)"
+        warn "versions: skew — local $LOCAL_VER vs peer $PEER_VER. Migrate old→new only; align before returning workload (16.2)"
     fi
 else
     warn "versions: could not find a peer in corosync.conf"
@@ -130,10 +130,10 @@ if mountpoint -q "$USB_MOUNT"; then
     if [ -n "$NEWEST" ]; then
         ok "backup: fresh vzdump on the USB drive (<${BACKUP_MAX_AGE_H}h) — backup-verify has the per-VM detail"
     else
-        warn "backup: no vzdump newer than ${BACKUP_MAX_AGE_H}h on $USB_MOUNT — check the job and its notifications (15.3)"
+        warn "backup: no vzdump newer than ${BACKUP_MAX_AGE_H}h on $USB_MOUNT — check the job and its notifications (17.3)"
     fi
 elif [ -d "$USB_MOUNT" ]; then
-    fail "backup: $USB_MOUNT exists but nothing is mounted there — the USB drive dropped off (15.2)"
+    fail "backup: $USB_MOUNT exists but nothing is mounted there — the USB drive dropped off (17.2)"
 else
     ok "backup: no USB storage on this node (it lives on the peer)"
 fi
@@ -144,7 +144,7 @@ for dev in /dev/nvme?n1; do
     if smartctl -H "$dev" 2>/dev/null | grep -qiE 'PASSED|OK'; then
         WEAR=$(smartctl -A "$dev" 2>/dev/null | awk -F: '/Percentage Used/ {gsub(/[ %]/, "", $2); print $2}')
         if [ -n "$WEAR" ] && [ "$WEAR" -ge "$NVME_WEAR_WARN" ]; then
-            warn "nvme: $dev at ${WEAR}% endurance used — plan a replacement (Stage 17)"
+            warn "nvme: $dev at ${WEAR}% endurance used — plan a replacement (Stage 19)"
         else
             ok "nvme: $dev healthy${WEAR:+ (${WEAR}% endurance used)}"
         fi
@@ -158,8 +158,8 @@ if command -v upsc >/dev/null 2>&1; then
     UPS_STATUS=$(upsc ups@localhost ups.status 2>/dev/null)
     case "$UPS_STATUS" in
         OL*)  ok "power: UPS on line power" ;;
-        OB*)  warn "power: RUNNING ON UPS BATTERY — an outage is in progress (3b.4 timeline applies)" ;;
-        "")   warn "power: NUT installed but not answering — the UPS safety net is offline (Stage 3b)" ;;
+        OB*)  warn "power: RUNNING ON UPS BATTERY — an outage is in progress (4.4 timeline applies)" ;;
+        "")   warn "power: NUT installed but not answering — the UPS safety net is offline (Stage 4)" ;;
         *)    warn "power: UPS status '$UPS_STATUS'" ;;
     esac
 fi

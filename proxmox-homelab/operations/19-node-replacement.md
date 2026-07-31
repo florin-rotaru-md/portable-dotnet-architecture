@@ -1,10 +1,10 @@
-# Stage 17 — Replacing a node with new hardware
+# Stage 19 — Replacing a node with new hardware
 
 *Part of the [Proxmox homelab guide](../README.md).*
 
-Different from Stage 14: there you power a node down and bring the *same* machine back. Here the machine is gone for good and a new one takes its place. The VMs never have to stop — but the cluster membership does change, and that part has an order you have to respect.
+Different from Stage 16: there you power a node down and bring the *same* machine back. Here the machine is gone for good and a new one takes its place. The VMs never have to stop — but the cluster membership does change, and that part has an order you have to respect.
 
-## 17.1 Pick the approach
+## 19.1 Pick the approach
 
 | | Approach | When it fits | Downtime | Resync needed |
 |---|---|---|---|---|
@@ -16,7 +16,7 @@ Approach **A** is what to use unless you have a specific reason not to. Approach
 
 Assume below you're replacing **pve2**. Replacing pve1 is symmetric.
 
-## 17.2 Approach A — clean swap, step by step
+## 19.2 Approach A — clean swap, step by step
 
 ### Before you touch anything
 
@@ -84,8 +84,8 @@ Follow the guide from the top on the new machine:
 - **Stage 1** install, hostname `pve2` (or `pve3` if you'd rather not reuse it), IP `192.168.0.12`
 - **Stage 2** repos + upgrade
 - **Stage 3** only if the replacement is a laptop
-- **Stage 4** both interfaces: `vmbr0` on 192.168.0.12, the 10G interface on 10.10.10.2
-- **Stage 5** ZFS pools — **`apps` and `db`, spelled exactly the same.** This is the single most important detail in the whole procedure; replication matches on pool name
+- **Stage 5** both interfaces: `vmbr0` on 192.168.0.12, the 10G interface on 10.10.10.2
+- **Stage 6** ZFS pools — **`apps` and `db`, spelled exactly the same.** This is the single most important detail in the whole procedure; replication matches on pool name
 
 Check CPU compatibility before going further:
 ```bash
@@ -109,7 +109,7 @@ corosync-cfgtool -s           # both rings OK
 
 ### 7. Recreate replication
 
-VM → **Replication → Add** → target: the new node → the schedules from Stage 10 (`*/1` for 1030, `*/5` for 1020, `*/15` for 1010).
+VM → **Replication → Add** → target: the new node → the schedules from Stage 12 (`*/1` for 1030, `*/5` for 1020, `*/15` for 1010).
 
 The first run is a **full transfer**, not a delta — every VM disk crosses the wire. Over the 10G direct link expect roughly 10-20 minutes for a few hundred GB; the Postgres disk dominates. VMs keep running throughout.
 
@@ -127,7 +127,7 @@ ha-manager status
 
 Then migrate whatever you want back onto the new node — live, no downtime.
 
-## 17.3 Approach B — transplanting the disks
+## 19.3 Approach B — transplanting the disks
 
 If the same three NVMe drives are moving into a new chassis, the ZFS pools come along untouched and you skip the full resync entirely. It's faster, but it has a specific trap.
 
@@ -151,7 +151,7 @@ pvesr status                              # replication resumes on its own
 
 The cluster identity lives on the OS disk, so the node rejoins as itself — no delnode, no rejoin, no resync. Just be prepared to spend ten minutes at a physical keyboard.
 
-## 17.4 Verification after either approach
+## 19.4 Verification after either approach
 
 ```bash
 pvecm status                  # 2 nodes + QDevice = 3 votes, Quorate: Yes
@@ -170,9 +170,9 @@ qm migrate 1020 pve2 --online
 qm migrate 1020 pve1 --online
 ```
 
-And when you have a maintenance window, repeat test 3 from Stage 16.6 (hard kill) against the new node.
+And when you have a maintenance window, repeat test 3 from Stage 18.6 (hard kill) against the new node.
 
-## 17.5 Things that bite
+## 19.5 Things that bite
 
 - **Pool names.** `apps` and `db`, character for character. A pool called `apps1` on the new node means replication silently has nowhere to go.
 - **Removing the QDevice before `delnode`.** Skip it and you get quorum errors that look far more alarming than the actual problem.

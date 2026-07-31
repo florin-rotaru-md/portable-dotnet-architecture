@@ -6,7 +6,7 @@ A two-node Proxmox VE cluster for a self-hosted app: ZFS replication, HA with au
 
 - **Node 1 `pve1`** — ThinkStation P2 Gen 2, Core Ultra 7 265, 64GB, 3× NVMe, Intel X550-T2
 - **Node 2 `pve2`** — HP ZBook Fury G10 16", i9-13850HX, 64GB, 3× NVMe, Thunderbolt 4 (role: failover)
-- QDevice: mini PC — Core Ultra 5 225U, 16GB DDR5, 2TB NVMe. Holds the third vote *and* the continuous WAL archive ([Stage 11](ha/11-wal-stream.md))
+- QDevice: mini PC — Core Ultra 5 225U, 16GB DDR5, 2TB NVMe. Holds the third vote *and* the continuous WAL archive ([Stage 13](ha/13-wal-stream.md))
 - ~5h UPS, router with tested 5G failover (~30s), Cloudflare Tunnel already in place
 
 ## Design decisions (vs the defaults you'd otherwise pick)
@@ -14,6 +14,7 @@ A two-node Proxmox VE cluster for a self-hosted app: ZFS replication, HA with au
 | Topic | The obvious default | This build | Reason |
 |---|---|---|---|
 | VM storage | LVM-Thin | **ZFS** (`apps`, `db`) | Proxmox replication works ONLY on ZFS |
+| ZFS volume mode | Thick — what the *Add Storage* checkbox leaves you with | **Thin provision** (`sparse 1`) on both pools | Declared disk sizes become ceilings instead of reservations, and `discard=on` only returns freed blocks on a thin volume |
 | VM CPU type | `host` | **`x86-64-v3`** | Different CPUs (Raptor Lake vs Arrow Lake) — `host` would crash a migrated VM |
 | Migration network | Everything over the 1G LAN | Direct 10G cable (X550 ↔ TB adapter), no switch; 1G to the router as backup ring | Full 10G for migration/replication at zero extra cost, plus corosync redundancy |
 
@@ -29,50 +30,50 @@ The result, in one paragraph: two nodes joined by a direct 10G cable (corosync L
 | [Stage 1 — Installation](setup/01-installation.md) | Proxmox installer choices, identical on both nodes |
 | [Stage 2 — Post-install](setup/02-post-install.md) | No-Subscription repositories (click-by-click), first upgrade, hardware sanity check |
 | [Stage 3 — Laptop node](setup/03-laptop-node.md) | pve2 only: lid/sleep, battery-driven clean shutdown, TLP + dynamic CPU governor |
-| [Stage 3b — UPS monitoring](setup/03b-ups.md) | pve1 only: NUT, clean shutdown when the UPS runs dry, the full long-outage timeline |
-| [Stage 4 — Network](setup/04-network.md) | `vmbr0` on 1G, the 10G point-to-point link, the one-default-route rule |
+| [Stage 4 — UPS monitoring](setup/04-ups.md) | pve1 only: NUT, clean shutdown when the UPS runs dry, the full long-outage timeline |
+| [Stage 5 — Network](setup/05-network.md) | `vmbr0` on 1G, the 10G point-to-point link, the one-default-route rule |
 
 ### [cluster/](cluster/) — storage and quorum
 
 | | Covers |
 |---|---|
-| [Stage 5 — ZFS pools](cluster/05-zfs-pools.md) | Identifying disks, `apps` + `db` pools — same names on both nodes, non-negotiable |
-| [Stage 6 — Cluster](cluster/06-cluster.md) | Create/join with two corosync rings, migration network settings |
-| [Stage 7 — QDevice](cluster/07-qdevice.md) | The third vote — mandatory for maintenance with one node down |
+| [Stage 6 — ZFS pools](cluster/06-zfs-pools.md) | Identifying disks, `apps` + `db` pools — same names on both nodes, non-negotiable; thin provisioning, while the pools are still empty |
+| [Stage 7 — Cluster](cluster/07-cluster.md) | Create/join with two corosync rings, migration network settings |
+| [Stage 8 — QDevice](cluster/08-qdevice.md) | The third vote — mandatory for maintenance with one node down |
 
 ### [vms/](vms/) — the guests
 
 | | Covers |
 |---|---|
-| [Stage 8 — Ubuntu template](vms/08-ubuntu-template.md) | The golden image: install, cloud-init, generalization, console password, smoke test; the faster cloud-image alternative |
-| [Stage 9 — The VMs](vms/09-vms.md) | Cloning 1010/1020/1030, postgres disk resize, Ansible control node, SSH keys |
-| [Stage 9b — First Ansible bootstrap](vms/09b-bootstrap.md) | Filling the VMs: inventory, the split-VM variables, `bootstrap.yml`, verification |
+| [Stage 9 — Ubuntu template](vms/09-ubuntu-template.md) | The golden image: install, cloud-init, generalization, console password, smoke test; the faster cloud-image alternative |
+| [Stage 10 — The VMs](vms/10-vms.md) | Cloning 1010/1020/1030, growing the postgres disk to 1T, Ansible control node, SSH keys |
+| [Stage 11 — First Ansible bootstrap](vms/11-bootstrap.md) | Filling the VMs: inventory, the split-VM variables, `bootstrap.yml`, verification |
 | [Cloudflare Tunnel](vms/cloudflare-tunnel.md) | Why `cloudflared` runs inside the app VM, not on the host |
 
 ### [ha/](ha/) — replication, migration, failover
 
 | | Covers |
 |---|---|
-| [Stage 10 — Replication](ha/10-replication.md) | Per-VM schedules — the interval *is* your data-loss window |
-| [Stage 11 — WAL stream](ha/11-wal-stream.md) | Postgres WAL → QDevice, continuously: the failover minute becomes recoverable seconds, plus a 7-day any-second PITR window |
-| [Stage 12 — First live migration](ha/12-live-migration.md) | The ping test |
-| [Stage 13 — HA](ha/13-ha.md) | Which VMs get HA, `shutdown_policy=migrate`, notifications |
-| [Stage 16 — Failover mechanics](ha/16-failover.md) | How detection/fencing/recovery actually work, the full scenario table with RTO/RPO, forcing quorum, the pre-launch test plan, periodic health checks |
+| [Stage 12 — Replication](ha/12-replication.md) | Per-VM schedules — the interval *is* your data-loss window |
+| [Stage 13 — WAL stream](ha/13-wal-stream.md) | Postgres WAL → QDevice, continuously: the failover minute becomes recoverable seconds, plus a 7-day any-second PITR window |
+| [Stage 14 — First live migration](ha/14-live-migration.md) | The ping test |
+| [Stage 15 — HA](ha/15-ha.md) | Which VMs get HA, `shutdown_policy=migrate`, notifications |
+| [Stage 18 — Failover mechanics](ha/18-failover.md) | How detection/fencing/recovery actually work, the full scenario table with RTO/RPO, forcing quorum, the pre-launch test plan, periodic health checks |
 
 ### [backup/](backup/) — the three tiers
 
 | | Covers |
 |---|---|
-| [Stage 15 — Backup & restore](backup/15-backup-restore.md) | USB tier, offsite (rclone + crypt) tier, the in-VM Postgres dump tier, every restore scenario A–F, post-restore checklist, restore drills |
+| [Stage 17 — Backup & restore](backup/17-backup-restore.md) | USB tier, offsite (rclone + crypt) tier, the in-VM Postgres dump tier, every restore scenario A–F, post-restore checklist, restore drills |
 
 ### [operations/](operations/) — running it over the years
 
 | | Covers |
 |---|---|
-| [Stage 14 — Maintenance](operations/14-maintenance.md) | Zero-downtime hardware maintenance; returning a node after a long outage (days–weeks) |
-| [Stage 17 — Node replacement](operations/17-node-replacement.md) | Swapping in new hardware: clean swap vs disk transplant, step by step |
-| [Stage 18 — Upgrades](operations/18-upgrades.md) | Postgres minors (automatic, by design) and majors (a project with a rehearsal); the same pattern for OS and Proxmox upgrades |
-| [Stage 19 — Credentials](operations/19-credentials.md) | What authenticates what, what a restore gives back, recovery when a key is lost, the console password, key rotation via Ansible |
+| [Stage 16 — Maintenance](operations/16-maintenance.md) | Zero-downtime hardware maintenance; returning a node after a long outage (days–weeks) |
+| [Stage 19 — Node replacement](operations/19-node-replacement.md) | Swapping in new hardware: clean swap vs disk transplant, step by step |
+| [Stage 20 — Upgrades](operations/20-upgrades.md) | Postgres minors (automatic, by design) and majors (a project with a rehearsal); the same pattern for OS and Proxmox upgrades |
+| [Stage 21 — Credentials](operations/21-credentials.md) | What authenticates what, what a restore gives back, recovery when a key is lost, the console password, key rotation via Ansible |
 
 ### [scripts/](scripts/) — speed for the operational side
 
@@ -88,32 +89,32 @@ The whole build, in execution order, with the two deliberate "come back later" p
 - [ ] **1** Install Proxmox — pve1, then pve2
 - [ ] **2** Post-install — repos, upgrade, hardware check, **helper scripts (2.4)** — both nodes
 - [ ] **3** Laptop config — pve2 only
-- [ ] **3b** UPS monitoring (NUT) — pve1 only
-- [ ] **4** Network — `vmbr0` + 10G link, both nodes; verify one default route
-- [ ] **5** ZFS pools `apps` + `db` — both nodes, identical names
-- [ ] **6** Cluster — two corosync rings, migration network
-- [ ] **7** QDevice — third vote
-- [ ] **8** Ubuntu template — *(8.6's template backup needs the USB drive; postponed to the 14 line below)*
-- [ ] **9** Clone 1010/1020/1030, resize postgres disk, control node, SSH keys
-- [ ] **9b** First Ansible bootstrap — the VMs get their contents; verify app + db + tunnel
-- [ ] **10** Replication schedules per VM
-- [ ] **11** WAL stream to the QDevice — both ends, verified end to end
-- [ ] **12** First live migration — the ping test, both directions
-- [ ] **13** HA for 1020/1030, `shutdown_policy=migrate`, notifications
-- [ ] **15** Backups — USB drive, nightly job, offsite rclone + crypt; **now take the template backup from 8.6**
-- [ ] **16.6** Pre-launch failover tests — all three, timed and written down
-- [ ] **15.9** First restore drill — `restore-drill`, before going live, not after
+- [ ] **4** UPS monitoring (NUT) — pve1 only
+- [ ] **5** Network — `vmbr0` + 10G link, both nodes; verify one default route
+- [ ] **6** ZFS pools `apps` + `db` — both nodes, identical names; **thin provision (6.1)** before any VM disk exists
+- [ ] **7** Cluster — two corosync rings, migration network
+- [ ] **8** QDevice — third vote
+- [ ] **9** Ubuntu template — *(9.6's template backup needs the USB drive; postponed to the 17 line below)*
+- [ ] **10** Clone 1010/1020/1030, grow 1030 to 1T, control node, SSH keys
+- [ ] **11** First Ansible bootstrap — the VMs get their contents; verify app + db + tunnel
+- [ ] **12** Replication schedules per VM
+- [ ] **13** WAL stream to the QDevice — both ends, verified end to end
+- [ ] **14** First live migration — the ping test, both directions
+- [ ] **15** HA for 1020/1030, `shutdown_policy=migrate`, notifications
+- [ ] **17** Backups — USB drive, nightly job, offsite rclone + crypt; **now take the template backup from 9.6**
+- [ ] **18.6** Pre-launch failover tests — all three, timed and written down
+- [ ] **17.9** First restore drill — `restore-drill`, before going live, not after
 - [ ] Go live 🎉
 
 ## Reading paths
 
-- **Building from zero:** the checklist above, top to bottom. Stages 0–13 are a weekend; 15 and the test plan in 16.6 before going live are not optional.
-- **A node just died:** [16.2](ha/16-failover.md#162-anatomy-of-an-unplanned-failover) for what's happening on its own, [16.3](ha/16-failover.md#163-scenario-table) for your row, [16.5](ha/16-failover.md#165-emergency-forcing-quorum) only if the QDevice is also down.
-- **A node comes back after weeks:** [14.2](operations/14-maintenance.md#142-returning-a-node-after-a-long-outage-days-to-weeks) — order matters: rejoin → update → replicate → migrate.
-- **Locked out / lost a key:** [19.5](operations/19-credentials.md#195-recovery-scenarios--what-losing-each-thing-actually-means) has the way back for each case.
-- **Restoring anything:** [15.7](backup/15-backup-restore.md#157-restore--pick-your-scenario) — pick scenario A–G, then the [post-restore checklist](backup/15-backup-restore.md#158-post-restore-checklist).
+- **Building from zero:** the checklist above, top to bottom. Stages 0–15 are a weekend; 17 and the test plan in 18.6 before going live are not optional.
+- **A node just died:** [18.2](ha/18-failover.md#182-anatomy-of-an-unplanned-failover) for what's happening on its own, [18.3](ha/18-failover.md#183-scenario-table) for your row, [18.5](ha/18-failover.md#185-emergency-forcing-quorum) only if the QDevice is also down.
+- **A node comes back after weeks:** [16.2](operations/16-maintenance.md#162-returning-a-node-after-a-long-outage-days-to-weeks) — order matters: rejoin → update → replicate → migrate.
+- **Locked out / lost a key:** [21.5](operations/21-credentials.md#215-recovery-scenarios--what-losing-each-thing-actually-means) has the way back for each case.
+- **Restoring anything:** [17.7](backup/17-backup-restore.md#177-restore--pick-your-scenario) — pick scenario A–G, then the [post-restore checklist](backup/17-backup-restore.md#178-post-restore-checklist).
 - **Something looks wrong:** `cluster-health` on either node ([what it checks](scripts/README.md)), then [troubleshooting](troubleshooting.md).
 
 ## Relationship to the rest of the repo
 
-The Proxmox hosts are managed by hand — this guide *is* their documentation. Everything **inside** the VMs (Postgres, the .NET app, nginx, cloudflared, backups, SSH keys) comes from [`native/infra/ansible`](../native/infra/ansible), run from the control VM. That ownership boundary is deliberate; it's spelled out in [18.5](operations/18-upgrades.md#185-the-same-pattern-applied-elsewhere). Change VM state via the playbook, not by hand — and mirror any `group_vars` change into [`native/example`](../native/example) and the hyper-v/docker example files, which are full copies meant to stay in sync.
+The Proxmox hosts are managed by hand — this guide *is* their documentation. Everything **inside** the VMs (Postgres, the .NET app, nginx, cloudflared, backups, SSH keys) comes from [`native/infra/ansible`](../native/infra/ansible), run from the control VM. That ownership boundary is deliberate; it's spelled out in [20.5](operations/20-upgrades.md#205-the-same-pattern-applied-elsewhere). Change VM state via the playbook, not by hand — and mirror any `group_vars` change into [`native/example`](../native/example) and the hyper-v/docker example files, which are full copies meant to stay in sync.

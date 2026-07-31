@@ -1,4 +1,4 @@
-# Stage 18 — Upgrading Postgres (and the pattern for any in-VM upgrade)
+# Stage 20 — Upgrading Postgres (and the pattern for any in-VM upgrade)
 
 *Part of the [Proxmox homelab guide](../README.md).*
 
@@ -6,7 +6,7 @@ Everything up to here protects you from hardware failing. This stage is about th
 
 **Nothing is installed on these VMs by hand.** Postgres, PostGIS, `pg_hba.conf`, the firewall rule, the app DB user and the nightly dump job all come from the `postgres` role in [`native/infra/ansible`](../../native/infra/ansible/roles/postgres/tasks/main.yml), driven from control-ubuntu (1010). That constrains the procedure below in a specific way: **Ansible owns packages and configuration, but it does not own the data directory.** A major upgrade is therefore a hybrid — the playbook installs the new version and converges the config, and `pg_upgradecluster` does the one thing the playbook can't. Doing it by hand instead means the next `bootstrap.yml` run silently disagrees with reality.
 
-## 18.1 Minor and major upgrades are different operations
+## 20.1 Minor and major upgrades are different operations
 
 Current version is set in one place — `postgres_version` in [`inventory/group_vars/all/main.yml`](../../native/infra/ansible/inventory/group_vars/all/main.yml), today `"18"`, with `postgis_major_version: "3"`.
 
@@ -14,7 +14,7 @@ Current version is set in one place — `postgres_version` in [`inventory/group_
 |---|---|---|
 | On-disk format | Unchanged | **Changes** — the data directory is rewritten |
 | `postgres_version` | Unchanged | Bumped, and the change is committed to git |
-| Mechanism | **Automatic** — `unattended-upgrades` with the PGDG origin (see 18.2) | Playbook installs the new version → `pg_upgradecluster` → playbook again |
+| Mechanism | **Automatic** — `unattended-upgrades` with the PGDG origin (see 20.2) | Playbook installs the new version → `pg_upgradecluster` → playbook again |
 | Downtime | Seconds (service restart) | Minutes, dominated by database size |
 | Rollback | Reinstall the old package | Keep the old cluster until you're sure, and revert the variable |
 | Risk | Low — but read the release notes; a minor release occasionally requires a `REINDEX` | Real. PostGIS, removed config settings, deprecated syntax |
@@ -22,7 +22,7 @@ Current version is set in one place — `postgres_version` in [`inventory/group_
 
 Do not conflate them. Minor upgrades are routine hygiene the machine handles itself; major upgrades are a project with a rehearsal.
 
-## 18.2 Minor upgrades — automatic, by design
+## 20.2 Minor upgrades — automatic, by design
 
 Minors are the quarterly security fixes: you want them promptly and there is nothing version-specific to decide, which makes them the one database change worth automating. The `postgres` role does it with two mechanisms, switched by one variable in group_vars:
 
@@ -38,7 +38,7 @@ postgres_auto_minor_upgrades: true
 
 The second one carries the weight; the first just keeps rehearsal clones and fresh bootstraps from starting life a few patches behind. The role installs `unattended-upgrades`, drops `/etc/apt/apt.conf.d/51pgdg-unattended-upgrades` adding `origin=apt.postgresql.org` to the allowed origins, and enables the daily timer. Ubuntu's own security updates ride the same mechanism.
 
-**Why this is safe to automate — and why majors never are:** the package name embeds the major version. 18.1 → 18.2 is an upgrade of the *same* package, `postgresql-18`; PostgreSQL 19 is a *different package* that no automatic mechanism will ever pull in. The blast radius of automation is structurally bounded to minors. A major happens exactly one way: you bump `postgres_version` and run the playbook (18.3).
+**Why this is safe to automate — and why majors never are:** the package name embeds the major version. 18.1 → 18.2 is an upgrade of the *same* package, `postgresql-18`; PostgreSQL 19 is a *different package* that no automatic mechanism will ever pull in. The blast radius of automation is structurally bounded to minors. A major happens exactly one way: you bump `postgres_version` and run the playbook (20.3).
 
 **The cost, stated honestly:** installing a minor restarts the cluster — a few seconds, at whatever moment the apt timer fires. In-flight requests during those seconds fail; at ~06:00 against the app's traffic that's a non-event, and Npgsql's pool recovers on the next request. If a deterministic window ever matters, pin it (`systemctl edit apt-daily-upgrade.timer` → `OnCalendar=*-*-* 06:00`) rather than turning automation off.
 
@@ -55,7 +55,7 @@ zgrep " upgrade postgresql-18" /var/log/dpkg.log* | tail
 sudo -u postgres psql -tAc 'select version()'
 ```
 
-A silently broken unattended-upgrades has the same failure shape as a silently failing replication job ([13.3](../ha/13-ha.md#133-notifications)): everything looks fine until the day it matters. The `--dry-run` check belongs in the same periodic sweep as [16.7](../ha/16-failover.md#167-health-checks-worth-running-periodically).
+A silently broken unattended-upgrades has the same failure shape as a silently failing replication job ([15.3](../ha/15-ha.md#153-notifications)): everything looks fine until the day it matters. The `--dry-run` check belongs in the same periodic sweep as [18.7](../ha/18-failover.md#187-health-checks-worth-running-periodically).
 
 **Opting out:** set `postgres_auto_minor_upgrades: false` and re-run the playbook — it removes the PGDG origin file (Ubuntu's own security updates keep flowing). Minors then become your job, quarterly, from control-ubuntu:
 
@@ -65,11 +65,11 @@ ansible postgres -b -m apt -a 'name=postgresql-18,postgresql-18-postgis-3 state=
 ansible postgres -b -m shell -a 'runuser -u postgres -- psql -tAc "select version()"'
 ```
 
-## 18.3 Major upgrade — the procedure
+## 20.3 Major upgrade — the procedure
 
 ### Step 0. Rehearse on a restored copy. Do not skip this.
 
-This is the single highest-value step in the whole stage, and the architecture already supports it — it's [15.7 scenario A](../backup/15-backup-restore.md#a-restore-into-a-new-vm-id-safest--start-here) with a different purpose. You hit every extension error, every removed config setting, and every surprise on a throwaway VM instead of on production, and you come out with a measured duration rather than a guess.
+This is the single highest-value step in the whole stage, and the architecture already supports it — it's [17.7 scenario A](../backup/17-backup-restore.md#a-restore-into-a-new-vm-id-safest--start-here) with a different purpose. You hit every extension error, every removed config setting, and every surprise on a throwaway VM instead of on production, and you come out with a measured duration rather than a guess.
 
 ```bash
 # on the node holding the archive
@@ -118,7 +118,7 @@ done
 ansible postgres -b -m shell -a 'du -sh /var/lib/postgresql/18/main; df -h /var/lib/postgresql'
 ```
 
-Want ≥ 2× the data directory free. The 640GB disk from [Stage 9](../vms/09-vms.md#resize-the-postgres-disk-after-cloning) makes this a formality at this app's size, but check rather than assume.
+Want ≥ 2× the data directory free. The 640GB disk from [Stage 10](../vms/10-vms.md#resize-the-postgres-disk-after-cloning) makes this a formality at this app's size, but check rather than assume.
 
 ### Step 2. The safety net — three layers, take all three
 
@@ -128,7 +128,7 @@ Want ≥ 2× the data directory free. The 640GB disk from [Stage 9](../vms/09-vm
 | **VM backup** | `vzdump 1030 --storage usb-backup --mode snapshot --compress zstd` | The whole VM being unrecoverable. Survives the VM being destroyed | Minutes, off-VM |
 | **VM snapshot** | see below | Everything else — this is your actual undo button | Seconds to take, seconds to roll back |
 
-The logical dump is the role's own nightly script from [15.5](../backup/15-backup-restore.md#155-a-fourth-tier-for-the-database), run on demand — don't hand-roll a `pg_dumpall` next to it. It writes globals plus one custom-format dump per database into `/opt/postgres/backups`, which lives on the VM disk and is therefore captured by the `vzdump` in the next row.
+The logical dump is the role's own nightly script from [17.5](../backup/17-backup-restore.md#175-a-fourth-tier-for-the-database), run on demand — don't hand-roll a `pg_dumpall` next to it. It writes globals plus one custom-format dump per database into `/opt/postgres/backups`, which lives on the VM disk and is therefore captured by the `vzdump` in the next row.
 
 The snapshot has cluster interactions, so take it deliberately:
 
@@ -142,7 +142,7 @@ qm snapshot 1030 pre-pg19 --description "postgres 18 -> 19, before pg_upgradeclu
 ansible postgres -m service -a 'name=postgresql state=started' -b
 ```
 
-`qemu-guest-agent` ([8.4](../vms/08-ubuntu-template.md#84-prepare-the-guest)) freezes the filesystem for a live snapshot, so a running snapshot would be consistent too — but stopping the service costs thirty seconds and makes the recovery path unambiguous. Do the cheap thing.
+`qemu-guest-agent` ([9.4](../vms/09-ubuntu-template.md#94-prepare-the-guest)) freezes the filesystem for a live snapshot, so a running snapshot would be consistent too — but stopping the service costs thirty seconds and makes the recovery path unambiguous. Do the cheap thing.
 
 > **HA will fight you if you stop the *VM*.** 1030 is an HA resource with desired state `started`; a `qm stop` gets undone by the HA manager within seconds. Before anything that stops the VM (including a rollback), tell HA first:
 > ```bash
@@ -156,7 +156,7 @@ ansible postgres -m service -a 'name=postgresql state=started' -b
 
 - **Both nodes up, `pvesr status` all OK.** Never run a major upgrade while the peer is down — that's removing the safety net at the exact moment you're most likely to need it.
 - **No migration in flight**, and don't start one during the upgrade.
-- **A quiet window.** The database is down for the duration: writes and edits fail, the frontend keeps serving from Cloudflare ([16.4](../ha/16-failover.md#164-what-failover-does-not-cover)). Announce accordingly.
+- **A quiet window.** The database is down for the duration: writes and edits fail, the frontend keeps serving from Cloudflare ([18.4](../ha/18-failover.md#184-what-failover-does-not-cover)). Announce accordingly.
 - **An abort deadline.** Decide up front: *"if it isn't verified good in 45 minutes, I roll back and reschedule."* Debugging a half-migrated database at 1am is how a 20-minute maintenance becomes a four-hour outage.
 
 ### Step 4. Bump the variable, run the playbook
@@ -272,9 +272,9 @@ ansible postgres -b -m apt -a 'name=postgresql-18,postgresql-18-postgis-3 state=
 qm delsnapshot 1030 pre-pg19
 ```
 
-> **Don't leave the snapshot forever.** A VM snapshot on ZFS pins blocks the same way a replication snapshot does ([Stage 10](../ha/10-replication.md#stage-10--zfs-replication)) — space consumption grows with everything the database writes afterward. Deleting it is the last step of the upgrade, not an optional tidy-up.
+> **Don't leave the snapshot forever.** A VM snapshot on ZFS pins blocks the same way a replication snapshot does ([Stage 12](../ha/12-replication.md#stage-12--zfs-replication)) — space consumption grows with everything the database writes afterward. Deleting it is the last step of the upgrade, not an optional tidy-up.
 
-## 18.4 Rollback
+## 20.4 Rollback
 
 ⚠️ **Revert `postgres_version` in `group_vars` as the first move, whichever path you take.** Otherwise the next `bootstrap.yml` run — possibly weeks later, for an unrelated reason — reinstalls PG19 and rewrites config into a cluster you abandoned. The variable and reality must agree at all times; that's the price of Ansible owning the config.
 
@@ -303,11 +303,11 @@ Then re-run the playbook with the reverted variable so config, the app role and 
 
 > **`qm rollback` diverges the local dataset from the last replicated snapshot,** so the next replication run needs a full transfer instead of a delta. Not a problem — just don't be alarmed by `pvesr status` showing a long-running job, and don't schedule the rollback expecting replication to be caught up two minutes later.
 
-## 18.5 The same pattern, applied elsewhere
+## 20.5 The same pattern, applied elsewhere
 
 The shape generalizes: *rehearse on a restored copy → snapshot → change → verify at the application level → soak → delete the snapshot*. What varies is the mechanism — and, importantly, **who owns the change.**
 
-> **The ownership boundary.** The two Proxmox hosts are managed by hand; everything inside the VMs comes from `native/infra/ansible`. That's why Stages 14 and 17 are shell procedures on the node while Stage 18 is a variable bump plus a playbook run. Keep the boundary clean: don't hand-edit `/etc/postgresql/*` on 1030, and don't try to bring the hypervisors under Ansible for the sake of symmetry — two nodes configured twice a decade is not a fleet.
+> **The ownership boundary.** The two Proxmox hosts are managed by hand; everything inside the VMs comes from `native/infra/ansible`. That's why Stages 16 and 19 are shell procedures on the node while Stage 20 is a variable bump plus a playbook run. Keep the boundary clean: don't hand-edit `/etc/postgresql/*` on 1030, and don't try to bring the hypervisors under Ansible for the sake of symmetry — two nodes configured twice a decade is not a fleet.
 
 **Ubuntu release upgrade inside a VM** (24.04 → 26.04): same procedure, `do-release-upgrade` in place of `pg_upgradecluster`. Upgrade the app VM and the database VM in separate windows, never together — with two changes in flight you can't tell which one broke. There's one interaction specific to this role: the PGDG apt line is templated from `ansible_facts['distribution_release']`, so it still says `noble` after the OS moves on. Re-run `bootstrap.yml --limit postgres` afterwards to rewrite `/etc/apt/sources.list.d/pgdg.list` for the new release, before the next `apt update` starts resolving against a stale suite.
 
@@ -319,6 +319,6 @@ The shape generalizes: *rehearse on a restored copy → snapshot → change → 
 2. Migrate the VMs **from pve1 onto the freshly upgraded pve2**. Older QEMU → newer QEMU migrates cleanly; newer → older is what fails.
 3. Upgrade pve1, reboot, rebalance.
 
-Doing it the other way — upgrading pve1 first and then trying to migrate onto the un-upgraded pve2 — strands the VMs on one node. Same root cause as the version-skew warning in [14.2](14-maintenance.md#142-returning-a-node-after-a-long-outage-days-to-weeks). For a major PVE release, read the official upgrade notes first; for point releases this is all it takes.
+Doing it the other way — upgrading pve1 first and then trying to migrate onto the un-upgraded pve2 — strands the VMs on one node. Same root cause as the version-skew warning in [16.2](16-maintenance.md#162-returning-a-node-after-a-long-outage-days-to-weeks). For a major PVE release, read the official upgrade notes first; for point releases this is all it takes.
 
 **Application deploys** need none of this. The app role already ships blue/green: `deploy.sh` builds into the idle slot, `health-check.sh` gates it, `switch-nginx.sh` flips the upstream, and `rollback.sh` flips it back. Rolling back a bad release is a script on 1020, not a hypervisor operation — and if it ever isn't, the problem is in the deploy pipeline, not in Proxmox.

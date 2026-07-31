@@ -1,4 +1,4 @@
-# Stage 9 — The VMs
+# Stage 10 — The VMs
 
 *Part of the [Proxmox homelab guide](../README.md).*
 
@@ -16,20 +16,22 @@ Then adjust each clone before first boot:
 - **Cloud-Init → IP Config (net0) → Edit** → static IP + gateway below
 - Start the VM, and once it's up: `ssh devops@<its-IP>`
 
-| VM ID | Name | Storage | CPU | RAM | IP (Cloud-init) |
-|---|---|---|---|---|---|
-| 1010 | control-ubuntu | `apps` | 2 | 4 GiB | 192.168.0.10/24, gw .1 |
-| 1020 | app-ubuntu | `apps` | 8 | 8 GiB | 192.168.0.20/24, gw .1 |
-| 1030 | postgres-ubuntu | **`db`** | 8 | 32 GiB | 192.168.0.30/24, gw .1 |
+| VM ID | Name | Storage | CPU | RAM | Disk | IP (Cloud-init) |
+|---|---|---|---|---|---|---|
+| 1010 | control-ubuntu | `apps` | 2 | 4 GiB | 320G inherited | 192.168.0.10/24, gw .1 |
+| 1020 | app-ubuntu | `apps` | 8 | 8 GiB | 320G inherited | 192.168.0.20/24, gw .1 |
+| 1030 | postgres-ubuntu | **`db`** | 8 | 32 GiB | **grow to 1T** — below | 192.168.0.30/24, gw .1 |
 
 > ⚠️ Under Hardware → Processors, the type stays **x86-64-v3** (inherited from the template). Do NOT change it to `host` — the VM would no longer migrate safely between the two nodes.
 
 ## Resize the postgres disk (after cloning)
 
-Proxmox Shell:
+1030 clones at the template's 320G and is the only VM that grows. Proxmox Shell:
 ```bash
-qm resize 1030 scsi0 +608G
+qm resize 1030 scsi0 1T
 ```
+
+An absolute size, not the equivalent `+704G`: the target is 1TB regardless of what the template happens to be, so this line stays correct if the template is ever rebuilt at a different size. Growing only — ZFS-backed disks cannot be shrunk, in Proxmox or anywhere else. (`qm` sizes are binary: `1T` is 1024G.)
 
 Inside the VM (ssh → `sudo -i`):
 ```bash
@@ -69,4 +71,4 @@ ssh devops@192.168.0.20 hostname
 ssh devops@192.168.0.30 hostname
 ```
 
-Three empty machines, reachable and key-authenticated — [Stage 9b](09b-bootstrap.md) fills them.
+Three empty machines, reachable and key-authenticated — [Stage 11](11-bootstrap.md) fills them.
