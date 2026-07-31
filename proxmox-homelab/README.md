@@ -95,7 +95,7 @@ The whole build, in execution order, with the two deliberate "come back later" p
 - [ ] **7** Cluster — two corosync rings, migration network
 - [ ] **8** QDevice — third vote
 - [ ] **9** Ubuntu template from the cloud image — *(9.5's template backup needs the USB drive; postponed to the 17 line below)*
-- [ ] **10** The four VMs — `create-vms` (or clone + resize by hand), then control node, SSH keys
+- [ ] **10** The four VMs — [`create-vms`](scripts/README.md) (or clone + resize by hand), then control node, SSH keys
 - [ ] **11** First Ansible bootstrap — the VMs get their contents; verify app + db + tunnel + Loki/Grafana
 - [ ] **12** Replication schedules per VM
 - [ ] **13** WAL stream to the QDevice — both ends, verified end to end
@@ -103,7 +103,7 @@ The whole build, in execution order, with the two deliberate "come back later" p
 - [ ] **15** HA for 1020/1030 only — 1010 and 1040 deliberately stay out, `shutdown_policy=migrate`, notifications
 - [ ] **17** Backups — USB drive, nightly job, offsite rclone + crypt; **now take the template backup from 9.5**
 - [ ] **18.6** Pre-launch failover tests — all three, timed and written down
-- [ ] **17.9** First restore drill — `restore-drill`, before going live, not after
+- [ ] **17.9** First restore drill — [`restore-drill`](scripts/README.md), before going live, not after
 - [ ] Go live 🎉
 
 ## Reading paths

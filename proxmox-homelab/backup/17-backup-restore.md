@@ -106,7 +106,7 @@ rclone config
 
 ⚠️ **Write the encryption passwords down and store them somewhere that survives the house** — a password manager, or on paper away from the lab. Without them the offsite backups are mathematically unrecoverable, which turns your disaster tier into an expensive illusion.
 
-Automatic sync after the nightly backup — the whole drive, not just `dump/`, so the host-config archives from [`pve-config-backup.sh`](../scripts/pve-config-backup.sh) ride along:
+Automatic sync after the nightly backup — the whole drive, not just `dump/`, so the host-config archives from [`pve-config-backup`](../scripts/README.md) ride along:
 ```bash
 crontab -e
 ```

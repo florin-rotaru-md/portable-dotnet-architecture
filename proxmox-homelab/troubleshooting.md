@@ -19,9 +19,9 @@
 - **Locked out of a VM over SSH** → Proxmox console + the `--cipassword` (Stage 21.4). No cipassword set → mount the VM disk from the hypervisor and edit `authorized_keys` by hand.
 - **SSH accepts a password and it shouldn't** → `/etc/ssh/sshd_config.d/99-key-only.conf` missing (cloud-init flipped `ssh_pwauth` on) — re-run the playbook; the `common` role pins key-only (Stage 21.4).
 - **pve1 died hard when the UPS ran dry** → NUT not installed or not answering; `upsc ups@localhost` should say `OL` (Stage 4).
-- **A VM with an unexpected 19xx ID exists** → a restore drill that failed (kept for inspection) or ran with `--keep`; look, then `qm stop <id> && qm destroy <id>` (scripts/README).
+- **A VM with an unexpected 19xx ID exists** → a restore drill that failed (kept for inspection) or ran with `--keep`; look, then `qm stop <id> && qm destroy <id>` ([`restore-drill`](scripts/README.md)).
 - **No morning mail, ever, even when something's wrong** → root's mail isn't reaching you — the cron checks *and* backup/replication notifications all depend on it (Stage 15.3).
-- **`backup-verify` says the WAL slot is inactive** → `pg-receivewal` on the QDevice is down — `systemctl status pg-receivewal` there; if it loops, it's `.pgpass`, `pg_hba`, or the network (Stage 13.3/13.5).
+- **[`backup-verify`](scripts/README.md) says the WAL slot is inactive** → `pg-receivewal` on the QDevice is down — `systemctl status pg-receivewal` there; if it loops, it's `.pgpass`, `pg_hba`, or the network (Stage 13.3/13.5).
 - **`pg_wal` growing on 1030** → the WAL receiver has been down a while; the slot retains WAL up to `max_slot_wal_keep_size` (10GB), then breaks the stream instead of the disk. Fix the receiver, then drop + recreate the slot (Stage 13.5).
 - **After a Postgres major, the WAL stream won't reconnect** → the QDevice's client is the old major; install the matching `postgresql-client-NN` (Stage 13.5 / 20.3).
 - **No app logs in Grafana** → check in order: `alloy` active on 1020 (`systemctl status alloy`), the `[monitoring]` group exists in `hosts.ini` (Alloy auto-discovers 1040 from it — no group, no target), `loki_bind_address`/`grafana_bind_address` actually set to 1040's IP and not left on the loopback default (Stage 11.4/11.7).

@@ -42,8 +42,8 @@ The repo ships a small set of host-side scripts — a one-command health check, 
 apt install -y git smartmontools
 mkdir -p /root/src && cd /root/src
 git clone https://github.com/florin-rotaru-md/portable-dotnet-architecture
-chmod +x install-scripts.sh
 cd portable-dotnet-architecture/proxmox-homelab/scripts
+chmod +x install-scripts.sh
 ./install-scripts.sh
 ```
 
