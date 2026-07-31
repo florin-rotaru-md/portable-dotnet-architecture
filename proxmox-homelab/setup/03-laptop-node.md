@@ -1,6 +1,6 @@
 # Stage 3 — Laptop-specific configuration (pve2 ONLY)
 
-*Part of the [waa Proxmox homelab guide](../README.md).*
+*Part of the [Proxmox homelab guide](../README.md).*
 
 ## 3.1 Ignore the lid + disable sleep
 

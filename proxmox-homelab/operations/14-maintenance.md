@@ -1,6 +1,6 @@
 # Stage 14 — Hardware maintenance procedure (zero downtime)
 
-*Part of the [waa Proxmox homelab guide](../README.md).*
+*Part of the [Proxmox homelab guide](../README.md).*
 
 ## 14.1 Planned maintenance, same day
 
@@ -17,7 +17,7 @@ Step 5 above assumes the node was gone for an hour. If it was gone for two weeks
 
 **What has *not* changed, and needs no action:**
 
-corosync has no membership expiry. The node authenticates with the cluster key it already has, pmxcfs syncs `/etc/pve` down from the quorate side, and votes go from 2 back to 3. Two hours or two months makes no difference. There is also no split-brain risk from the absence itself: while it was without quorum its `/etc/pve` was mounted **read-only**, so it could not have produced conflicting cluster state. This is a different situation from the removed node in [16.2 step 4](16-node-replacement.md#4-power-off-pve2-permanently-then-remove-it) — that one is no longer a member and must never be powered back on; this one is still a legitimate member.
+corosync has no membership expiry. The node authenticates with the cluster key it already has, pmxcfs syncs `/etc/pve` down from the quorate side, and votes go from 2 back to 3. Two hours or two months makes no difference. There is also no split-brain risk from the absence itself: while it was without quorum its `/etc/pve` was mounted **read-only**, so it could not have produced conflicting cluster state. This is a different situation from the removed node in [17.2 step 4](17-node-replacement.md#4-power-off-pve2-permanently-then-remove-it) — that one is no longer a member and must never be powered back on; this one is still a legitimate member.
 
 **What has changed:**
 
@@ -27,7 +27,7 @@ corosync has no membership expiry. The node authenticates with the cluster key i
 | **Package versions** | pve1 took two weeks of updates; the returning node is on whatever shipped before it died | Live migration from a newer QEMU onto an older one can fail on machine type. **This is the one that bites** |
 | **The clock** | RTC drift on a machine that sat powered off | Skew shows up as confusing log timestamps and, at extremes, pmxcfs and certificate complaints |
 
-> **Watch the surviving node's pools *during* a long outage, not after.** The retained replication snapshot (`__replicate_1030-0_<timestamp>__`) pins every block that Postgres has since overwritten or deleted. At waa's scale that's noise, but the mechanism is real and unbounded: a write-heavy workload can fill the pool on the node that's still up, turning a redundancy problem into an outage. `zfs list -t snapshot -o name,used` and `zpool list` weekly while a node is away.
+> **Watch the surviving node's pools *during* a long outage, not after.** The retained replication snapshot (`__replicate_1030-0_<timestamp>__`) pins every block that Postgres has since overwritten or deleted. At this scale that's noise, but the mechanism is real and unbounded: a write-heavy workload can fill the pool on the node that's still up, turning a redundancy problem into an outage. `zfs list -t snapshot -o name,used` and `zpool list` weekly while a node is away.
 
 ### The return procedure
 
@@ -66,6 +66,6 @@ zpool scrub apps && zpool scrub db
 
 ⚠️ **Do not start the VM on the returning node "just to check that it works."** Its disks hold a two-week-old copy. The VM's config lives under `/etc/pve/nodes/pve1/`, so the cluster won't do this on its own — but a manual `qm start` on the wrong node would bring up Postgres on stale data. Wait for `pvesr status` to report OK, then migrate.
 
-> **HA does not fail back, by design.** [12.1](../ha/12-ha.md#121-which-vms-get-ha) adds 1020 and 1030 as plain HA resources with no groups, so they stay on pve1 until you migrate them yourself. That's the behavior you want — automatic failback toward a node whose replica is two weeks stale is strictly worse than doing it by hand after step 3. If you ever add HA groups with node priorities, set `nofailback=1` for this reason.
+> **HA does not fail back, by design.** [13.1](../ha/13-ha.md#131-which-vms-get-ha) adds 1020 and 1030 as plain HA resources with no groups, so they stay on pve1 until you migrate them yourself. That's the behavior you want — automatic failback toward a node whose replica is two weeks stale is strictly worse than doing it by hand after step 3. If you ever add HA groups with node priorities, set `nofailback=1` for this reason.
 
-One thing that went right by accident and shouldn't be relied on: backups kept working through the outage because the USB drive lives on pve1 ([14.2](../backup/14-backup-restore.md#142-backup-storage--the-usb-drive)) and every VM was already there. Had you added the optional second drive on pve2, that job would have been failing silently for two weeks — which is what the notification target in [12.3](../ha/12-ha.md#123-notifications) is for.
+One thing that went right by accident and shouldn't be relied on: backups kept working through the outage because the USB drive lives on pve1 ([15.2](../backup/15-backup-restore.md#152-backup-storage--the-usb-drive)) and every VM was already there. Had you added the optional second drive on pve2, that job would have been failing silently for two weeks — which is what the notification target in [13.3](../ha/13-ha.md#133-notifications) is for.

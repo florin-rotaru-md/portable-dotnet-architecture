@@ -1,21 +1,21 @@
-# Stage 14 — Backup & restore
+# Stage 15 — Backup & restore
 
-*Part of the [waa Proxmox homelab guide](../README.md).*
+*Part of the [Proxmox homelab guide](../README.md).*
 
-## 14.1 The three tiers
+## 15.1 The three tiers
 
 Each one answers a different disaster. None substitutes for another:
 
 | Tier | Interval | Protects against | Recovery time |
 |---|---|---|---|
 | **ZFS replication** (Stage 10) | 1-15 min | A node dying | ~2-3 min, automatic |
-| **WAL stream → QDevice** ([Stage 10b](../ha/10b-wal-stream.md)) | Continuous (~seconds) | The last minute a failover would otherwise lose; also unlocks any-second PITR | Minutes ([scenario G](#g-replaying-the-last-seconds-after-a-failover-wal-from-the-qdevice)) |
+| **WAL stream → QDevice** ([Stage 11](../ha/11-wal-stream.md)) | Continuous (~seconds) | The last minute a failover would otherwise lose; also unlocks any-second PITR | Minutes ([scenario G](#g-replaying-the-last-seconds-after-a-failover-wal-from-the-qdevice)) |
 | **Local backup** (USB) | Daily | Deletion, corruption, a bad deploy, ransomware | Minutes to an hour |
 | **Offsite copy** (Digi Storage) | Daily | Fire, theft, flood, both nodes gone | Hours (download-bound) |
 
 > Replication is **not** backup. It copies a `DROP TABLE` to the other node just as faithfully as it copies good data.
 
-## 14.2 Backup storage — the USB drive
+## 15.2 Backup storage — the USB drive
 
 ```bash
 lsblk -f          # identify the USB disk (e.g. sdb2)
@@ -38,7 +38,7 @@ pvesm add dir usb-backup --path /mnt/usb-backup --content backup
 
 Attach the drive to **pve1** and leave it there. Backups run cluster-wide from whichever node holds each VM, but the job needs the storage to exist where it runs — so either mark the storage as restricted to pve1 (Datacenter → Storage → `usb-backup` → Nodes: pve1) and schedule the job on pve1, or plug a second drive into pve2 and repeat.
 
-## 14.3 The scheduled job
+## 15.3 The scheduled job
 
 **Datacenter → Backup → Add:**
 
@@ -46,7 +46,7 @@ Attach the drive to **pve1** and leave it there. Backups run cluster-wide from w
 |---|---|---|
 | Node | pve1 (where the USB drive is) | |
 | Storage | `usb-backup` | |
-| Schedule | `03:00` daily | Quiet hours, and deliberately **after** the 02:15 in-VM Postgres dump ([14.5](#145-a-fourth-tier-for-the-database)) so the archive contains a fresh one — still well clear of the 04:00 offsite sync |
+| Schedule | `03:00` daily | Quiet hours, and deliberately **after** the 02:15 in-VM Postgres dump ([15.5](#155-a-fourth-tier-for-the-database)) so the archive contains a fresh one — still well clear of the 04:00 offsite sync |
 | Selection mode | All (or explicitly 1010, 1020, 1030) | "All" automatically picks up VMs you add later |
 | Mode | **Snapshot** | The VM keeps running. With `qemu-guest-agent` installed (Stage 8.4a) Proxmox freezes the filesystem for the instant the snapshot is taken, so the image is filesystem-consistent, not just crash-consistent |
 | Compression | ZSTD | Best ratio-to-speed on this hardware |
@@ -57,7 +57,7 @@ Two extras worth setting:
 - **Datacenter → Notifications** — make sure failures actually reach you. A backup job that has been failing quietly for three weeks is the classic way to discover you have no backups at the worst possible moment.
 - **Bandwidth limit** on the job (Advanced tab) if backups ever interfere with anything: `--bwlimit` in KB/s.
 
-## 14.4 On-demand backup (before anything risky)
+## 15.4 On-demand backup (before anything risky)
 
 Always take one before a migration to new hardware, a major upgrade, or a schema change:
 
@@ -70,7 +70,7 @@ All three at once:
 vzdump 1010 1020 1030 --storage usb-backup --mode snapshot --compress zstd
 ```
 
-## 14.5 A fourth tier for the database
+## 15.5 A fourth tier for the database
 
 A VM image restores the whole machine — it cannot give you back one accidentally deleted table. **This tier already exists and needs no work here:** the Ansible `postgres` role installs `/opt/postgres/scripts/pg-backup.sh` and a nightly cron for it, so it lands on 1030 the moment you run `bootstrap.yml`.
 
@@ -85,9 +85,9 @@ What it does each night at **02:15** (`postgres_backup_hour` / `postgres_backup_
 
 Because it writes to the VM's own disk, the dumps are swept up by the nightly `vzdump` and the offsite sync automatically — no extra plumbing. Restoring a single table becomes `pg_restore -t` instead of a full VM restore.
 
-> **Order the two jobs correctly.** With the Proxmox backup at 02:00 and the in-VM dump at 02:15, every archive captures dumps that are already ~24h old. Schedule the Proxmox job at **03:00** ([14.3](#143-the-scheduled-job)) and the chain becomes: 02:15 logical dump → 03:00 VM image containing that dump → 04:00 offsite sync. Same three tiers, one fewer day of drift. If you ever move one side of this contract — the cron vars in group_vars or the vzdump schedule — move the other with it.
+> **Order the two jobs correctly.** With the Proxmox backup at 02:00 and the in-VM dump at 02:15, every archive captures dumps that are already ~24h old. Schedule the Proxmox job at **03:00** ([15.3](#153-the-scheduled-job)) and the chain becomes: 02:15 logical dump → 03:00 VM image containing that dump → 04:00 offsite sync. Same three tiers, one fewer day of drift. If you ever move one side of this contract — the cron vars in group_vars or the vzdump schedule — move the other with it.
 
-## 14.6 Offsite — Digi Storage via rclone
+## 15.6 Offsite — Digi Storage via rclone
 
 Digi Storage has native rclone support (the `digistorage` provider). First generate an app password: https://storage.rcs-rds.ro/app/admin/preferences/password
 
@@ -98,7 +98,7 @@ rclone config
 # n (new) → name: digi → storage: koofr → provider: digistorage
 # user: <your Digi username> → password: <the generated app password>
 
-# Encryption layer on top (waa customer data shouldn't leave in cleartext):
+# Encryption layer on top (customer data shouldn't leave in cleartext):
 rclone config
 # n → name: digi-crypt → storage: crypt → remote: digi:proxmox-backups
 # → choose encryption passwords
@@ -122,7 +122,7 @@ tail -20 /var/log/rclone-backup.log
 
 ---
 
-## 14.7 Restore — pick your scenario
+## 15.7 Restore — pick your scenario
 
 Backups in the UI: select the **storage** in the tree (not the VM) → **Backups** tab. Every archive is listed with its VM ID, date and size.
 
@@ -162,7 +162,7 @@ qm start 1020
 
 Or from the UI: storage → Backups → select archive → **Restore** → target VM ID → tick *Force* → Restore.
 
-**Then finish the job** — see the post-restore checklist in 14.8.
+**Then finish the job** — see the post-restore checklist in 15.8.
 
 ### C. Restore onto the other node
 
@@ -178,7 +178,7 @@ qmrestore /var/lib/vz/dump/vzdump-qemu-1030-2026_07_29-03_00_01.vma.zst 1030 --s
 
 Proxmox's single-file restore in the GUI needs Proxmox Backup Server; with plain vzdump archives, the pragmatic route is scenario **A**: restore to a spare VM ID, start it with the network detached (Hardware → Network Device → uncheck *Connected*), and pull the files out via the console or by attaching its disk to another VM.
 
-For the database specifically, the nightly dumps from [14.5](#145-a-fourth-tier-for-the-database) make this unnecessary — `/opt/postgres/backups` is sitting inside the restored disk, and `pg_restore -l` / `-t` gets you a single table out of a `.dump` without touching the running database.
+For the database specifically, the nightly dumps from [15.5](#155-a-fourth-tier-for-the-database) make this unnecessary — `/opt/postgres/backups` is sitting inside the restored disk, and `pg_restore -l` / `-t` gets you a single table out of a `.dump` without touching the running database.
 
 ### E. Restore from offsite
 
@@ -196,16 +196,16 @@ The order matters:
 
 1. Install Proxmox on the replacement hardware (Stages 1-2).
 2. Recreate the ZFS pools with the **same names**, `apps` and `db` (Stage 5). Names are what everything else keys off.
-3. Install and configure rclone with the `digi-crypt` remote (14.6) — **this is the step that needs the encryption passwords you stored offsite.**
+3. Install and configure rclone with the `digi-crypt` remote (15.6) — **this is the step that needs the encryption passwords you stored offsite.**
 4. Pull the archives down and `qmrestore` each VM.
-5. Rebuild the cluster, replication, and HA (Stages 6, 7, 10, 12) — these are configuration, not data, and take minutes.
+5. Rebuild the cluster, replication, and HA (Stages 6, 7, 10, 13) — these are configuration, not data, and take minutes.
 6. Point Cloudflare Tunnel at the restored app VM.
 
-Note what's *not* in this list: the frontend and invitations, which live on Cloudflare and were never affected.
+Note what's *not* in this list: the frontend, which lives on Cloudflare and was never affected.
 
 ### G. Replaying the last seconds after a failover (WAL from the QDevice)
 
-Requires [Stage 10b](../ha/10b-wal-stream.md). The situation: a node died, HA restarted 1030 from a replica up to a minute old, and that minute held writes that matter. The missing seconds exist in the QDevice's WAL archive — the work is standing up a scratch database that replays to the moment of death, then taking what you need from it.
+Requires [Stage 11](../ha/11-wal-stream.md). The situation: a node died, HA restarted 1030 from a replica up to a minute old, and that minute held writes that matter. The missing seconds exist in the QDevice's WAL archive — the work is standing up a scratch database that replays to the moment of death, then taking what you need from it.
 
 **Build the replayed copy:**
 
@@ -213,7 +213,7 @@ Requires [Stage 10b](../ha/10b-wal-stream.md). The situation: a node died, HA re
 # 1. Restore last night's 1030 archive to a spare ID — the base must be OLDER
 #    than the failover, on the same timeline; the 03:00 vzdump qualifies
 qmrestore /mnt/usb-backup/dump/vzdump-qemu-1030-<last-night>.vma.zst 1130 --storage apps --unique
-# give it a spare IP via Cloud-Init (say .130) before starting — 17.3 step 0 shows this pattern
+# give it a spare IP via Cloud-Init (say .130) before starting — 18.3 step 0 shows this pattern
 
 # 2. Inside 1130: stop postgres, bring the WAL over, arm recovery
 systemctl stop postgresql
@@ -229,12 +229,12 @@ tail -f /var/log/postgresql/*.log     # watch for "archive recovery complete"
 
 **Then pick the path that matches what happened since the failover:**
 
-- **The live 1030 has already taken new writes** (the normal case — HA had it back in ~3 minutes): extract the delta from 1130 — the rows stamped in the lost window — and merge them into the live database (`pg_dump -t <table>` + `INSERT … ON CONFLICT`, or by hand for a handful of RSVPs). Merging is an application-level judgment call: inserts are mechanical, updated rows need a decision about which version wins. Then destroy 1130.
+- **The live 1030 has already taken new writes** (the normal case — HA had it back in ~3 minutes): extract the delta from 1130 — the rows stamped in the lost window — and merge them into the live database (`pg_dump -t <table>` + `INSERT … ON CONFLICT`, or by hand for a handful of rows). Merging is an application-level judgment call: inserts are mechanical, updated rows need a decision about which version wins. Then destroy 1130.
 - **The live 1030 has no new writes yet** (you stopped the app slots fast, or the outage is ongoing): don't merge — swap. Stop the app, verify 1130's row counts against live, and promote the replayed copy to be the real 1030 (restore it over per [scenario B](#b-restore-over-an-existing-vm-in-place), or re-IP it). Zero loss, no reconciliation.
 
 **The same recipe is general PITR:** add `recovery_target_time = '2026-07-30 14:31:50+03'` (and `recovery_target_action = 'promote'`) next to `restore_command`, and 1130 stands up as of any second the 7-day archive covers — the "undo the 14:32 mistake" path, with the damage inspected on a scratch VM before you commit to anything.
 
-## 14.8 Post-restore checklist
+## 15.8 Post-restore checklist
 
 A restored VM comes back as a plain VM — the cluster machinery around it does not follow automatically:
 
@@ -258,12 +258,12 @@ Also check inside the VM:
 - `cloudflared` is running, if this is 1020
 - Postgres accepted the restore and recovered cleanly (`systemctl status postgresql`, then check the log tail for recovery messages)
 
-## 14.9 Restore drills
+## 15.9 Restore drills
 
 A backup you have never restored is a hypothesis.
 
 - **Monthly:** scenario A on one VM — restore to a spare ID, boot it, confirm it works, destroy it. Ten minutes — or one command: [`restore-drill`](../scripts/README.md) does exactly this (NIC disconnected, guest-agent boot proof, auto-cleanup) and logs the measured RTO to `/var/log/restore-drill.log`.
-- **Quarterly:** scenario E — pull one archive from Digi Storage and restore it. This is the only way to find out whether the encryption passwords still work *before* you need them. If [10b](../ha/10b-wal-stream.md) is enabled, run scenario G's replay against the drill VM while it's up — that proves the WAL archive actually replays, not just accumulates.
+- **Quarterly:** scenario E — pull one archive from Digi Storage and restore it. This is the only way to find out whether the encryption passwords still work *before* you need them. If [11](../ha/11-wal-stream.md) is enabled, run scenario G's replay against the drill VM while it's up — that proves the WAL archive actually replays, not just accumulates.
 - **After any change** to storage layout, Proxmox major version, or backup configuration.
 
 Write down how long each takes. Those numbers are your real RTO, as opposed to the one you assume you have.

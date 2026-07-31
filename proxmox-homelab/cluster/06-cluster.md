@@ -1,6 +1,6 @@
 # Stage 6 — Cluster
 
-*Part of the [waa Proxmox homelab guide](../README.md).*
+*Part of the [Proxmox homelab guide](../README.md).*
 
 **On pve1:** Datacenter → Cluster → **Create Cluster** → name `lab`:
 - **Link 0** = `10.10.10.1` (the 10G direct link — corosync's primary ring)

@@ -1,6 +1,6 @@
 # Stage 10 — ZFS replication
 
-*Part of the [waa Proxmox homelab guide](../README.md).*
+*Part of the [Proxmox homelab guide](../README.md).*
 
 For each VM: select the VM → **Replication → Add** → Target: the other node → Schedule.
 
@@ -8,7 +8,7 @@ The replication interval **is** your data-loss window on an unplanned failover, 
 
 | VM | Schedule | Why |
 |---|---|---|
-| 1030 postgres | `*/1` (every minute) | RSVPs and event edits — the data you actually can't afford to lose |
+| 1030 postgres | `*/1` (every minute) | Live application writes — the data you actually can't afford to lose |
 | 1020 app | `*/5` | Mostly stateless; holds little unique state |
 | 1010 control | `*/15` or `*/30` | Tooling only, rebuildable |
 

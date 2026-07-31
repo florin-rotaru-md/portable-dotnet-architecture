@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# node-return.sh — the 13.2 procedure ("returning a node after a long outage"),
+# node-return.sh — the 14.2 procedure ("returning a node after a long outage"),
 # with the ordering enforced by code instead of by memory.
 #
 # The order matters: rejoin → align versions → replicate → only then migrate.
@@ -45,7 +45,7 @@ if [ -z "$PEER_ADDR" ] || ! peer true 2>/dev/null; then
 fi
 
 # ── Gate 1: cluster membership, links, clock, pools ──────────────────────────
-say "Gate 1 — the node is back as a healthy member (13.2 step 1)"
+say "Gate 1 — the node is back as a healthy member (14.2 step 1)"
 FAILED=0
 pvecm status 2>/dev/null | grep -q 'Quorate:.*Yes' \
     && ok "quorate" || { bad "not quorate — wait for corosync, check both links"; FAILED=1; }
@@ -57,7 +57,7 @@ corosync-cfgtool -s 2>/dev/null | grep -qiE 'faulty|disconnected' \
     && ok "pools imported and healthy" || { bad "pool problem — zpool status before anything else"; FAILED=1; }
 [ "$FAILED" = 1 ] && { bad "Gate 1 failed — nothing below is safe yet."; exit 2; }
 
-# ── Gate 2: package versions aligned with the peer (13.2 step 2) ─────────────
+# ── Gate 2: package versions aligned with the peer (14.2 step 2) ─────────────
 say "Gate 2 — version alignment (the one that bites)"
 LOCAL_VER=$(pveversion); PEER_VER=$(peer pveversion)
 if [ "$LOCAL_VER" = "$PEER_VER" ]; then
@@ -78,7 +78,7 @@ else
     fi
 fi
 
-# ── Gate 3: replication caught up (13.2 step 3) ──────────────────────────────
+# ── Gate 3: replication caught up (14.2 step 3) ──────────────────────────────
 say "Gate 3 — replication catch-up (the jobs run on the peer; this is the big transfer)"
 JOB_IDS=$(peer pvesr status 2>/dev/null | awk 'NR > 1 {print $1}')
 if [ -z "$JOB_IDS" ]; then
@@ -101,11 +101,11 @@ else
     echo "       peer pool usage (watch the old pinned snapshot release its space):"
     peer zpool list 2>/dev/null | sed 's/^/       /'
 fi
-echo "       Reminder: do NOT 'qm start' anything on this node — its local disks are stale until replication is current (13.2)."
+echo "       Reminder: do NOT 'qm start' anything on this node — its local disks are stale until replication is current (14.2)."
 
 [ "$CHECK" = 1 ] && { say "--check done — no changes made."; exit 0; }
 
-# ── Step 4: move workload back, live (13.2 step 5) ───────────────────────────
+# ── Step 4: move workload back, live (14.2 step 5) ───────────────────────────
 say "Migrate workload back (only now is it safe)"
 RUNNING=$(peer qm list 2>/dev/null | awk '$3 == "running" {print $1}')
 if [ -z "$RUNNING" ]; then
@@ -119,7 +119,7 @@ else
     done
 fi
 
-# ── Step 5: scrub after the idle period (13.2 step 6) ────────────────────────
+# ── Step 5: scrub after the idle period (14.2 step 6) ────────────────────────
 say "Scrub"
 if confirm "The pools sat idle — start 'zpool scrub apps && zpool scrub db' now (runs in background)?"; then
     zpool scrub apps 2>/dev/null || true

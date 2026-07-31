@@ -1,6 +1,6 @@
 # Stage 16 — Failover: how it works, scenarios & FAQ
 
-*Part of the [waa Proxmox homelab guide](../README.md).*
+*Part of the [Proxmox homelab guide](../README.md).*
 
 ## 16.1 The three mechanisms
 
@@ -32,7 +32,7 @@ pve2 dies suddenly (power cut, hardware fault, kernel panic):
 | **Clean shutdown** with `shutdown_policy=migrate` | VMs live-migrate automatically | **0** | **0** | None |
 | **Laptop battery hits 10%** | battery-check → clean shutdown → auto live-migration | **0** | **0** | None; plug power back in later |
 | **Node dies suddenly** | Fencing → HA restart on the healthy node | ~2-3 min | ≤ replication interval — recoverable to **seconds** via WAL replay ([15.7 G](../backup/15-backup-restore.md#g-replaying-the-last-seconds-after-a-failover-wal-from-the-qdevice)) | None; verify afterward, replay the lost window if it held writes |
-| **Node stays down for weeks, then returns** | Rejoins as a normal member; replication catches up with one large incremental | 0 (you've been running on one node) | 0 | Rejoin → `apt dist-upgrade` → let replication finish → *then* migrate back ([13.2](../operations/13-maintenance.md#132-returning-a-node-after-a-long-outage-days-to-weeks)) |
+| **Node stays down for weeks, then returns** | Rejoins as a normal member; replication catches up with one large incremental | 0 (you've been running on one node) | 0 | Rejoin → `apt dist-upgrade` → let replication finish → *then* migrate back ([14.2](../operations/14-maintenance.md#142-returning-a-node-after-a-long-outage-days-to-weeks)) |
 | **10G direct cable pulled** | corosync fails over to Link 1 (1G); migration and replication fall back to 1G, slower but working | 0 | 0 | Replace the cable; check `corosync-cfgtool -s` |
 | **Thunderbolt adapter drops off** (pve2) | Same as above — the 10G link disappears, the 1G ring carries the cluster | 0 | 0 | Reseat the adapter; if it recurs, check `dmesg` and the interface name (see troubleshooting) |
 | **Home router / 1G switch dies** | corosync survives on Link 0 (direct 10G), cluster stays quorate and VMs keep running; no client access | Service down until replaced | 0 | Replace the router; nodes never stop |
@@ -51,7 +51,7 @@ Worth being explicit, so expectations match reality:
 
 - **It is not a backup.** Replication copies corruption, deletions and encryption just as faithfully as it copies good data. The USB + offsite chain in Stage 15 is the answer to those.
 - **It does not protect a single node's split second.** An unplanned failover always costs the last N minutes of writes — *automatically*. With [Stage 11](11-wal-stream.md) those writes survive on the QDevice and come back via a short manual replay ([15.7 G](../backup/15-backup-restore.md#g-replaying-the-last-seconds-after-a-failover-wal-from-the-qdevice)); true zero-RPO-with-zero-action would require shared/synchronous storage — a different, considerably more expensive architecture.
-- **It does not cover the frontend.** Which in waa's case is fine by design: the frontend and invitations live on Cloudflare, so a backend failover degrades RSVP/edits for a couple of minutes, while invitations themselves stay up throughout.
+- **It does not cover the frontend.** Which is fine by design here: the frontend lives on Cloudflare, so a backend failover degrades writes/edits for a couple of minutes, while the frontend itself stays up throughout.
 
 ## 16.5 Emergency: forcing quorum
 
@@ -65,7 +65,7 @@ pvecm expected 1
 
 ## 16.6 Pre-launch test plan
 
-A failover you haven't tested is a hope, not a solution. Run all three before waa goes live, and write down the timings:
+A failover you haven't tested is a hope, not a solution. Run all three before the app goes live, and write down the timings:
 
 1. **Planned live migration.** `ping -t` the app VM, migrate, confirm ≤1 lost packet. Migrate back.
 2. **Clean shutdown with `shutdown_policy=migrate`.** Shut down pve2 from the UI; confirm the VMs migrate on their own rather than restarting. This also validates the battery-script path.

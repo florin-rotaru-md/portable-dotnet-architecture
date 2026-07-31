@@ -1,10 +1,10 @@
 # Stage 9b — First Ansible bootstrap (filling the VMs)
 
-*Part of the [waa Proxmox homelab guide](../README.md).*
+*Part of the [Proxmox homelab guide](../README.md).*
 
 Stages 8–9 produced three empty Ubuntu machines. Everything that makes them *useful* — Postgres + PostGIS, the .NET app with blue/green deploys, nginx, `cloudflared`, the nightly database dump, SSH key management — is installed by the Ansible project in [`native/infra/ansible`](../../native/infra/ansible), run from control-ubuntu (1010). This stage is that first run.
 
-It sits **before replication (Stage 10) on purpose**: finish the machines first, then wire redundancy around them. Replicating, HA-protecting and failover-testing VMs that don't run anything yet just means doing parts of Stages 10–15 twice.
+It sits **before replication (Stage 10) on purpose**: finish the machines first, then wire redundancy around them. Replicating, HA-protecting and failover-testing VMs that don't run anything yet just means doing parts of Stages 10–16 twice.
 
 The authoritative command-by-command walkthrough is [`native/example`](../../native/example) — a copy-paste file covering the control node, `vault.yml`, `main.yml`, inventory and the playbook run. **Follow it from the `on control vm:` section onward**, with the homelab-specific differences below. Don't skim past them; two of these (the split-VM database variables) produce a broken app if left at their single-VM defaults.
 
@@ -64,12 +64,12 @@ use_cloudflared: true
 and in `vault.yml`, alongside the keys and `postgres_password`:
 
 ```yaml
-cloudflare_token: "eyJhIjoi..."        # the tunnel token for waa
+cloudflare_token: "eyJhIjoi..."        # the tunnel token for the app
 ```
 
 Two rules worth internalizing now, because they outlive this stage:
 
-- **`vault.yml` is never committed** (it's gitignored); `postgres_password` and every token live only there and in the password manager — see the credential inventory in [Stage 18.1](../operations/18-credentials.md#181-inventory--what-exists-and-where-it-lives).
+- **`vault.yml` is never committed** (it's gitignored); `postgres_password` and every token live only there and in the password manager — see the credential inventory in [Stage 19.1](../operations/19-credentials.md#191-inventory--what-exists-and-where-it-lives).
 - **Any `group_vars` change you make here must be mirrored** into the example files (`native/example` and the hyper-v/docker counterparts) — they are full copies meant to stay in sync, per the [repo rule](../README.md#relationship-to-the-rest-of-the-repo).
 
 ## 9b.5 Run it
@@ -79,7 +79,7 @@ cd ~/src/portable-dotnet-architecture/native/infra/ansible
 ansible-playbook playbooks/bootstrap.yml --diff
 ```
 
-The first run takes a while: PGDG + PostGIS on 1030, the .NET SDK on 1020, and — because `repo_url`/`project_path` are set — the **first application deploy**, straight into the blue slot. `--diff` shows every file it writes; on a fresh VM that's a lot of output, and that's fine. (Don't use `--check` with this role set — [Stage 17.3 step 4](../operations/17-upgrades.md#step-4-bump-the-variable-run-the-playbook) explains why it breaks.)
+The first run takes a while: PGDG + PostGIS on 1030, the .NET SDK on 1020, and — because `repo_url`/`project_path` are set — the **first application deploy**, straight into the blue slot. `--diff` shows every file it writes; on a fresh VM that's a lot of output, and that's fine. (Don't use `--check` with this role set — [Stage 18.3 step 4](../operations/18-upgrades.md#step-4-bump-the-variable-run-the-playbook) explains why it breaks.)
 
 Re-running it later is always safe — that's the point of it being the single owner of in-VM state.
 
@@ -91,11 +91,11 @@ ssh devops@192.168.0.30 'systemctl is-active postgresql && ls -l /opt/postgres/s
 ssh devops@192.168.0.30 'sudo -u postgres psql -tAc "select version(), postgis_version()"'
 
 # App slot up and healthy, nginx routing it (on 1020)
-ssh devops@192.168.0.20 '/opt/apps/api.waa.ro/scripts/current-slot.sh'
-curl -s -H "Host: api.waa.ro" http://192.168.0.20/.well-known/ready    # expect HTTP 200
+ssh devops@192.168.0.20 '/opt/apps/api.example.com/scripts/current-slot.sh'
+curl -s -H "Host: api.example.com" http://192.168.0.20/.well-known/ready    # expect HTTP 200
 
 # Tunnel up (on 1020), then the real test: the public URL in a browser
 ssh devops@192.168.0.20 'systemctl is-active cloudflared'
 ```
 
-All four green → the machines are done. From here on, **change VM state via the playbook, not by hand** ([the ownership boundary, 17.5](../operations/17-upgrades.md#175-the-same-pattern-applied-elsewhere)) — and continue with [Stage 10](../ha/10-replication.md), which replicates disks that now hold their real content.
+All four green → the machines are done. From here on, **change VM state via the playbook, not by hand** ([the ownership boundary, 18.5](../operations/18-upgrades.md#185-the-same-pattern-applied-elsewhere)) — and continue with [Stage 10](../ha/10-replication.md), which replicates disks that now hold their real content.

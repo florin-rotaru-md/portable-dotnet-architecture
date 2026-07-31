@@ -1,6 +1,6 @@
 # Stage 7 — QDevice (mandatory for maintenance with one node down)
 
-*Part of the [waa Proxmox homelab guide](../README.md).*
+*Part of the [Proxmox homelab guide](../README.md).*
 
 On the third device (Debian/Ubuntu, fixed IP reachable from both nodes):
 ```bash
@@ -22,4 +22,4 @@ Verify:
 pvecm status    # Total votes: 3, Quorate: Yes
 ```
 
-The QDevice earns its keep twice: besides the third vote, it later receives the continuous Postgres WAL stream ([Stage 10b](../ha/10b-wal-stream.md)) — the box (Core Ultra 5 225U, 16GB, 2TB NVMe) has headroom for both without noticing.
+The QDevice earns its keep twice: besides the third vote, it later receives the continuous Postgres WAL stream ([Stage 11](../ha/11-wal-stream.md)) — the box (Core Ultra 5 225U, 16GB, 2TB NVMe) has headroom for both without noticing.

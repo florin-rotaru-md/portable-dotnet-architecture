@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# restore-drill.sh — the monthly 14.9 drill, automated so it actually happens:
+# restore-drill.sh — the monthly 15.9 drill, automated so it actually happens:
 # restore the newest archive of one VM to a spare ID, with the NIC disconnected,
 # boot it, prove the guest agent answers, report, destroy.
 #
@@ -40,7 +40,7 @@ fi
 
 TARGET=$((VMID + 900))          # 1010→1910, 1020→1920, 1030→1930
 
-mountpoint -q "$(dirname "$USB_DUMP")" || { echo "FAIL: USB backup drive not mounted (14.2)" >&2; exit 2; }
+mountpoint -q "$(dirname "$USB_DUMP")" || { echo "FAIL: USB backup drive not mounted (15.2)" >&2; exit 2; }
 ARCHIVE=$(ls -1t "$USB_DUMP"/vzdump-qemu-"$VMID"-*.vma.zst 2>/dev/null | head -1)
 [ -n "$ARCHIVE" ] || { echo "FAIL: no archive for VM $VMID in $USB_DUMP" >&2; exit 2; }
 if qm status "$TARGET" >/dev/null 2>&1; then
@@ -59,12 +59,12 @@ fail() {
     exit 1
 }
 
-# Restore to the spare ID; --unique regenerates the MAC so nothing collides (14.7 A)
+# Restore to the spare ID; --unique regenerates the MAC so nothing collides (15.7 A)
 qmrestore "$ARCHIVE" "$TARGET" --storage "$STORAGE" --unique >/dev/null || fail "qmrestore returned an error"
 RESTORE_S=$(( $(date +%s) - START ))
 
 # Belt and suspenders on top of --unique: boot with the NIC link down, so the
-# clone can never fight the original for its static IP (14.7 A / 17.3 step 0)
+# clone can never fight the original for its static IP (15.7 A / 18.3 step 0)
 NET0=$(qm config "$TARGET" | awk -F': ' '/^net0:/ {print $2}')
 [ -n "$NET0" ] && qm set "$TARGET" --net0 "${NET0},link_down=1" >/dev/null
 

@@ -1,6 +1,6 @@
 # Stage 12 — First live migration 🎯
 
-*Part of the [waa Proxmox homelab guide](../README.md).*
+*Part of the [Proxmox homelab guide](../README.md).*
 
 1. From another computer: `ping -t 192.168.0.20`.
 2. Right-click on the VM → **Migrate** → Target: the other node → Migrate.

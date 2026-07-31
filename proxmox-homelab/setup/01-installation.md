@@ -1,6 +1,6 @@
 # Stage 1 — Proxmox installation (identical on both nodes)
 
-*Part of the [waa Proxmox homelab guide](../README.md).*
+*Part of the [Proxmox homelab guide](../README.md).*
 
 1. Boot from the stick → **Install Proxmox VE (Graphical)** → accept the EULA.
 2. **Target Harddisk: disk 1 (OS).** Careful not to pick the data disks. Default filesystem (ext4/LVM).

@@ -10,7 +10,7 @@
 #
 # Runs on BOTH nodes via cron (02:40). The archive lands in /var/backups/pve-config
 # locally, plus on the USB backup drive — from where the 04:00 rclone sync
-# (Stage 14.6) carries it offsite, encrypted. pve2 has no USB drive: it ships
+# (Stage 15.6) carries it offsite, encrypted. pve2 has no USB drive: it ships
 # its copy to pve1 over the 10G link instead.
 #
 # Usage: pve-config-backup.sh          (no arguments, safe to re-run any time)

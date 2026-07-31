@@ -1,10 +1,10 @@
-# Stage 16 — Replacing a node with new hardware
+# Stage 17 — Replacing a node with new hardware
 
-*Part of the [waa Proxmox homelab guide](../README.md).*
+*Part of the [Proxmox homelab guide](../README.md).*
 
-Different from Stage 13: there you power a node down and bring the *same* machine back. Here the machine is gone for good and a new one takes its place. The VMs never have to stop — but the cluster membership does change, and that part has an order you have to respect.
+Different from Stage 14: there you power a node down and bring the *same* machine back. Here the machine is gone for good and a new one takes its place. The VMs never have to stop — but the cluster membership does change, and that part has an order you have to respect.
 
-## 16.1 Pick the approach
+## 17.1 Pick the approach
 
 | | Approach | When it fits | Downtime | Resync needed |
 |---|---|---|---|---|
@@ -16,7 +16,7 @@ Approach **A** is what to use unless you have a specific reason not to. Approach
 
 Assume below you're replacing **pve2**. Replacing pve1 is symmetric.
 
-## 16.2 Approach A — clean swap, step by step
+## 17.2 Approach A — clean swap, step by step
 
 ### Before you touch anything
 
@@ -127,7 +127,7 @@ ha-manager status
 
 Then migrate whatever you want back onto the new node — live, no downtime.
 
-## 16.3 Approach B — transplanting the disks
+## 17.3 Approach B — transplanting the disks
 
 If the same three NVMe drives are moving into a new chassis, the ZFS pools come along untouched and you skip the full resync entirely. It's faster, but it has a specific trap.
 
@@ -151,7 +151,7 @@ pvesr status                              # replication resumes on its own
 
 The cluster identity lives on the OS disk, so the node rejoins as itself — no delnode, no rejoin, no resync. Just be prepared to spend ten minutes at a physical keyboard.
 
-## 16.4 Verification after either approach
+## 17.4 Verification after either approach
 
 ```bash
 pvecm status                  # 2 nodes + QDevice = 3 votes, Quorate: Yes
@@ -170,13 +170,13 @@ qm migrate 1020 pve2 --online
 qm migrate 1020 pve1 --online
 ```
 
-And when you have a maintenance window, repeat test 3 from Stage 15.6 (hard kill) against the new node.
+And when you have a maintenance window, repeat test 3 from Stage 16.6 (hard kill) against the new node.
 
-## 16.5 Things that bite
+## 17.5 Things that bite
 
 - **Pool names.** `apps` and `db`, character for character. A pool called `apps1` on the new node means replication silently has nowhere to go.
 - **Removing the QDevice before `delnode`.** Skip it and you get quorum errors that look far more alarming than the actual problem.
 - **Never re-power the removed node** on the same network with its old cluster config.
 - **CPU generation going backwards.** Replacing with older hardware can invalidate `x86-64-v3`. Check with `lscpu` before you migrate anything onto it.
-- **The window in step 4-6.** Between `delnode` and the new node joining, you are running on one node with no failover. Do the swap when you can afford that, not on a Friday evening during an event weekend.
+- **The window in step 4-6.** Between `delnode` and the new node joining, you are running on one node with no failover. Do the swap when you can afford that, not on a Friday evening during a peak-traffic window.
 - **Interface names in approach B.** Guaranteed to change. Have a keyboard and monitor ready before you start rather than discovering the need mid-swap.

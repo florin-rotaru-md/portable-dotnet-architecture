@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # backup-verify.sh — answers one question: "am I protected RIGHT NOW?"
 #
-# The backup chain has four links (14.1/14.5): nightly vzdump per VM → USB,
+# The backup chain has four links (15.1/15.5): nightly vzdump per VM → USB,
 # host-config archives → USB, the 04:00 offsite sync, and the in-VM Postgres
 # dump. Notifications only fire on *failure* — a job that silently stopped
 # running fires nothing. This checks each link for *freshness*, which is the
@@ -40,7 +40,7 @@ fail() { printf '[FAIL] %s\n' "$1"; RC=2; }
 # ── The USB drive itself ──────────────────────────────────────────────────────
 if ! mountpoint -q "$USB_MOUNT"; then
     if [ -d "$USB_MOUNT" ]; then
-        fail "usb: $USB_MOUNT exists but nothing is mounted — the drive dropped off; every tier below is dead (14.2)"
+        fail "usb: $USB_MOUNT exists but nothing is mounted — the drive dropped off; every tier below is dead (15.2)"
         exit "$RC"
     fi
     # No USB storage configured on this node — it lives on the peer. Nothing to verify here.
@@ -52,13 +52,13 @@ ok "usb: drive mounted"
 for vm in $VMS; do
     NEWEST=$(ls -1t "$USB_MOUNT"/dump/vzdump-qemu-"$vm"-*.vma.zst 2>/dev/null | head -1)
     if [ -z "$NEWEST" ]; then
-        fail "vzdump $vm: no archive at all on the USB drive — check the job covers this VM (14.3)"
+        fail "vzdump $vm: no archive at all on the USB drive — check the job covers this VM (15.3)"
         continue
     fi
     AGE_H=$(( ($(date +%s) - $(stat -c %Y "$NEWEST")) / 3600 ))
     SIZE_MB=$(( $(stat -c %s "$NEWEST") / 1024 / 1024 ))
     if [ "$AGE_H" -gt "$MAX_AGE_H" ]; then
-        fail "vzdump $vm: newest archive is ${AGE_H}h old — the nightly job isn't producing (14.3, notifications)"
+        fail "vzdump $vm: newest archive is ${AGE_H}h old — the nightly job isn't producing (15.3, notifications)"
     elif [ "$SIZE_MB" -lt "$MIN_SIZE_MB" ]; then
         fail "vzdump $vm: newest archive is only ${SIZE_MB}MB — implausibly small, inspect it before trusting it"
     else
@@ -86,18 +86,18 @@ if [ -f "$RCLONE_LOG" ]; then
     LOG_AGE_H=$(( ($(date +%s) - $(stat -c %Y "$RCLONE_LOG")) / 3600 ))
     ERRORS=$(tail -50 "$RCLONE_LOG" | grep -c ERROR || true)
     if [ "$LOG_AGE_H" -gt "$MAX_AGE_H" ]; then
-        fail "offsite: rclone log untouched for ${LOG_AGE_H}h — the 04:00 cron isn't running (14.6)"
+        fail "offsite: rclone log untouched for ${LOG_AGE_H}h — the 04:00 cron isn't running (15.6)"
     elif [ "$ERRORS" -gt 0 ]; then
         warn "offsite: $ERRORS ERROR line(s) in the recent log — tail -50 $RCLONE_LOG"
     else
         ok "offsite: sync ran within ${LOG_AGE_H}h, no recent errors"
     fi
 else
-    fail "offsite: $RCLONE_LOG missing — the sync has never run on this node (14.6)"
+    fail "offsite: $RCLONE_LOG missing — the sync has never run on this node (15.6)"
 fi
 
 # The log proves the sync *ran*; this proves the remote actually *has current data*
-# — and, quarterly, scenario E proves the crypt passwords still decrypt it (14.9).
+# — and, quarterly, scenario E proves the crypt passwords still decrypt it (15.9).
 NEWEST_REMOTE_TS=$(timeout 90 rclone lsl "${RCLONE_REMOTE}dump" 2>/dev/null \
     | awk '{print $2 " " substr($3, 1, 8)}' | sort | tail -1)
 if [ -z "$NEWEST_REMOTE_TS" ]; then
@@ -111,7 +111,7 @@ else
     fi
 fi
 
-# ── WAL stream to the QDevice (10b) — slot active and not lagging ─────────────
+# ── WAL stream to the QDevice (Stage 11) — slot active and not lagging ────────
 # Freshness can't be judged by file age (no traffic → no writes, by design), so
 # ask the primary: is the receiver connected, and how far behind is the slot?
 WAL_SLOT=wal_archive
@@ -119,29 +119,29 @@ WAL_LAG_WARN_MB=64
 WAL_STATE=$(ssh -o BatchMode=yes -o ConnectTimeout=5 "devops@$PG_VM_IP" \
     "sudo -u postgres psql -tAc \"select active::text || '|' || coalesce(pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn)::bigint / 1024 / 1024, -1) from pg_replication_slots where slot_name='$WAL_SLOT'\"" 2>/dev/null | tr -d '[:space:]')
 if [ -z "$WAL_STATE" ]; then
-    ok "wal-stream: no '$WAL_SLOT' slot on $PG_VM_IP — Stage 10b not enabled (fine if that's intentional)"
+    ok "wal-stream: no '$WAL_SLOT' slot on $PG_VM_IP — Stage 11 not enabled (fine if that's intentional)"
 else
     WAL_ACTIVE=${WAL_STATE%%|*}
     WAL_LAG_MB=${WAL_STATE##*|}
     if [ "$WAL_ACTIVE" != "true" ] && [ "$WAL_ACTIVE" != "t" ]; then
-        fail "wal-stream: slot '$WAL_SLOT' INACTIVE — pg-receivewal on the QDevice is down; RPO is back to ~1 min and WAL is accumulating toward the 10GB cap (10b.5)"
+        fail "wal-stream: slot '$WAL_SLOT' INACTIVE — pg-receivewal on the QDevice is down; RPO is back to ~1 min and WAL is accumulating toward the 10GB cap (11.5)"
     elif [ "${WAL_LAG_MB:-0}" -gt "$WAL_LAG_WARN_MB" ]; then
-        warn "wal-stream: receiver connected but ${WAL_LAG_MB}MB behind — check the QDevice's disk and network (10b.3)"
+        warn "wal-stream: receiver connected but ${WAL_LAG_MB}MB behind — check the QDevice's disk and network (11.3)"
     else
         ok "wal-stream: receiver connected, ${WAL_LAG_MB}MB behind"
     fi
 fi
 
-# ── The fourth tier: in-VM Postgres dumps (14.5) ──────────────────────────────
-# Uses the host root key, which cloud-init authorized in every VM (18.1).
+# ── The fourth tier: in-VM Postgres dumps (15.5) ──────────────────────────────
+# Uses the host root key, which cloud-init authorized in every VM (19.1).
 PG_NEWEST_TS=$(ssh -o BatchMode=yes -o ConnectTimeout=5 "devops@$PG_VM_IP" \
     "sh -c 'f=\$(ls -t $PG_DUMP_DIR/*.dump 2>/dev/null | head -1); [ -n \"\$f\" ] && stat -c %Y \"\$f\"'" 2>/dev/null)
 if [ -z "$PG_NEWEST_TS" ]; then
-    warn "pg-dump: could not check $PG_VM_IP:$PG_DUMP_DIR — VM down, key missing, or no dumps yet (14.5)"
+    warn "pg-dump: could not check $PG_VM_IP:$PG_DUMP_DIR — VM down, key missing, or no dumps yet (15.5)"
 else
     PG_AGE_H=$(( ($(date +%s) - PG_NEWEST_TS) / 3600 ))
     if [ "$PG_AGE_H" -gt "$MAX_AGE_H" ]; then
-        fail "pg-dump: newest dump is ${PG_AGE_H}h old — the 02:15 cron on 1030 stopped (14.5)"
+        fail "pg-dump: newest dump is ${PG_AGE_H}h old — the 02:15 cron on 1030 stopped (15.5)"
     else
         ok "pg-dump: ${PG_AGE_H}h old"
     fi

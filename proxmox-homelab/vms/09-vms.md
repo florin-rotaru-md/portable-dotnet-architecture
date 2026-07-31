@@ -1,6 +1,6 @@
 # Stage 9 — The VMs
 
-*Part of the [waa Proxmox homelab guide](../README.md).*
+*Part of the [Proxmox homelab guide](../README.md).*
 
 All via cloning — for each VM: right-click on **9000** → **Clone**, and in the dialog:
 

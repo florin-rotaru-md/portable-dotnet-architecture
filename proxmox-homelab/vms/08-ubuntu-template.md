@@ -1,6 +1,6 @@
 # Stage 8 — Ubuntu template with cloud-init (on pve1)
 
-*Part of the [waa Proxmox homelab guide](../README.md).*
+*Part of the [Proxmox homelab guide](../README.md).*
 
 The goal: one golden image, cloned three times. Every VM then differs only in CPU/RAM/IP, which cloud-init injects at first boot. Build it **once, on pve1** — clones can target either node.
 
@@ -159,7 +159,7 @@ You can add the control VM's key later too — `--sshkeys` takes a file, so appe
 qm set 9000 --cipassword '<strong password — store it in your password manager NOW>'
 ```
 
-Every clone inherits it. This does **not** weaken SSH: the Ansible `common` role pins `PasswordAuthentication no` in sshd, so the password works at the console and nowhere else. The full reasoning and the recovery paths it unlocks are in [Stage 18](../operations/18-credentials.md#stage-18--credentials--key-management).
+Every clone inherits it. This does **not** weaken SSH: the Ansible `common` role pins `PasswordAuthentication no` in sshd, so the password works at the console and nowhere else. The full reasoning and the recovery paths it unlocks are in [Stage 19](../operations/19-credentials.md#stage-19--credentials--key-management).
 
 > A trap worth naming: guides often add `--vga serial0` here, which blanks the graphical console on an ISO-installed Ubuntu (the installer doesn't configure a serial console). We keep the default VGA *and* add `serial0`, plus the grub change in 8.4c — so both consoles work.
 
@@ -173,7 +173,7 @@ Irreversible: 9000 can no longer be started or edited as a VM. Everything from h
 
 Optional but cheap insurance — back the template up once, so a future rebuild is a restore instead of redoing all of Stage 8:
 ```bash
-vzdump 9000 --storage usb-backup --compress zstd     # after Stage 14.2 sets up the drive
+vzdump 9000 --storage usb-backup --compress zstd     # after Stage 15.2 sets up the drive
 ```
 
 ## 8.7 Verify before you build on it
@@ -218,7 +218,7 @@ qm set 9001 --scsi0 apps:0,import-from=/var/lib/vz/template/iso/noble-server-clo
 qm set 9001 --ide2 apps:cloudinit --boot order='scsi0'
 qm set 9001 --ciuser devops --sshkeys /root/.ssh/id_ed25519.pub \
   --nameserver 192.168.0.1 --searchdomain lan --ipconfig0 ip=dhcp
-qm set 9001 --cipassword '<strong password>'   # console safety net — Stage 18.4
+qm set 9001 --cipassword '<strong password>'   # console safety net — Stage 19.4
 qm disk resize 9001 scsi0 32G
 qm template 9001
 ```

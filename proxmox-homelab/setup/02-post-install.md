@@ -1,6 +1,6 @@
 # Stage 2 — Post-install (both nodes)
 
-*Part of the [waa Proxmox homelab guide](../README.md).*
+*Part of the [Proxmox homelab guide](../README.md).*
 
 ## 2.1 Switch to the No-Subscription repositories
 
@@ -42,10 +42,11 @@ The repo ships a small set of host-side scripts — a one-command health check, 
 apt install -y git smartmontools
 mkdir -p /root/src && cd /root/src
 git clone https://github.com/florin-rotaru-md/portable-dotnet-architecture
+chmod +x install-scripts.sh
 cd portable-dotnet-architecture/proxmox-homelab/scripts
 ./install-scripts.sh
 ```
 
 This installs them into `/usr/local/sbin` (so `cluster-health` works from anywhere) and schedules the recurring ones via `/etc/cron.d/pve-helper-scripts`. To update later: `cd /root/src/portable-dotnet-architecture && git pull && proxmox-homelab/scripts/install-scripts.sh`.
 
-Right now, most `cluster-health` lines will be warnings — no cluster, no pools, no replication yet. That's expected; it becomes the daily "is everything fine" command once the build reaches Stage 12. Run it after each stage from here on and watch warnings turn into `[ OK ]` lines as the pieces come up.
+Right now, most `cluster-health` lines will be warnings — no cluster, no pools, no replication yet. That's expected; it becomes the daily "is everything fine" command once the build reaches Stage 13. Run it after each stage from here on and watch warnings turn into `[ OK ]` lines as the pieces come up.

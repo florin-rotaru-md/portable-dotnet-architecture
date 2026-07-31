@@ -1,10 +1,10 @@
 # Stage 11 — WAL streaming to the QDevice (RPO: from ~1 minute to seconds)
 
-*Part of the [waa Proxmox homelab guide](../README.md).*
+*Part of the [Proxmox homelab guide](../README.md).*
 
 [Stage 10](10-replication.md)'s `*/1` schedule is the floor for VM-level replication: an unplanned failover loses up to ~a minute of writes, and [16.4](16-failover.md#164-what-failover-does-not-cover) says so honestly. This stage shrinks that window to **seconds** without touching the failover model: Postgres streams its write-ahead log to a receiver on the QDevice, continuously. When a node dies, HA still restarts 1030 from the ZFS replica exactly as before — but the seconds the replica is missing now exist on a third machine, and [scenario G](../backup/15-backup-restore.md#g-replaying-the-last-seconds-after-a-failover-wal-from-the-qdevice) replays them.
 
-Why this variant and not a hot standby or synchronous replication: the stream is **event-driven and one-directional** — no writes means nothing flows (a few keepalive bytes), so it adds no pressure to either node, day or night. There's no promote/failback machinery to operate, no second database to keep in your head, and a receiver outage degrades you back to exactly today's RPO instead of blocking writes. The QDevice — a mini PC with a Core Ultra 5 225U, 16GB DDR5 and a 2TB NVMe — takes the entire cost, and barely notices: WAL at waa's scale is megabytes per day against two terabytes of disk.
+Why this variant and not a hot standby or synchronous replication: the stream is **event-driven and one-directional** — no writes means nothing flows (a few keepalive bytes), so it adds no pressure to either node, day or night. There's no promote/failback machinery to operate, no second database to keep in your head, and a receiver outage degrades you back to exactly today's RPO instead of blocking writes. The QDevice — a mini PC with a Core Ultra 5 225U, 16GB DDR5 and a 2TB NVMe — takes the entire cost, and barely notices: WAL at this scale is megabytes per day against two terabytes of disk.
 
 ## 11.1 Enable it on the database side
 

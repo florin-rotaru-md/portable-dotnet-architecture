@@ -1,6 +1,6 @@
 # Stage 5 — The `apps` and `db` ZFS pools (both nodes)
 
-*Part of the [waa Proxmox homelab guide](../README.md).*
+*Part of the [Proxmox homelab guide](../README.md).*
 
 ⚠️ Pool names must be **identical** on both nodes — replication matches on pool name, character for character.
 

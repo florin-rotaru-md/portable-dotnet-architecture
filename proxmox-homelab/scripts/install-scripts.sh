@@ -23,7 +23,7 @@ cat > /etc/cron.d/pve-helper-scripts << 'EOF'
 MAILTO=root
 
 # 02:40 host-config archive (both nodes) — after the 02:15 in-VM pg dump,
-# before the 03:00 vzdump and the 04:00 offsite sync (the 14.5 ordering chain)
+# before the 03:00 vzdump and the 04:00 offsite sync (the 15.5 ordering chain)
 40 2 * * * root /usr/local/sbin/pve-config-backup >/dev/null
 
 # Morning sweep: cluster health, then backup freshness once the offsite

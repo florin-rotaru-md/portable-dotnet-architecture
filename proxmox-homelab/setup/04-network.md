@@ -1,6 +1,6 @@
 # Stage 4 — Network interfaces
 
-*Part of the [waa Proxmox homelab guide](../README.md).*
+*Part of the [Proxmox homelab guide](../README.md).*
 
 All of this is done from the Proxmox UI: select the node → **System → Network**.
 

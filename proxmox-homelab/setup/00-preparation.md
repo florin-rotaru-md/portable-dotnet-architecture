@@ -1,6 +1,6 @@
 # Stage 0 — Preparation
 
-*Part of the [waa Proxmox homelab guide](../README.md).*
+*Part of the [Proxmox homelab guide](../README.md).*
 
 ## 0.1 BIOS
 
