@@ -22,7 +22,7 @@ Assume below you're replacing **pve2**. Replacing pve1 is symmetric.
 
 ```bash
 # On-demand backup of everything — you have replication and this is still worth 10 minutes
-vzdump 1010 1020 1030 1040 --storage usb-backup --mode snapshot --compress zstd
+vzdump 1020 1021 1022 1023 --storage usb-backup --mode snapshot --compress zstd
 
 # Write down the config you'll need to recreate
 cat /etc/pve/corosync.conf | grep -A4 "node {"
@@ -45,7 +45,7 @@ Replication jobs pointing at a node that's about to disappear will error forever
 
 ```bash
 pvesr status                  # note the job IDs targeting pve2
-pvesr delete 1020-0 --force   # repeat for each job
+pvesr delete 1021-0 --force   # repeat for each job
 ```
 
 HA config keys off node names too. If you used HA groups restricted to specific nodes, edit them now (Datacenter → HA → Groups). Plain HA resources without groups need no change.
@@ -109,7 +109,7 @@ corosync-cfgtool -s           # both rings OK
 
 ### 7. Recreate replication
 
-VM → **Replication → Add** → target: the new node → the schedules from Stage 12 (`*/1` for 1030, `*/5` for 1020, `*/15` for 1010, `*/30` for 1040).
+VM → **Replication → Add** → target: the new node → the schedules from Stage 12 (`*/1` for 1022, `*/5` for 1021, `*/15` for 1020, `*/30` for 1023).
 
 The first run is a **full transfer**, not a delta — every VM disk crosses the wire. Over the 10G direct link expect roughly 10-20 minutes for a few hundred GB; the Postgres disk dominates. VMs keep running throughout.
 
@@ -120,8 +120,8 @@ pvesr status                  # watch until all jobs report OK
 ### 8. Re-add HA and rebalance
 
 ```bash
-ha-manager add vm:1020 --state started
-ha-manager add vm:1030 --state started
+ha-manager add vm:1021 --state started
+ha-manager add vm:1022 --state started
 ha-manager status
 ```
 
@@ -166,8 +166,8 @@ Then run the real test — the one that proves the replacement actually restored
 
 ```bash
 # Live-migrate a VM to the new node and back
-qm migrate 1020 pve2 --online
-qm migrate 1020 pve1 --online
+qm migrate 1021 pve2 --online
+qm migrate 1021 pve1 --online
 ```
 
 And when you have a maintenance window, repeat test 3 from Stage 18.6 (hard kill) against the new node.

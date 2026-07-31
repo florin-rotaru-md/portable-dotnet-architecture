@@ -123,11 +123,11 @@ postgres_backup_minute: "15"
 # ── WAL streaming to a third box (optional) ────────────────────────────────────
 # Streams the write-ahead log to an always-on receiver (pg_receivewal), so an
 # unplanned failover loses seconds instead of the VM-replication interval.
-# Receiver setup + the recovery procedure: proxmox-homelab/ha/10b-wal-stream.md
+# Receiver setup + the recovery procedure: proxmox-homelab/ha/13-wal-stream.md
 postgres_wal_stream_enabled: false
 postgres_wal_stream_user: "walreceiver"
 postgres_wal_stream_slot: "wal_archive"
-# The receiver's address as a CIDR, e.g. "192.168.0.5/32" (the QDevice)
+# The receiver's address as a CIDR, e.g. "192.168.0.13/32" (the QDevice)
 postgres_wal_stream_cidr: ""
 # Safety valve: max WAL retained for a disconnected receiver, so a dead
 # receiver breaks the stream instead of filling the database disk.

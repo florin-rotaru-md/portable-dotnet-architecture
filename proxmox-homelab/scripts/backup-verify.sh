@@ -19,14 +19,14 @@
 
 set -uo pipefail
 
-VMS="1010 1020 1030 1040"
+VMS="1020 1021 1022 1023"
 CONFIG_HOSTS="pve1 pve2"
 MAX_AGE_H=26                    # nightly jobs → anything older than ~a day is stale
 MIN_SIZE_MB=100                 # a vzdump smaller than this is almost certainly broken
 USB_MOUNT=/mnt/usb-backup
 RCLONE_REMOTE=digi-crypt:
 RCLONE_LOG=/var/log/rclone-backup.log
-PG_VM_IP=192.168.0.30
+PG_VM_IP=192.168.0.22
 PG_DUMP_DIR=/opt/postgres/backups
 
 QUIET=0
@@ -141,7 +141,7 @@ if [ -z "$PG_NEWEST_TS" ]; then
 else
     PG_AGE_H=$(( ($(date +%s) - PG_NEWEST_TS) / 3600 ))
     if [ "$PG_AGE_H" -gt "$MAX_AGE_H" ]; then
-        fail "pg-dump: newest dump is ${PG_AGE_H}h old — the 02:15 cron on 1030 stopped (17.5)"
+        fail "pg-dump: newest dump is ${PG_AGE_H}h old — the 02:15 cron on 1022 stopped (17.5)"
     else
         ok "pg-dump: ${PG_AGE_H}h old"
     fi

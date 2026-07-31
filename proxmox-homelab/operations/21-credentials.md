@@ -11,7 +11,7 @@ Three kinds of SSH material, easy to conflate, with completely different loss pr
 | What | Where it lives | What it is | If lost |
 |---|---|---|---|
 | **Your workstation's private key** (`~/.ssh/id_ed25519`) | Your PC | **Your identity.** Opens whatever it's authorized on | You knock on other doors (21.5) |
-| **control-ubuntu's private key** (`~/.ssh/id_ed25519_devops`) | VM 1010 | **Ansible's identity.** Every playbook run flows through it | Config management stops until restored |
+| **control-ubuntu's private key** (`~/.ssh/id_ed25519_devops`) | VM 1020 | **Ansible's identity.** Every playbook run flows through it | Config management stops until restored |
 | **pve1 root's private key** (`/root/.ssh/id_ed25519`) | pve1 | Injected via `--sshkeys` ([9.4](../vms/09-ubuntu-template.md#94-cloud-init-defaults)) → opens **every VM** | One less recovery path; also: guard this one, it's a skeleton key |
 | **Public keys** in `~/.ssh/authorized_keys` | Each VM's disk | **The locks, not the keys.** Travel with the disk: replicated by Stage 12, backed up by Stage 17 | Nothing — regenerate from the role |
 | **Host keys** (`/etc/ssh/ssh_host_*`) | Each VM's disk | The **server's** identity toward you — they never authenticate *you*. The cloud image ships without them (and the ISO route strips them, [9.8e](../vms/09-ubuntu-template.md#98-the-alternative-interactive-iso-install)), so every clone generates unique ones at first boot | Nothing — regenerated automatically |
@@ -58,7 +58,7 @@ If the VMs are key-only and every key is lost, SSH is a wall. But the Proxmox co
 That's what `--cipassword` on the template ([9.4](../vms/09-ubuntu-template.md#94-cloud-init-defaults)) is for: one strong password, set once, inherited by every clone, stored in the password manager. For VMs cloned before it was set:
 
 ```bash
-qm set 1020 --cipassword '<strong password>'     # per VM; takes effect next boot
+qm set 1021 --cipassword '<strong password>'     # per VM; takes effect next boot
 ```
 
 (the config change regenerates the cloud-init drive and re-triggers per-instance config — a reboot applies it; while SSH still works, `sudo passwd devops` inside the guest does it immediately)
@@ -73,7 +73,7 @@ Two properties worth being precise about:
 | You lost | Still working | The way back |
 |---|---|---|
 | **Workstation key** | control-ubuntu's key, pve1 root's key | Get in via the control VM or pve1. Generate a new pair, add the public key to `ansible_ssh_extra_public_keys`, run the playbook. Remove the old one from the list (21.6) |
-| **control-ubuntu** (the VM or its key) | Your workstation key, pve1 root's key | Restore VM 1010 from backup — its key is on the restored disk (21.2). Or rebuild it and restore `id_ed25519_devops` from the password manager |
+| **control-ubuntu** (the VM or its key) | Your workstation key, pve1 root's key | Restore VM 1020 from backup — its key is on the restored disk (21.2). Or rebuild it and restore `id_ed25519_devops` from the password manager |
 | **Every SSH key at once** | The Proxmox console + `--cipassword` | Log in on the console, re-seed `authorized_keys`, then rotate everything deliberately |
 | **Every SSH key, and no cipassword** | The hypervisor's access to the disk | Mount the zvol from pve1/pve2 and edit `authorized_keys` manually (21.4). Set the cipassword right after |
 | **Proxmox root password** | Physical access | Standard Debian recovery: boot with `init=/bin/bash` from GRUB, `passwd`, reboot. Then store it properly |

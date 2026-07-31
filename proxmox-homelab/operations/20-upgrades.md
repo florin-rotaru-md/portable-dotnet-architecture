@@ -4,7 +4,7 @@
 
 Everything up to here protects you from hardware failing. This stage is about the other half of the risk: **planned changes you make yourself**. A botched database upgrade takes the app down just as effectively as a dead node, and unlike a dead node it has no automatic recovery — HA can't fail over from a bad schema.
 
-**Nothing is installed on these VMs by hand.** Postgres, PostGIS, `pg_hba.conf`, the firewall rule, the app DB user and the nightly dump job all come from the `postgres` role in [`native/infra/ansible`](../../native/infra/ansible/roles/postgres/tasks/main.yml), driven from control-ubuntu (1010). That constrains the procedure below in a specific way: **Ansible owns packages and configuration, but it does not own the data directory.** A major upgrade is therefore a hybrid — the playbook installs the new version and converges the config, and `pg_upgradecluster` does the one thing the playbook can't. Doing it by hand instead means the next `bootstrap.yml` run silently disagrees with reality.
+**Nothing is installed on these VMs by hand.** Postgres, PostGIS, `pg_hba.conf`, the firewall rule, the app DB user and the nightly dump job all come from the `postgres` role in [`native/infra/ansible`](../../native/infra/ansible/roles/postgres/tasks/main.yml), driven from control-ubuntu (1020). That constrains the procedure below in a specific way: **Ansible owns packages and configuration, but it does not own the data directory.** A major upgrade is therefore a hybrid — the playbook installs the new version and converges the config, and `pg_upgradecluster` does the one thing the playbook can't. Doing it by hand instead means the next `bootstrap.yml` run silently disagrees with reality.
 
 ## 20.1 Minor and major upgrades are different operations
 
@@ -45,7 +45,7 @@ The second one carries the weight; the first just keeps rehearsal clones and fre
 **Verify it's actually working** — do this once after bootstrap, then whenever release notes make you curious:
 
 ```bash
-# on 1030: what unattended-upgrades would do right now
+# on 1022: what unattended-upgrades would do right now
 sudo unattended-upgrade --dry-run -d 2>&1 | grep -i postgres
 
 # what it has done — the dpkg log is the definitive record
@@ -73,19 +73,19 @@ This is the single highest-value step in the whole stage, and the architecture a
 
 ```bash
 # on the node holding the archive
-qmrestore /mnt/usb-backup/dump/vzdump-qemu-1030-<date>.vma.zst 1130 \
+qmrestore /mnt/usb-backup/dump/vzdump-qemu-1022-<date>.vma.zst 1122 \
   --storage apps --unique
 ```
 
-⚠️ **The clone must not keep `192.168.0.30`.** Cloud-init gave 1030 a static address; a second VM claiming it takes the real database offline. Either uncheck Hardware → Network Device → *Connected* and work entirely through the console, or — better — set a spare IP via Cloud-init (say `192.168.0.130`) before first boot and point a scratch inventory entry at it:
+⚠️ **The clone must not keep `192.168.0.22`.** Cloud-init gave 1022 a static address; a second VM claiming it takes the real database offline. Either uncheck Hardware → Network Device → *Connected* and work entirely through the console, or — better — set a spare IP via Cloud-init (say `192.168.0.122`) before first boot and point a scratch inventory entry at it:
 
 ```ini
 # native/infra/ansible/inventory/hosts.ini — temporary, do not commit
 [pgrehearsal]
-192.168.0.130 ansible_user=devops ansible_private_key_file=~/.ssh/id_ed25519_devops
+192.168.0.122 ansible_user=devops ansible_private_key_file=~/.ssh/id_ed25519_devops
 ```
 
-The second option is worth the extra five minutes: it rehearses the *Ansible* path, not just the `pg_upgradecluster` invocation, which is where the surprises actually live. Run the whole procedure below against `--limit pgrehearsal`, write down how long each step took, then `qm stop 1130 && qm destroy 1130` and delete the inventory entry.
+The second option is worth the extra five minutes: it rehearses the *Ansible* path, not just the `pg_upgradecluster` invocation, which is where the surprises actually live. Run the whole procedure below against `--limit pgrehearsal`, write down how long each step took, then `qm stop 1122 && qm destroy 1122` and delete the inventory entry.
 
 ### Step 1. Pre-flight
 
@@ -101,7 +101,7 @@ The good news is that the role parameterises exactly this — `postgresql-{{ pos
 ansible postgres -m shell -a 'apt-cache policy postgresql-19-postgis-3' -b
 ```
 
-Confirm nothing else has crept in. Nested quoting makes this miserable through `ansible -a`, so run it over SSH on 1030 — it's read-only:
+Confirm nothing else has crept in. Nested quoting makes this miserable through `ansible -a`, so run it over SSH on 1022 — it's read-only:
 
 ```bash
 sudo -u postgres psql -Atc \
@@ -125,7 +125,7 @@ Want ≥ 2× the data directory free. The 640GB disk from [Stage 10](../vms/10-v
 | Layer | Command | Recovers from | Cost |
 |---|---|---|---|
 | **Logical dump** | `ansible postgres -b --become-user postgres -m command -a '/opt/postgres/scripts/pg-backup.sh'` | Anything, including "PG19 starts fine but the data is wrong". Version-independent — the per-database `-Fc` dumps restore into any Postgres | Minutes |
-| **VM backup** | `vzdump 1030 --storage usb-backup --mode snapshot --compress zstd` | The whole VM being unrecoverable. Survives the VM being destroyed | Minutes, off-VM |
+| **VM backup** | `vzdump 1022 --storage usb-backup --mode snapshot --compress zstd` | The whole VM being unrecoverable. Survives the VM being destroyed | Minutes, off-VM |
 | **VM snapshot** | see below | Everything else — this is your actual undo button | Seconds to take, seconds to roll back |
 
 The logical dump is the role's own nightly script from [17.5](../backup/17-backup-restore.md#175-a-fourth-tier-for-the-database), run on demand — don't hand-roll a `pg_dumpall` next to it. It writes globals plus one custom-format dump per database into `/opt/postgres/backups`, which lives on the VM disk and is therefore captured by the `vzdump` in the next row.
@@ -136,19 +136,19 @@ The snapshot has cluster interactions, so take it deliberately:
 # a cleanly stopped database removes all ambiguity
 ansible postgres -m service -a 'name=postgresql state=stopped' -b
 
-# on the Proxmox node holding 1030
-qm snapshot 1030 pre-pg19 --description "postgres 18 -> 19, before pg_upgradecluster"
+# on the Proxmox node holding 1022
+qm snapshot 1022 pre-pg19 --description "postgres 18 -> 19, before pg_upgradecluster"
 
 ansible postgres -m service -a 'name=postgresql state=started' -b
 ```
 
 `qemu-guest-agent` ([9.2](../vms/09-ubuntu-template.md#92-inject-the-guest-agent)) freezes the filesystem for a live snapshot, so a running snapshot would be consistent too — but stopping the service costs thirty seconds and makes the recovery path unambiguous. Do the cheap thing.
 
-> **HA will fight you if you stop the *VM*.** 1030 is an HA resource with desired state `started`; a `qm stop` gets undone by the HA manager within seconds. Before anything that stops the VM (including a rollback), tell HA first:
+> **HA will fight you if you stop the *VM*.** 1022 is an HA resource with desired state `started`; a `qm stop` gets undone by the HA manager within seconds. Before anything that stops the VM (including a rollback), tell HA first:
 > ```bash
-> ha-manager set vm:1030 --state stopped
+> ha-manager set vm:1022 --state stopped
 > # ... do the work ...
-> ha-manager set vm:1030 --state started
+> ha-manager set vm:1022 --state started
 > ```
 > Stopping the *postgres service* inside the VM never involves HA — it only watches the VM.
 
@@ -193,7 +193,7 @@ Stop the app slots first, so nothing writes to a database that's about to be fro
 ansible app -m service -a 'name=myapp-blue.service state=stopped' -b
 ```
 
-Then, on 1030 — this one is interactive enough to be worth doing over SSH rather than through Ansible, because you want to read its output as it goes:
+Then, on 1022 — this one is interactive enough to be worth doing over SSH rather than through Ansible, because you want to read its output as it goes:
 
 ```bash
 sudo pg_upgradecluster -m upgrade 18 main
@@ -215,7 +215,7 @@ Now port 5432 belongs to PG19, so this run also re-asserts the app role, its pas
 
 ### Step 7. Post-upgrade database work
 
-Two things `pg_upgrade` deliberately does not do. Both on 1030, over SSH:
+Two things `pg_upgrade` deliberately does not do. Both on 1022, over SSH:
 
 ```bash
 # 1. Statistics are NOT carried forward. Without this, the first queries hit
@@ -236,7 +236,7 @@ The `--analyze-in-stages` step is the classic post-upgrade trap: everything look
 
 ### Step 8. Verify, then let traffic back in
 
-On 1030:
+On 1022:
 
 ```bash
 pg_lsclusters                                   # 19/main online on 5432, 18/main down
@@ -269,7 +269,7 @@ ansible postgres -b -m apt -a 'name=postgresql-18,postgresql-18-postgis-3 state=
 
 ```bash
 # on the Proxmox node — snapshots are not free, and this one blocks nothing but disk
-qm delsnapshot 1030 pre-pg19
+qm delsnapshot 1022 pre-pg19
 ```
 
 > **Don't leave the snapshot forever.** A VM snapshot on ZFS pins blocks the same way a replication snapshot does ([Stage 12](../ha/12-replication.md#stage-12--zfs-replication)) — space consumption grows with everything the database writes afterward. Deleting it is the last step of the upgrade, not an optional tidy-up.
@@ -281,9 +281,9 @@ qm delsnapshot 1030 pre-pg19
 **Within the maintenance window, before any new writes** — the snapshot, and it's near-instant:
 
 ```bash
-ha-manager set vm:1030 --state stopped
-qm rollback 1030 pre-pg19
-ha-manager set vm:1030 --state started
+ha-manager set vm:1022 --state stopped
+qm rollback 1022 pre-pg19
+ha-manager set vm:1022 --state started
 pvesr status            # expect the next run to be a full transfer, see below
 ```
 
@@ -307,7 +307,7 @@ Then re-run the playbook with the reverted variable so config, the app role and 
 
 The shape generalizes: *rehearse on a restored copy → snapshot → change → verify at the application level → soak → delete the snapshot*. What varies is the mechanism — and, importantly, **who owns the change.**
 
-> **The ownership boundary.** The two Proxmox hosts are managed by hand; everything inside the VMs comes from `native/infra/ansible`. That's why Stages 16 and 19 are shell procedures on the node while Stage 20 is a variable bump plus a playbook run. Keep the boundary clean: don't hand-edit `/etc/postgresql/*` on 1030, and don't try to bring the hypervisors under Ansible for the sake of symmetry — two nodes configured twice a decade is not a fleet.
+> **The ownership boundary.** The two Proxmox hosts are managed by hand; everything inside the VMs comes from `native/infra/ansible`. That's why Stages 16 and 19 are shell procedures on the node while Stage 20 is a variable bump plus a playbook run. Keep the boundary clean: don't hand-edit `/etc/postgresql/*` on 1022, and don't try to bring the hypervisors under Ansible for the sake of symmetry — two nodes configured twice a decade is not a fleet.
 
 **Ubuntu release upgrade inside a VM** (26.04 → nn.nn): same procedure, `do-release-upgrade` in place of `pg_upgradecluster`. Upgrade the app VM and the database VM in separate windows, never together — with two changes in flight you can't tell which one broke. There's one interaction specific to this role: the PGDG apt line is templated from `ansible_facts['distribution_release']`, so it still says `noble` after the OS moves on. Re-run `bootstrap.yml --limit postgres` afterwards to rewrite `/etc/apt/sources.list.d/pgdg.list` for the new release, before the next `apt update` starts resolving against a stale suite.
 
@@ -321,4 +321,4 @@ The shape generalizes: *rehearse on a restored copy → snapshot → change → 
 
 Doing it the other way — upgrading pve1 first and then trying to migrate onto the un-upgraded pve2 — strands the VMs on one node. Same root cause as the version-skew warning in [16.2](16-maintenance.md#162-returning-a-node-after-a-long-outage-days-to-weeks). For a major PVE release, read the official upgrade notes first; for point releases this is all it takes.
 
-**Application deploys** need none of this. The app role already ships blue/green: `deploy.sh` builds into the idle slot, `health-check.sh` gates it, `switch-nginx.sh` flips the upstream, and `rollback.sh` flips it back. Rolling back a bad release is a script on 1020, not a hypervisor operation — and if it ever isn't, the problem is in the deploy pipeline, not in Proxmox.
+**Application deploys** need none of this. The app role already ships blue/green: `deploy.sh` builds into the idle slot, `health-check.sh` gates it, `switch-nginx.sh` flips the upstream, and `rollback.sh` flips it back. Rolling back a bad release is a script on 1021, not a hypervisor operation — and if it ever isn't, the problem is in the deploy pipeline, not in Proxmox.

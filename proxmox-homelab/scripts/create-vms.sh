@@ -20,10 +20,10 @@ GATEWAY=192.168.0.1
 
 # VMID  NAME               STORAGE  CORES  RAM_MB  DISK(- = as cloned)  IP
 VMS="\
-1010  control-ubuntu     apps  2  4096   -     192.168.0.10
-1020  app-ubuntu         apps  8  8192   128G  192.168.0.20
-1030  postgres-ubuntu    db    8  32768  640G  192.168.0.30
-1040  monitoring-ubuntu  apps  2  4096   320G  192.168.0.40"
+1020  control-ubuntu     apps  2  4096   -     192.168.0.20
+1021  app-ubuntu         apps  8  8192   128G  192.168.0.21
+1022  postgres-ubuntu    db    8  32768  640G  192.168.0.22
+1023  monitoring-ubuntu  apps  2  4096   320G  192.168.0.23"
 
 ok()      { printf '[ OK ] %s\n' "$1"; }
 skip()    { printf '[SKIP] %s\n' "$1"; }
@@ -66,7 +66,7 @@ if confirm "Start all four now (first boot: cloud-init sets IPs and grows the di
         [ -n "$id" ] || continue
         [ "$(qm status "$id" 2>/dev/null)" = "status: stopped" ] && qm start "$id" >/dev/null && ok "$id ($name) started"
     done <<< "$VMS"
-    echo "Give first boot a minute, then continue Stage 10 (control node, SSH keys): ssh devops@192.168.0.10"
+    echo "Give first boot a minute, then continue Stage 10 (control node, SSH keys): ssh devops@192.168.0.20"
 else
-    echo "Created, not started. Start them from the UI or: qm start 1010 (etc.)"
+    echo "Created, not started. Start them from the UI or: qm start 1020 (etc.)"
 fi

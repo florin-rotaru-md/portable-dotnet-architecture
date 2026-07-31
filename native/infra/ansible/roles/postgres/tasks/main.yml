@@ -96,7 +96,7 @@
 # ── WAL streaming to an external receiver (optional) ──────────────────────────
 # Lets an always-on third box run pg_receivewal against a physical replication
 # slot, holding the last seconds of WAL that a VM-level failover would lose.
-# Receiver setup + recovery procedure: proxmox-homelab/ha/10b-wal-stream.md
+# Receiver setup + recovery procedure: proxmox-homelab/ha/13-wal-stream.md
 
 - name: Validate WAL stream secret
   assert:

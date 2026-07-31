@@ -47,7 +47,7 @@ Attach the drive to **pve1** and leave it there. Backups run cluster-wide from w
 | Node | pve1 (where the USB drive is) | |
 | Storage | `usb-backup` | |
 | Schedule | `03:00` daily | Quiet hours, and deliberately **after** the 02:15 in-VM Postgres dump ([17.5](#175-a-fourth-tier-for-the-database)) so the archive contains a fresh one — still well clear of the 04:00 offsite sync |
-| Selection mode | All (or explicitly 1010, 1020, 1030, 1040) | "All" automatically picks up VMs you add later |
+| Selection mode | All (or explicitly 1020, 1021, 1022, 1023) | "All" automatically picks up VMs you add later |
 | Mode | **Snapshot** | The VM keeps running. With `qemu-guest-agent` installed (Stage 9.2) Proxmox freezes the filesystem for the instant the snapshot is taken, so the image is filesystem-consistent, not just crash-consistent |
 | Compression | ZSTD | Best ratio-to-speed on this hardware |
 | Retention | keep-daily 7, keep-weekly 4, keep-monthly 3 | ~14 restore points across three months, without unbounded growth |
@@ -62,17 +62,17 @@ Two extras worth setting:
 Always take one before a migration to new hardware, a major upgrade, or a schema change:
 
 ```bash
-vzdump 1030 --storage usb-backup --mode snapshot --compress zstd
+vzdump 1022 --storage usb-backup --mode snapshot --compress zstd
 ```
 
 All four at once:
 ```bash
-vzdump 1010 1020 1030 1040 --storage usb-backup --mode snapshot --compress zstd
+vzdump 1020 1021 1022 1023 --storage usb-backup --mode snapshot --compress zstd
 ```
 
 ## 17.5 A fourth tier for the database
 
-A VM image restores the whole machine — it cannot give you back one accidentally deleted table. **This tier already exists and needs no work here:** the Ansible `postgres` role installs `/opt/postgres/scripts/pg-backup.sh` and a nightly cron for it, so it lands on 1030 the moment you run `bootstrap.yml`.
+A VM image restores the whole machine — it cannot give you back one accidentally deleted table. **This tier already exists and needs no work here:** the Ansible `postgres` role installs `/opt/postgres/scripts/pg-backup.sh` and a nightly cron for it, so it lands on 1022 the moment you run `bootstrap.yml`.
 
 What it does each night at **02:15** (`postgres_backup_hour` / `postgres_backup_minute` in group_vars — the schedule is policy, so it lives next to the other policy, not hardcoded in the role), as the `postgres` user:
 
@@ -131,15 +131,15 @@ Backups in the UI: select the **storage** in the tree (not the VM) → **Backups
 Use this when you want to inspect a backup, recover files, or test that a restore works, without touching the running VM.
 
 ```bash
-qmrestore /mnt/usb-backup/dump/vzdump-qemu-1020-2026_07_29-03_00_01.vma.zst 1120 \
+qmrestore /mnt/usb-backup/dump/vzdump-qemu-1021-2026_07_29-03_00_01.vma.zst 1121 \
   --storage apps --unique
 ```
 
-- `1120` — a free VM ID, not the original
+- `1121` — a free VM ID, not the original
 - `--unique` — **important**: regenerates the MAC address so the clone doesn't collide with the still-running original
-- After it finishes, change the IP in **Cloud-Init** before starting it, or it will fight the original for `192.168.0.20`
+- After it finishes, change the IP in **Cloud-Init** before starting it, or it will fight the original for `192.168.0.21`
 
-Copy out what you need, then `qm stop 1120 && qm destroy 1120`.
+Copy out what you need, then `qm stop 1121 && qm destroy 1121`.
 
 ### B. Restore OVER an existing VM (in place)
 
@@ -147,17 +147,17 @@ When the VM itself is broken and you want it back as it was. This **destroys the
 
 ```bash
 # 1. Take the VM out of HA so it doesn't get restarted mid-restore
-ha-manager remove vm:1020
+ha-manager remove vm:1021
 
 # 2. Stop it
-qm stop 1020
+qm stop 1021
 
 # 3. Restore
-qmrestore /mnt/usb-backup/dump/vzdump-qemu-1020-2026_07_29-03_00_01.vma.zst 1020 \
+qmrestore /mnt/usb-backup/dump/vzdump-qemu-1021-2026_07_29-03_00_01.vma.zst 1021 \
   --storage apps --force
 
 # 4. Start and verify
-qm start 1020
+qm start 1021
 ```
 
 Or from the UI: storage → Backups → select archive → **Restore** → target VM ID → tick *Force* → Restore.
@@ -170,8 +170,8 @@ Same command, run from that node's shell, with the archive reachable from it. If
 
 ```bash
 # on pve2
-scp root@10.10.10.1:/mnt/usb-backup/dump/vzdump-qemu-1030-2026_07_29-03_00_01.vma.zst /var/lib/vz/dump/
-qmrestore /var/lib/vz/dump/vzdump-qemu-1030-2026_07_29-03_00_01.vma.zst 1030 --storage db --force
+scp root@10.10.10.1:/mnt/usb-backup/dump/vzdump-qemu-1022-2026_07_29-03_00_01.vma.zst /var/lib/vz/dump/
+qmrestore /var/lib/vz/dump/vzdump-qemu-1022-2026_07_29-03_00_01.vma.zst 1022 --storage db --force
 ```
 
 ### D. Recovering individual files
@@ -184,8 +184,8 @@ For the database specifically, the nightly dumps from [17.5](#175-a-fourth-tier-
 
 ```bash
 rclone ls digi-crypt:dump                                # find the archive
-rclone copy digi-crypt:dump/vzdump-qemu-1030-2026_07_29-03_00_01.vma.zst /mnt/usb-backup/dump/
-qmrestore /mnt/usb-backup/dump/vzdump-qemu-1030-2026_07_29-03_00_01.vma.zst 1030 --storage db --force
+rclone copy digi-crypt:dump/vzdump-qemu-1022-2026_07_29-03_00_01.vma.zst /mnt/usb-backup/dump/
+qmrestore /mnt/usb-backup/dump/vzdump-qemu-1022-2026_07_29-03_00_01.vma.zst 1022 --storage db --force
 ```
 
 Decryption is transparent — rclone handles it as long as the `digi-crypt` remote is configured with the right passwords.
@@ -205,17 +205,17 @@ Note what's *not* in this list: the frontend, which lives on Cloudflare and was 
 
 ### G. Replaying the last seconds after a failover (WAL from the QDevice)
 
-Requires [Stage 13](../ha/13-wal-stream.md). The situation: a node died, HA restarted 1030 from a replica up to a minute old, and that minute held writes that matter. The missing seconds exist in the QDevice's WAL archive — the work is standing up a scratch database that replays to the moment of death, then taking what you need from it.
+Requires [Stage 13](../ha/13-wal-stream.md). The situation: a node died, HA restarted 1022 from a replica up to a minute old, and that minute held writes that matter. The missing seconds exist in the QDevice's WAL archive — the work is standing up a scratch database that replays to the moment of death, then taking what you need from it.
 
 **Build the replayed copy:**
 
 ```bash
-# 1. Restore last night's 1030 archive to a spare ID — the base must be OLDER
+# 1. Restore last night's 1022 archive to a spare ID — the base must be OLDER
 #    than the failover, on the same timeline; the 03:00 vzdump qualifies
-qmrestore /mnt/usb-backup/dump/vzdump-qemu-1030-<last-night>.vma.zst 1130 --storage apps --unique
-# give it a spare IP via Cloud-Init (say .130) before starting — 20.3 step 0 shows this pattern
+qmrestore /mnt/usb-backup/dump/vzdump-qemu-1022-<last-night>.vma.zst 1122 --storage apps --unique
+# give it a spare IP via Cloud-Init (say .122 — spare ID 11NN takes spare IP .1NN) before starting — 20.3 step 0 shows this pattern
 
-# 2. Inside 1130: stop postgres, bring the WAL over, arm recovery
+# 2. Inside 1122: stop postgres, bring the WAL over, arm recovery
 systemctl stop postgresql
 rsync -a walarchive@<qdevice-ip>:/var/lib/wal-archive/ /var/lib/postgresql/wal-replay/
 chown -R postgres:postgres /var/lib/postgresql/wal-replay
@@ -229,10 +229,10 @@ tail -f /var/log/postgresql/*.log     # watch for "archive recovery complete"
 
 **Then pick the path that matches what happened since the failover:**
 
-- **The live 1030 has already taken new writes** (the normal case — HA had it back in ~3 minutes): extract the delta from 1130 — the rows stamped in the lost window — and merge them into the live database (`pg_dump -t <table>` + `INSERT … ON CONFLICT`, or by hand for a handful of rows). Merging is an application-level judgment call: inserts are mechanical, updated rows need a decision about which version wins. Then destroy 1130.
-- **The live 1030 has no new writes yet** (you stopped the app slots fast, or the outage is ongoing): don't merge — swap. Stop the app, verify 1130's row counts against live, and promote the replayed copy to be the real 1030 (restore it over per [scenario B](#b-restore-over-an-existing-vm-in-place), or re-IP it). Zero loss, no reconciliation.
+- **The live 1022 has already taken new writes** (the normal case — HA had it back in ~3 minutes): extract the delta from 1122 — the rows stamped in the lost window — and merge them into the live database (`pg_dump -t <table>` + `INSERT … ON CONFLICT`, or by hand for a handful of rows). Merging is an application-level judgment call: inserts are mechanical, updated rows need a decision about which version wins. Then destroy 1122.
+- **The live 1022 has no new writes yet** (you stopped the app slots fast, or the outage is ongoing): don't merge — swap. Stop the app, verify 1122's row counts against live, and promote the replayed copy to be the real 1022 (restore it over per [scenario B](#b-restore-over-an-existing-vm-in-place), or re-IP it). Zero loss, no reconciliation.
 
-**The same recipe is general PITR:** add `recovery_target_time = '2026-07-30 14:31:50+03'` (and `recovery_target_action = 'promote'`) next to `restore_command`, and 1130 stands up as of any second the 7-day archive covers — the "undo the 14:32 mistake" path, with the damage inspected on a scratch VM before you commit to anything.
+**The same recipe is general PITR:** add `recovery_target_time = '2026-07-30 14:31:50+03'` (and `recovery_target_action = 'promote'`) next to `restore_command`, and 1122 stands up as of any second the 7-day archive covers — the "undo the 14:32 mistake" path, with the damage inspected on a scratch VM before you commit to anything.
 
 ## 17.8 Post-restore checklist
 
@@ -246,16 +246,16 @@ pvesr delete <jobid>
 # then re-add from the UI: VM → Replication → Add
 
 # 2. HA — re-add if you removed it in step B.1
-ha-manager add vm:1020 --state started
+ha-manager add vm:1021 --state started
 ha-manager status
 
 # 3. Guest agent reporting (confirms the VM booted properly)
-qm agent 1020 ping
+qm agent 1021 ping
 ```
 
 Also check inside the VM:
 - The IP is what you expect (`ip a`) — a restore preserves the cloud-init config, but a `--unique` restore changes the MAC, which matters if anything upstream keys off it
-- `cloudflared` is running, if this is 1020
+- `cloudflared` is running, if this is 1021
 - Postgres accepted the restore and recovered cleanly (`systemctl status postgresql`, then check the log tail for recovery messages)
 
 ## 17.9 Restore drills

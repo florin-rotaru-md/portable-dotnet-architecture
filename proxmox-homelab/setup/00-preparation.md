@@ -30,7 +30,7 @@ No 10G switch (they're still expensive for what they'd add here). Instead: **two
 
 **Other notes:**
 - **pve1's X550 port 2 stays empty** — spare for a future third node.
-- VM addressing scheme: `.10` control, `.20` app, `.30` postgres, `.40` monitoring — all on 192.168.0.0/24.
+- Address plan, all on 192.168.0.0/24 — infrastructure low, guests from `.20` up, deliberately **above** the hosts so nothing guest-side ever sorts below a hypervisor: `.11` pve1, `.12` pve2, `.13` QDevice (any fixed IP works — the guide writes `<qdevice-ip>` where it's needed); then `.20` control (1020), `.21` app (1021), `.22` postgres (1022), `.23` monitoring (1023). **The rule: VM `10NN` lives at `.NN`** — read the ID, know the address — and scratch clones extend it: spare ID `11NN` takes spare IP `.1NN` (the upgrade rehearsal's 1122 at `.122`). The guest trio `.21`/`.22`/`.23` is the same one `native/example` and `hyper-v` use — one addressing dialect across the whole repo.
 - Keep MTU at 1500 to start. Jumbo frames (MTU 9000) are genuinely tempting on a dedicated point-to-point link like this one and carry little risk there, since nothing else shares the segment — but leave it until everything else is proven.
 - **Optional later:** a second bridge (`vmbr1`) on the 10G link with its own subnet, giving `app` and `postgres` a second NIC each so DB traffic runs at 10G even when the VMs are split across nodes. Extra complexity for a rare case — skip it for now.
 

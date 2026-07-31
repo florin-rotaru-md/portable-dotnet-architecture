@@ -11,7 +11,7 @@
 # /var/log/restore-drill.log. On failure the drill VM is KEPT for inspection.
 #
 # Usage: restore-drill [vmid] [--keep]
-#   vmid      which VM's backup to drill (default: rotates 1010/1020/1030/1040 by month)
+#   vmid      which VM's backup to drill (default: rotates 1020/1021/1022/1023 by month)
 #   --keep    don't destroy the drill VM on success (inspect it, then
 #             qm stop <id> && qm destroy <id>)
 
@@ -32,13 +32,13 @@ for a in "$@"; do
 done
 
 if [ -z "$VMID" ]; then
-    set -- 1010 1020 1030 1040
+    set -- 1020 1021 1022 1023
     shift $(( $(date +%-m) % 4 ))
     VMID=$1
     echo "No VM given — this month's rotation picks $VMID."
 fi
 
-TARGET=$((VMID + 900))          # 1010→1910, 1020→1920, 1030→1930
+TARGET=$((VMID + 900))          # 1020→1920, 1021→1921, 1022→1922, 1023→1923
 
 mountpoint -q "$(dirname "$USB_DUMP")" || { echo "FAIL: USB backup drive not mounted (17.2)" >&2; exit 2; }
 ARCHIVE=$(ls -1t "$USB_DUMP"/vzdump-qemu-"$VMID"-*.vma.zst 2>/dev/null | head -1)
