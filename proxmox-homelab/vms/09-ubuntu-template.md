@@ -31,7 +31,7 @@ qm set 9000 --scsihw virtio-scsi-single && \
 qm set 9000 --scsi0 apps:320,discard=on,ssd=1,iothread=1 && \
 qm set 9000 --cpu x86-64-v3 && \
 qm set 9000 --agent enabled=1 && \
-qm set 9000 --cdrom local:iso/ubuntu-24.04.4-live-server-amd64.iso && \
+qm set 9000 --cdrom local:iso/ubuntu-26.04-live-server-amd64.iso && \
 qm set 9000 --boot order="scsi0;ide2" && \
 qm set 9000 --bootdisk scsi0
 ```

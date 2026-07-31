@@ -29,7 +29,7 @@ Before running Terraform, complete the one-time Proxmox host setup:
 Summary:
 1. Create a Terraform API token in Proxmox
 2. Enable snippets on the `local` datastore
-3. Create the Ubuntu 24.04 cloud-init VM template (VMID 9000)
+3. Create the Ubuntu 26.04 cloud-init VM template (VMID 9000)
 4. Create the internal bridge `vmbr1` (10.10.0.0/24)
 
 ---

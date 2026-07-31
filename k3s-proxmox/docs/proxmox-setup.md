@@ -37,14 +37,14 @@ Or via web UI: **Datacenter → Storage → local → Edit → Content → add "
 
 ---
 
-## 3. Create the Ubuntu 24.04 cloud-init VM template
+## 3. Create the Ubuntu 26.04 cloud-init VM template
 
 Run the following on the **Proxmox host** (SSH as root).
 Replace `local-lvm` and `vmbr0` with your actual storage and bridge names.
 
 ```bash
-# Download Ubuntu 24.04 LTS cloud image
-wget -O /var/lib/vz/template/iso/ubuntu-24.04-cloudimg-amd64.img \
+# Download Ubuntu 26.04 LTS cloud image
+wget -O /var/lib/vz/template/iso/ubuntu-26.04-cloudimg-amd64.img \
   https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img
 
 # Create VM (VMID 9000)
@@ -59,7 +59,7 @@ qm create 9000 \
 
 # Import disk into storage pool
 qm importdisk 9000 \
-  /var/lib/vz/template/iso/ubuntu-24.04-cloudimg-amd64.img \
+  /var/lib/vz/template/iso/ubuntu-26.04-cloudimg-amd64.img \
   local-lvm
 
 # Attach the imported disk as scsi0

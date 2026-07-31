@@ -11,7 +11,7 @@ This folder gives you:
 
 ## Recommended topology
 
-Use four Ubuntu 24.04 LTS VMs (naming pattern: `{name}-{distribution}`):
+Use four Ubuntu 26.04 LTS VMs (naming pattern: `{name}-{distribution}`):
 
 | VM | Purpose | Suggested size |
 |----|---------|----------------|
@@ -49,7 +49,7 @@ Suggested addressing example:
 ## Fast path
 
 1. Create all four VMs and attach them to the same External vSwitch.
-2. Install Ubuntu 24.04 LTS on all four.
+2. Install Ubuntu 26.04 LTS on all four.
 3. In `control-ubuntu`, install Ansible and clone this repository.
 4. Copy the files from `hyper-v/files/` into `native/infra/ansible/inventory/`.
 5. Adjust IPs, domains, repository URLs, and secrets.

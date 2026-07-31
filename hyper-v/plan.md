@@ -45,7 +45,7 @@ If PostgreSQL will hold real data volume, size the postgres VM storage first. Re
 
 ## Phase 3: Base OS setup
 
-Install Ubuntu 24.04 LTS on all four VMs.
+Install Ubuntu 26.04 LTS on all four VMs.
 
 On each VM:
 

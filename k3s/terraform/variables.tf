@@ -42,7 +42,7 @@ variable "db_server_type" {
 variable "server_image" {
   description = "OS image for all servers"
   type        = string
-  default     = "ubuntu-24.04"
+  default     = "ubuntu-26.04"
 }
 
 variable "location" {
