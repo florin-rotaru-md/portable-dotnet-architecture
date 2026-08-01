@@ -86,7 +86,7 @@ qm set 9000 --searchdomain lan
 
 At each clone's first boot, cloud-init creates the `devops` user with passwordless sudo (default-user semantics), sets the IP you give it in the Cloud-Init tab, and grows the root filesystem into the clone's disk — that's Stages 10 and 11 relying on template behavior configured right here.
 
-**SSH key instead of passwords** — do this now and every clone comes up key-only:
+**SSH key instead of passwords** — and on the cloud image this is not a hardening choice, it's the only door. Canonical ships `/etc/ssh/sshd_config.d/60-cloudimg-settings.conf` with `PasswordAuthentication no` inside the image, so every clone is key-only from its first boot, long before Ansible pins the same setting. A template with no `--sshkeys` produces VMs nobody can SSH into — recoverable only through the console password below. Do this now and every clone comes up reachable:
 ```bash
 # on pve1, if you don't already have a key:
 test -f /root/.ssh/id_ed25519 || ssh-keygen -t ed25519 -N "" -f /root/.ssh/id_ed25519
@@ -101,12 +101,16 @@ test -f /root/.ssh/id_ed25519 || ssh-keygen -t ed25519 -N "" -f /root/.ssh/id_ed
 # (no chown — on the host this key belongs to root, unlike the control VM's
 #  id_ed25519_devops from native/example, which belongs to devops)
 
-qm set 9000 --sshkeys /root/.ssh/id_ed25519.pub
+# one file, every key that should reach the VMs — easier to extend later than
+# re-deriving which single .pub was used
+cat /root/.ssh/id_ed25519.pub > /root/.ssh/vm_keys.pub
+chmod 600 /root/.ssh/vm_keys.pub
+qm set 9000 --sshkeys /root/.ssh/vm_keys.pub
 ```
 
-Restoring beats regenerating whenever the pair exists: this public key is already in `authorized_keys` on every VM cloned so far, so the restored private half opens all of them immediately — a fresh pair opens nothing until it's re-seeded everywhere, and it silently invalidates the [21.1](../operations/21-credentials.md#211-inventory--what-exists-and-where-it-lives) inventory. This matters most when rebuilding pve1 after an OS-disk failure or a node replacement ([19.2 step 5](../operations/19-node-replacement.md#5-build-the-new-node) sends you through this stage), where the existing VMs and their locks are still alive.
+Add your **workstation's** public key to that file now if you have one — otherwise the first login to every clone has to happen from pve1, which is the surprise [Stage 10](10-vms.md#ssh-access--key-only-from-the-first-boot) untangles. `--sshkeys` takes a file, so appending a line and re-running the command is the whole procedure; the control VM's key joins it in [Stage 10](10-vms.md#ssh-keys--control-ubuntu--the-other-three) once 1020 exists.
 
-You can add the control VM's key later too — `--sshkeys` takes a file, so append additional public keys to it and re-run the command.
+Restoring beats regenerating whenever the pair exists: this public key is already in `authorized_keys` on every VM cloned so far, so the restored private half opens all of them immediately — a fresh pair opens nothing until it's re-seeded everywhere, and it silently invalidates the [21.1](../operations/21-credentials.md#211-inventory--what-exists-and-where-it-lives) inventory. This matters most when rebuilding pve1 after an OS-disk failure or a node replacement ([19.2 step 5](../operations/19-node-replacement.md#5-build-the-new-node) sends you through this stage), where the existing VMs and their locks are still alive.
 
 **And a console password** — key-only SSH still needs a last-resort login path that doesn't depend on SSH at all. If every key is ever lost, the Proxmox console is how you get back in, and it only helps if a password exists:
 
@@ -114,7 +118,7 @@ You can add the control VM's key later too — `--sshkeys` takes a file, so appe
 qm set 9000 --cipassword '<strong password — store it in your password manager NOW>'
 ```
 
-Every clone inherits it. This does **not** weaken SSH: the Ansible `common` role pins `PasswordAuthentication no` in sshd, so the password works at the console and nowhere else. The full reasoning and the recovery paths it unlocks are in [Stage 21](../operations/21-credentials.md#stage-21--credentials--key-management).
+Every clone inherits it. This does **not** weaken SSH: the image's own `60-cloudimg-settings.conf` already says `PasswordAuthentication no`, and the Ansible `common` role later pins it explicitly — so the password works at the console and nowhere else, from the first boot onward. Setting it and then finding SSH still refuses your password is the expected outcome, not a mistake; [Stage 10](10-vms.md#ssh-access--key-only-from-the-first-boot) has the login paths that do work. The full reasoning and the recovery paths it unlocks are in [Stage 21](../operations/21-credentials.md#stage-21--credentials--key-management).
 
 ## 9.5 Convert to template
 
@@ -148,7 +152,7 @@ Four things to check, each proving a different part of the template:
 
 | Check | Proves |
 |---|---|
-| `ssh devops@192.168.0.99` logs in with your key | cloud-init took the static IP *and* seeded the key — not DHCP, not password |
+| `ssh devops@192.168.0.99` **from pve1** logs in without a prompt | cloud-init took the static IP *and* seeded `vm_keys.pub` — not DHCP, not password. From anywhere else it fails until your key is in that file |
 | The Proxmox summary page shows the VM's IP | the guest agent from 9.2 is alive |
 | `df -h /` inside shows ~31G | the root grew itself into the 32G disk at boot — the mechanism [Stage 10](10-vms.md#grow-the-disk--per-vm) relies on for every clone |
 | `qm terminal 999` gives a login prompt | the serial console works (`--vga serial0`) |

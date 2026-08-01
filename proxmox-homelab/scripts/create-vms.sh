@@ -39,6 +39,17 @@ for storage in apps db; do
         || { echo "[STOP] storage '$storage' not available here (Stage 6)." >&2; exit 2; }
 done
 
+# The table's addresses assume this node's LAN is the same /24. Get that wrong
+# and the VMs boot onto a subnet nobody routes — silently, because the Cloud-Init
+# tab keeps showing the address you asked for (10-vms.md, "First boot").
+node_cidr=$(ip -4 -o addr show dev vmbr0 2>/dev/null | awk 'NR==1{print $4}') || true
+if [ -n "${node_cidr:-}" ] && [ "${node_cidr%.*}" != "${GATEWAY%.*}" ]; then
+    echo "[WARN] vmbr0 is ${node_cidr}, but this script assigns ${GATEWAY%.*}.x with gateway ${GATEWAY}."
+    echo "       Adapt GATEWAY and the IP column below to your LAN first, or the VMs"
+    echo "       come up unreachable. See 10-vms.md, 'First boot'."
+    confirm "Continue anyway?" || exit 0
+fi
+
 echo "About to create, from template $TEMPLATE:"
 echo "$VMS" | awk '{printf "  %s  %-18s %-5s %s cores  %5s MB  disk %-5s %s\n", $1, $2, $3, $4, $5, $6, $7}'
 confirm "Proceed?" || exit 0
@@ -66,7 +77,14 @@ if confirm "Start all four now (first boot: cloud-init sets IPs and grows the di
         [ -n "$id" ] || continue
         [ "$(qm status "$id" 2>/dev/null)" = "status: stopped" ] && qm start "$id" >/dev/null && ok "$id ($name) started"
     done <<< "$VMS"
-    echo "Give first boot a minute, then continue Stage 10 (control node, SSH keys): ssh devops@192.168.0.20"
+    echo
+    echo "Give first boot a minute, then check what the GUESTS actually took — the"
+    echo "Cloud-Init tab shows what was offered, not what was accepted:"
+    echo "    for id in 1020 1021 1022 1023; do qm agent \$id network-get-interfaces; done"
+    echo
+    echo "Then continue Stage 10 (control node, SSH keys). The clones are key-only from"
+    echo "first boot and the seeded key is this node's, so log in from here:"
+    echo "    ssh devops@192.168.0.20"
 else
     echo "Created, not started. Start them from the UI or: qm start 1020 (etc.)"
 fi

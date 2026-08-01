@@ -46,7 +46,7 @@ The result, in one paragraph: two nodes joined by a direct 10G cable (corosync L
 | | Covers |
 |---|---|
 | [Stage 9 — Ubuntu template](vms/09-ubuntu-template.md) | The golden image, built from Canonical's cloud image: guest-agent injection, cloud-init defaults, console password, smoke test; the interactive-ISO alternative |
-| [Stage 10 — The VMs](vms/10-vms.md) | Cloning 1020/1021/1022/1023, per-VM disk sizes (one `qm resize` each), Ansible control node, SSH keys |
+| [Stage 10 — The VMs](vms/10-vms.md) | Cloning 1020/1021/1022/1023, per-VM disk sizes (one `qm resize` each), proving each guest *took* its static IP, key-only SSH and how to get in, Ansible control node |
 | [Stage 11 — First Ansible bootstrap](vms/11-bootstrap.md) | Filling the VMs: inventory, the split-VM variables, the monitoring VM (Loki + Grafana), `bootstrap.yml`, verification |
 | [Cloudflare Tunnel](vms/cloudflare-tunnel.md) | Why `cloudflared` runs inside the app VM, not on the host |
 
@@ -95,7 +95,7 @@ The whole build, in execution order, with the two deliberate "come back later" p
 - [ ] **7** Cluster — two corosync rings, migration network
 - [ ] **8** QDevice — third vote
 - [ ] **9** Ubuntu template from the cloud image — *(9.5's template backup needs the USB drive; postponed to the 17 line below)*
-- [ ] **10** The four VMs — [`create-vms`](scripts/README.md) (or clone + resize by hand), then control node, SSH keys
+- [ ] **10** The four VMs — [`create-vms`](scripts/README.md) (or clone + resize by hand), confirm each guest *took* its static IP, then control node, SSH keys
 - [ ] **11** First Ansible bootstrap — the VMs get their contents; verify app + db + tunnel + Loki/Grafana
 - [ ] **12** Replication schedules per VM
 - [ ] **13** WAL stream to the QDevice — both ends, verified end to end
@@ -111,6 +111,7 @@ The whole build, in execution order, with the two deliberate "come back later" p
 - **Building from zero:** the checklist above, top to bottom. Stages 0–15 are a weekend; 17 and the test plan in 18.6 before going live are not optional.
 - **A node just died:** [18.2](ha/18-failover.md#182-anatomy-of-an-unplanned-failover) for what's happening on its own, [18.3](ha/18-failover.md#183-scenario-table) for your row, [18.5](ha/18-failover.md#185-emergency-forcing-quorum) only if the QDevice is also down.
 - **A node comes back after weeks:** [16.2](operations/16-maintenance.md#162-returning-a-node-after-a-long-outage-days-to-weeks) — order matters: rejoin → update → replicate → migrate.
+- **A brand-new VM won't let me in, or came up on the wrong IP:** [Stage 10](vms/10-vms.md#first-boot--confirm-each-vm-took-its-static-ip) — the two first-boot surprises of the cloud image, in order.
 - **Locked out / lost a key:** [21.5](operations/21-credentials.md#215-recovery-scenarios--what-losing-each-thing-actually-means) has the way back for each case.
 - **Restoring anything:** [17.7](backup/17-backup-restore.md#177-restore--pick-your-scenario) — pick scenario A–G, then the [post-restore checklist](backup/17-backup-restore.md#178-post-restore-checklist).
 - **Something looks wrong:** `cluster-health` on either node ([what it checks](scripts/README.md)), then [troubleshooting](troubleshooting.md).

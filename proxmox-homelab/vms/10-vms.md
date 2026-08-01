@@ -24,10 +24,10 @@ Read on anyway: the table is the specification (script and table are kept in syn
 | Mode | **Full Clone** — linked clones can't migrate off the node |
 | Target Storage | from the table below |
 
-Then adjust each clone before first boot:
+Then adjust each clone **before its first boot** — the IP especially, because a clone that boots once on DHCP tends to stay there ([First boot](#first-boot--confirm-each-vm-took-its-static-ip)):
 - **Hardware → Memory / Processors** → values below (CPU **Type stays `x86-64-v3`**, inherited)
 - **Cloud-Init → IP Config (net0) → Edit** → static IP + gateway below
-- Start the VM, and once it's up: `ssh devops@<its-IP>`
+- Start the VM, then log in **from pve1**: `ssh devops@<its-IP>`. It won't work from your workstation yet, and that's expected — [SSH access](#ssh-access--key-only-from-the-first-boot) explains why and fixes it
 
 | VM ID | Name | Storage | CPU | RAM | Disk | IP (Cloud-init) |
 |---|---|---|---|---|---|---|
@@ -59,6 +59,89 @@ Absolute sizes, not `+N`: the target is what it is regardless of what the templa
 
 **ISO-alternative layouts only** ([9.8](09-ubuntu-template.md#98-the-alternative-interactive-iso-install)): there the root *is* on LVM, cloud-init can't grow it, and the `common` role does it on every playbook run — keep `grow_root_filesystem: true` and see [9.8g](09-ubuntu-template.md#98-the-alternative-interactive-iso-install) for the manual chain.
 
+## First boot — confirm each VM took its static IP
+
+The address in the **Cloud-Init** tab is what the hypervisor *offers*. It is never a reading from the guest, so it keeps showing `192.168.0.20/24` whether or not the VM ever accepted it — which is exactly what makes the common failure here so quiet: the VM boots, your router hands it a DHCP lease, you reach it on that address, and the UI looks perfectly correct the whole time.
+
+Ask the guest instead. From pve1:
+
+```bash
+qm agent 1020 network-get-interfaces      # the guest's own addresses, via the agent from 9.2
+qm cloudinit dump 1020 network            # what the guest is actually being told at boot
+qm config 1020 | egrep 'ide2|ipconfig0'   # the two settings that make the above possible
+```
+
+`qm config` should show both `ide2: <storage>:vm-1020-cloudinit,media=cdrom` and `ipconfig0: ip=192.168.0.20/24,gw=192.168.0.1`. The Summary page's IP row is the same guest-agent reading as the first command, if you'd rather click than type. No agent answer at all (`QEMU guest agent is not running`) usually means the VM is still booting — give it a minute before concluding anything.
+
+**Symptom A — the guest reports a DHCP address.** Something in `192.168.0.100+`, or whatever your router's pool is, instead of the table's address. The guest never applied its network config, for one of three reasons:
+
+- **It booted at least once before the IP was set.** The big one, and the reason both paths above insist on *before the first start*. Cloud-init applies network configuration for a **new instance**, not on every boot: the first boot renders `/etc/netplan/50-cloud-init.yaml`, and later boots simply reuse it. Proxmox derives the NoCloud `instance-id` from a digest of the cloud-init data it generates, so editing `ipconfig0` usually *does* make the next boot look like a new instance and re-render — usually, not always, which is why the fix below clears the guest's state rather than trusting a reboot.
+- **The cloud-init drive is missing.** A hand-made clone with `ide2` absent has no datasource at all; cloud-init then falls back to its built-in default, which is DHCP on the first NIC. `create-vms` can't produce this, the clone dialog can.
+- **Cloud-init never ran to completion.** `cloud-init status --long` inside the guest says `error` or `running`; `sudo cloud-init analyze show` and `/var/log/cloud-init.log` say why.
+
+**Symptom B — the guest reports the right address, but you can't reach it.** The config worked; the network doesn't:
+
+- **Your LAN isn't `192.168.0.0/24`.** The guide hard-codes that range everywhere — vmbr0 in [5.1](../setup/05-network.md#51-management-network--vmbr0-on-the-onboard-nic), the gateway, this table, and the `GATEWAY` + IP column in [`create-vms`](../scripts/README.md). If your router serves `192.168.1.0/24`, a VM sitting on `192.168.0.21` is on a subnet nobody routes. Check with `ip -br a` on pve1 and adapt *all* of them together — the script warns about this mismatch before it creates anything.
+- **`.20–.23` overlap the router's DHCP pool.** Two machines end up claiming one address, and which one answers depends on the ARP race. Reserve or exclude `.11`, `.12` and `.20–.23` in the router's DHCP settings — worth doing even when nothing is broken yet.
+
+**Fixing it.** At this stage the VMs are empty, so the honest answer is usually the fastest one — destroy and recreate, with the IP set before the first boot this time:
+
+```bash
+qm stop 1020 && qm destroy 1020 && create-vms      # recreates only what's missing
+```
+
+For a VM that already has work in it, force the guest to treat the next boot as a first boot. Fix the hypervisor side, then clear the guest's rendered state — over the DHCP address it currently answers on, or through `qm terminal 1020` (serial console, `Ctrl+O` to exit) if you can't reach it at all:
+
+```bash
+# on pve1
+qm set 1020 --ipconfig0 ip=192.168.0.20/24,gw=192.168.0.1
+qm cloudinit update 1020
+
+# in the guest
+sudo cloud-init clean --logs
+sudo rm -f /etc/netplan/50-cloud-init.yaml
+sudo reboot
+```
+
+`cloud-init clean` wipes `/var/lib/cloud`, so the next boot re-runs every per-instance module — user, SSH keys, growpart, networking. That's the point, and it's harmless on a machine that hasn't been customised by hand. Your SSH session dies with the old address; come back on the new one.
+
+## SSH access — key-only from the first boot
+
+Canonical's cloud image ships `/etc/ssh/sshd_config.d/60-cloudimg-settings.conf` containing `PasswordAuthentication no`. That's a property of the image, not something this guide configures, and it applies from the first second the VM is up — well before Ansible's `common` role pins the same setting in [21.4](../operations/21-credentials.md#214-the-console-is-the-final-safety-net--give-it-a-password). So:
+
+- **`ssh devops@<ip>` with a password never works.** Not the `--cipassword`, not anything. You get `Permission denied (publickey)`, and no prompt at all.
+- **The `--cipassword` is still real** — it's the console login, typed into the Proxmox **Console** tab or `qm terminal <id>`. That's the whole recovery path it exists for ([21.4](../operations/21-credentials.md#214-the-console-is-the-final-safety-net--give-it-a-password)), and it is untouched by any of this.
+- **The only key that opens a fresh clone is the one `--sshkeys` put on the template** at [9.4](09-ubuntu-template.md#94-cloud-init-defaults) — in this guide, pve1's root key. Nothing else has been authorized yet, because nothing else existed yet.
+
+Which makes the first login a hypervisor login. From pve1's shell, as root, its own key is already the right one:
+
+```bash
+ssh devops@192.168.0.20        # works from pve1, and only from pve1
+```
+
+### From your workstation
+
+Three ways, in the order worth trying:
+
+**1. Authorize your own key** — the one that pays off, because it also fixes every future clone. Keep one file on pve1 holding every public key that should reach the VMs:
+
+```bash
+# on pve1
+cat /root/.ssh/id_ed25519.pub > /root/.ssh/vm_keys.pub
+cat >> /root/.ssh/vm_keys.pub          # paste your workstation's id_ed25519.pub, then Ctrl-D
+chmod 600 /root/.ssh/vm_keys.pub
+
+qm set 9000 --sshkeys /root/.ssh/vm_keys.pub     # future clones are born with both keys
+qm set 1020 --sshkeys /root/.ssh/vm_keys.pub     # an existing VM: applies at the next boot
+qm reboot 1020
+```
+
+The reboot is doing the same per-instance work as the IP above — the key list is user-data, changing it changes the instance-id, and the next boot re-applies it. If a VM stubbornly refuses to pick the new key up, `sudo cloud-init clean --logs && sudo reboot` from inside forces it. Don't have a key on the workstation yet? `ssh-keygen -t ed25519` — on Windows too, PowerShell ships OpenSSH; the pair lands in `%USERPROFILE%\.ssh\`.
+
+**2. Two hops, no changes.** The Proxmox hosts *do* accept passwords, so `ssh root@192.168.0.11` and then `ssh devops@192.168.0.20` from there works right now. Note that `ssh -J root@192.168.0.11 devops@192.168.0.20` does **not** — ProxyJump tunnels the connection but still authenticates you to the VM with *your* key, which isn't authorized there yet.
+
+**3. Copy pve1's private key to your workstation.** Instant, and the one to think twice about: that key opens every VM in the lab, so moving it around widens the blast radius of a stolen laptop. [21.1](../operations/21-credentials.md#211-inventory--what-exists-and-where-it-lives) calls it the skeleton key for exactly this reason. If you do it, `ssh -i <path> devops@192.168.0.20`, and on Windows expect OpenSSH to reject a key file whose permissions are too open — `icacls key /inheritance:r /grant:r "$env:USERNAME:R"` fixes it.
+
 ## Control node — Ansible
 
 On control-ubuntu (192.168.0.20):
@@ -73,17 +156,43 @@ pipx install --include-deps ansible
 ansible --version
 ```
 
-## SSH keys
+## SSH keys — control-ubuntu → the other three
 
-On control-ubuntu:
+Ansible runs from 1020 and logs into 1021/1022/1023 as `devops`, so the control VM needs its own key authorized on the other three. The usual `ssh-copy-id` **cannot do this here**: it authenticates with a password to install the key, and [password authentication is off from the first boot](#ssh-access--key-only-from-the-first-boot). Nothing on 1020 opens 1021 yet, so the key has to be delivered by something that already has access — pve1.
+
+**1. Generate the key on control-ubuntu (1020):**
 ```bash
 test -f ~/.ssh/id_ed25519_devops || ssh-keygen -t ed25519 -C "devops" -f ~/.ssh/id_ed25519_devops
-ssh-copy-id -i ~/.ssh/id_ed25519_devops.pub devops@192.168.0.21
-ssh-copy-id -i ~/.ssh/id_ed25519_devops.pub devops@192.168.0.22
-ssh-copy-id -i ~/.ssh/id_ed25519_devops.pub devops@192.168.0.23
+scp ~/.ssh/id_ed25519_devops.pub root@192.168.0.11:/tmp/     # pve1 accepts its root password
+```
+
+**2. Install it from pve1**, whose root key already opens all three:
+```bash
+# on pve1, as root
+for ip in 21 22 23; do
+  ssh -o StrictHostKeyChecking=accept-new "devops@192.168.0.$ip" \
+    'install -d -m 700 ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys' \
+    < /tmp/id_ed25519_devops.pub
+done
+
+cat /tmp/id_ed25519_devops.pub >> /root/.ssh/vm_keys.pub     # so future clones are born with it
+qm set 9000 --sshkeys /root/.ssh/vm_keys.pub
+```
+
+The last two lines are what turns this into a one-time chore: a clone created after them already trusts the control VM, and this whole section becomes a no-op for VM number five. (Running step 2 twice just appends a duplicate line — harmless, and Stage 11 rewrites the file declaratively anyway.)
+
+**3. Verify from control-ubuntu**, and make the key the default for this subnet so you don't type `-i` forever:
+```bash
+cat >> ~/.ssh/config << 'EOF'
+Host 192.168.0.2?
+    User devops
+    IdentityFile ~/.ssh/id_ed25519_devops
+EOF
+chmod 600 ~/.ssh/config
+
 ssh devops@192.168.0.21 hostname
 ssh devops@192.168.0.22 hostname
 ssh devops@192.168.0.23 hostname
 ```
 
-Four empty machines, reachable and key-authenticated — [Stage 11](11-bootstrap.md) fills them.
+Three hostnames, no prompts. Four empty machines, reachable and key-authenticated — [Stage 11](11-bootstrap.md) fills them, and from its first run [Ansible owns `authorized_keys`](../operations/21-credentials.md#216-two-habits-that-make-key-loss-boring): add keys to `ansible_ssh_extra_public_keys`, not by hand.

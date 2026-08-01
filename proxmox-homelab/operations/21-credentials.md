@@ -12,7 +12,7 @@ Three kinds of SSH material, easy to conflate, with completely different loss pr
 |---|---|---|---|
 | **Your workstation's private key** (`~/.ssh/id_ed25519`) | Your PC | **Your identity.** Opens whatever it's authorized on | You knock on other doors (21.5) |
 | **control-ubuntu's private key** (`~/.ssh/id_ed25519_devops`) | VM 1020 | **Ansible's identity.** Every playbook run flows through it | Config management stops until restored |
-| **pve1 root's private key** (`/root/.ssh/id_ed25519`) | pve1 | Injected via `--sshkeys` ([9.4](../vms/09-ubuntu-template.md#94-cloud-init-defaults)) → opens **every VM** | One less recovery path; also: guard this one, it's a skeleton key |
+| **pve1 root's private key** (`/root/.ssh/id_ed25519`) | pve1 | Injected via `--sshkeys /root/.ssh/vm_keys.pub` ([9.4](../vms/09-ubuntu-template.md#94-cloud-init-defaults)) → opens **every VM**, and is the *only* thing that opens a freshly cloned one ([Stage 10](../vms/10-vms.md#ssh-access--key-only-from-the-first-boot)) | One less recovery path; also: guard this one, it's a skeleton key |
 | **Public keys** in `~/.ssh/authorized_keys` | Each VM's disk | **The locks, not the keys.** Travel with the disk: replicated by Stage 12, backed up by Stage 17 | Nothing — regenerate from the role |
 | **Host keys** (`/etc/ssh/ssh_host_*`) | Each VM's disk | The **server's** identity toward you — they never authenticate *you*. The cloud image ships without them (and the ISO route strips them, [9.8e](../vms/09-ubuntu-template.md#98-the-alternative-interactive-iso-install)), so every clone generates unique ones at first boot | Nothing — regenerated automatically |
 
@@ -65,7 +65,7 @@ qm set 1021 --cipassword '<strong password>'     # per VM; takes effect next boo
 
 Two properties worth being precise about:
 
-- **It does not weaken SSH.** cloud-init tends to flip `ssh_pwauth` on when a password is set — which would quietly turn "console safety net" into "password-guessable SSH". The `common` role forecloses this: `/etc/ssh/sshd_config.d/99-key-only.conf` pins `PasswordAuthentication no`. The password works at the console, and nowhere else.
+- **It does not weaken SSH.** cloud-init tends to flip `ssh_pwauth` on when a password is set — which would quietly turn "console safety net" into "password-guessable SSH". Two things foreclose it: the cloud image's own `/etc/ssh/sshd_config.d/60-cloudimg-settings.conf`, in force from the first boot, and afterwards the `common` role's `99-key-only.conf`. The password works at the console, and nowhere else — including on a brand-new clone Ansible has never touched.
 - **Without it, recovery still exists — barely.** The hypervisor can always mount the VM's disk (zvol → partition mapping → LVM activation → edit `authorized_keys` by hand). It works. It is also fiddly, error-prone root-level surgery on your database VM's disk, performed on precisely the day everything else already went wrong. A password in a password manager is the same outcome with none of the drama.
 
 ## 21.5 Recovery scenarios — what losing each thing actually means
