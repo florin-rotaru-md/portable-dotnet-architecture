@@ -6,7 +6,7 @@ A two-node Proxmox VE cluster for a self-hosted app: ZFS replication, HA with au
 
 - **Node 1 `pve1`** — ThinkStation P2 Gen 2, Core Ultra 7 265, 64GB, 3× NVMe, Intel X550-T2
 - **Node 2 `pve2`** — HP ZBook Fury G10 16", i9-13850HX, 64GB, 3× NVMe, Thunderbolt 4 (role: failover)
-- QDevice: mini PC — Core Ultra 5 225U, 16GB DDR5, 2TB NVMe. Holds the third vote *and* the continuous WAL archive ([Stage 13](ha/13-wal-stream.md))
+- QDevice: Dell Pro 14 (PC14250) — Core Ultra 5 225U, 16GB DDR5, 2TB NVMe, Debian 13. Holds the third vote *and* the continuous WAL archive ([Stage 13](ha/13-wal-stream.md)); being a laptop, it also carries its own battery and needs [Stage 3](setup/03-laptop-node.md)'s lid/sleep treatment ([8.1](cluster/08-qdevice.md#81-the-box-and-its-os))
 - ~5h UPS, router with tested 5G failover (~30s), Cloudflare Tunnel already in place
 
 ## Design decisions (vs the defaults you'd otherwise pick)
@@ -29,7 +29,7 @@ The result, in one paragraph: two nodes joined by a direct 10G cable (corosync L
 | [Stage 0 — Preparation](setup/00-preparation.md) | BIOS settings, install USB, the network plan and why there's no 10G switch, physical cabling, **and the whole SSH key model** — what exists, generated up-front (Windows + Linux), and where each half is stored |
 | [Stage 1 — Installation](setup/01-installation.md) | Proxmox installer choices, identical on both nodes |
 | [Stage 2 — Post-install](setup/02-post-install.md) | No-Subscription repositories (click-by-click), first upgrade, **CPU microcode + `fwupd` (2.2)**, hardware sanity check, helper scripts, each node's SSH key pair |
-| [Stage 3 — Laptop node](setup/03-laptop-node.md) | pve2 only: lid/sleep, battery-driven clean shutdown, TLP + dynamic CPU governor |
+| [Stage 3 — Laptop node](setup/03-laptop-node.md) | pve2 now, the QDevice later ([8.1](cluster/08-qdevice.md#81-the-box-and-its-os)): lid/sleep, battery-driven clean shutdown, TLP + dynamic CPU governor |
 | [Stage 4 — UPS monitoring](setup/04-ups.md) | pve1 only: NUT, clean shutdown when the UPS runs dry, the full long-outage timeline |
 | [Stage 5 — Network](setup/05-network.md) | `vmbr0` on 1G, the 10G point-to-point link, the one-default-route rule |
 
@@ -39,7 +39,7 @@ The result, in one paragraph: two nodes joined by a direct 10G cable (corosync L
 |---|---|
 | [Stage 6 — ZFS pools](cluster/06-zfs-pools.md) | Identifying disks, `apps` + `db` pools — same names on both nodes, non-negotiable; thin provisioning, while the pools are still empty |
 | [Stage 7 — Cluster](cluster/07-cluster.md) | Create/join with two corosync rings, migration network settings |
-| [Stage 8 — QDevice](cluster/08-qdevice.md) | The third vote — mandatory for maintenance with one node down |
+| [Stage 8 — QDevice](cluster/08-qdevice.md) | The third box: which OS and why (8.1), joining it, the laptop treatment it needs (8.3), firmware. The third vote is mandatory for maintenance with one node down |
 
 ### [vms/](vms/) — the guests
 
@@ -88,12 +88,12 @@ The whole build, in execution order, with the two deliberate "come back later" p
 - [ ] **0** Preparation — BIOS (both nodes), USB stick, network plan, cabling, **the SSH keys (0.5)** into the password manager
 - [ ] **1** Install Proxmox — pve1, then pve2
 - [ ] **2** Post-install — repos, upgrade, **microcode + `fwupd` (2.2)**, hardware check, **helper scripts (2.4)**, **each node's key pair (2.5)** — both nodes
-- [ ] **3** Laptop config — pve2 only
+- [ ] **3** Laptop config — pve2 here; the QDevice gets the same 3.1/3.2 at Stage 8
 - [ ] **4** UPS monitoring (NUT) — pve1 only
 - [ ] **5** Network — `vmbr0` + 10G link, both nodes; verify one default route
 - [ ] **6** ZFS pools `apps` + `db` — both nodes, identical names; **thin provision (6.1)** before any VM disk exists
 - [ ] **7** Cluster — two corosync rings, migration network
-- [ ] **8** QDevice — third vote
+- [ ] **8** QDevice — Debian on the third box (8.1), lid/sleep + battery (8.3), third vote
 - [ ] **9** Ubuntu template from the cloud image — *(9.5's template backup needs the USB drive; postponed to the 17 line below)*
 - [ ] **10** The four VMs — [`create-vms`](scripts/README.md) (or clone + resize + start-at-boot by hand), confirm each guest *took* its static IP, then control node, SSH keys
 - [ ] **11** First Ansible bootstrap — the VMs get their contents; verify app + db + tunnel + Loki/Grafana

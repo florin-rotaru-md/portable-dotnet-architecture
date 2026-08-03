@@ -86,7 +86,7 @@ Firmware is the layer the rest of this guide leaves implicit, and it divides alo
 | NVMe firmware | 3 + 3 + 1 drives | flashed — `nvme-cli`, occasionally LVFS |
 | X550-T2 NVM | pve1 | flashed — Intel's NVM Update Utility; needs a power cycle, not a reboot |
 | TB4 controller + 10G adapter | pve2 | flashed — the controller via LVFS, the adapter via the vendor's own tool |
-| EC / battery | pve2 | flashed, inside the BIOS capsule — [Stage 3](../setup/03-laptop-node.md)'s battery shutdown rides on it |
+| EC / battery | pve2 + QDevice | flashed, inside the BIOS capsule — [Stage 3](../setup/03-laptop-node.md)'s battery shutdown rides on it, on both laptops |
 
 ### Detection
 
@@ -98,7 +98,7 @@ fwupdmgr refresh --force
 fwupdmgr get-updates          # what LVFS has that this box doesn't
 ```
 
-> **Nothing reported is not the same as up to date.** Lenovo and HP publish much of their business hardware to LVFS; generic mini PCs almost never do. `fwupdmgr get-devices` settles it per box in seconds — one that lists a *System Firmware* device with a version is covered and will keep telling you the truth on its own; one that shows only its NVMe and TPM is not, and the vendor's support page is the only feed it has.
+> **Nothing reported is not the same as up to date.** Lenovo, HP and Dell publish much of their business hardware to LVFS — which, in this build, is all three machines — while generic mini PCs and consumer boards almost never do. `fwupdmgr get-devices` settles it per box in seconds — one that lists a *System Firmware* device with a version is covered and will keep telling you the truth on its own; one that shows only its NVMe and TPM is not, and the vendor's support page is the only feed it has.
 
 What fwupd can't answer, or can't see at all:
 
@@ -142,7 +142,7 @@ This build installs on ext4/LVM ([Stage 1](../setup/01-installation.md)), so the
 
 - **pve1** — Lenovo ships a bootable BIOS image; write it with Rufus in DD mode exactly like the install stick in [0.2](../setup/00-preparation.md#02-usb-stick), boot it, flash, remove it.
 - **pve2** — HP's SoftPaq, applied from the UEFI firmware-update screen. It refuses to run without AC connected *and* the battery above a threshold, which on a node that lives plugged in means charging it first.
-- **QDevice** — most mini PCs are plain AMI: the capsule file on a FAT32 stick, then the vendor's flash key at POST. If the box turns out to be on LVFS, route A is simply better.
+- **QDevice** — a Dell Pro, so it's on LVFS and route A is the normal answer ([8.4](../cluster/08-qdevice.md#84-firmware-baseline)). The fallback is Dell's own BIOS executable copied to a FAT32 stick and launched from the F12 one-time-boot menu's *BIOS Flash Update* entry — no Windows needed.
 
 **C — per component, only when that component is the problem.** `nvme fw-download` + `nvme fw-commit` for an SSD (with the node evacuated), Intel's `nvmupdate64e` for the X550 — that one needs a full **power cycle** or the new NVM doesn't take. The TB4 10G adapter usually has a Windows-only updater; treat it as a device you replace rather than one you maintain.
 

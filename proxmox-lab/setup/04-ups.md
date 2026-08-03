@@ -62,13 +62,16 @@ With this stage done, a power outage needs zero human action at any point:
 
 | When | What happens | Why |
 |---|---|---|
-| Power fails | pve1 + QDevice keep running on the UPS; pve2 on its own battery; router failover covers internet | Stage 0.4 |
+| Power fails | pve1 keeps running on the UPS; pve2 and the QDevice on their own batteries; router failover covers internet | Stage 0.4 |
 | pve2's battery hits 10% | `battery-check` → clean shutdown → VMs live-migrate to pve1 | Stage 3.2 + 15.2 |
 | UPS battery goes low (~5h) | NUT → clean pve1 shutdown, VMs cleanly stopped (pve2 is already off) | this stage |
+| QDevice's battery hits 10% | `battery-check` → clean shutdown. It outlives both nodes, so the last thing still up is the vote nobody needs any more | Stage 3.2, via [8.3](../cluster/08-qdevice.md#83-its-a-laptop--stage-3-applies-here-too) |
 | Power returns | pve1 powers on (BIOS *restore on AC*, [Stage 0.1](00-preparation.md#01-bios)), pve2 powers on (*Wake on AC*), QDevice boots; HA starts 1021 + 1022, `onboot` starts 1023 | HA desired state = `started`; [Stage 10](../vms/10-vms.md#start-at-boot--what-comes-back-after-a-node-reboot) |
 | Afterward | 1020 stays off until you start it — by design ([15.1](../ha/15-ha.md#151-which-vms-get-ha)); run the health check script and move on | |
 
-One note at the tail: the QDevice loses power hard when the UPS dies. For this build's box (NVMe mini PC) that's a non-event — the filesystem takes it fine, and `pg-receivewal` ([Stage 13](../ha/13-wal-stream.md)) reconnects at boot and resumes from its slot, no action needed. Check for a "power on after AC loss" BIOS setting on it too, so all three machines come back unattended.
+Two notes at the tail. **The QDevice's battery is why row 4 exists**: a mini PC in that role loses power hard the moment the UPS gives out — survivable, but abrupt — whereas this build's laptop runs on past pve1 and shuts itself down cleanly via the same 3.2 script. Either way `pg-receivewal` ([Stage 13](../ha/13-wal-stream.md)) reconnects at boot and resumes from its slot with no action needed — the battery just removes an unclean power-off from the routine.
+
+**And check the wake behaviour on all three.** pve1 and pve2 need *restore on AC* / *Wake on AC* ([0.1](00-preparation.md#01-bios)); a laptop QDevice that shut down on a flat battery normally comes back when AC returns, but the setting is worth confirming in its BIOS rather than assuming — an outage that leaves the third vote off is exactly the state [18.3](../ha/18-failover.md#183-scenario-table)'s worst row describes.
 
 ## 4.5 Test it once, for real
 

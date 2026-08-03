@@ -8,6 +8,8 @@
 
 **pve2 (ZBook, F10 at boot):** VT-x/VT-d → Enabled; RST/VMD → AHCI-NVMe if the option exists; also look for a "Wake on AC / Power on AC" setting → Enabled (so the laptop powers back on when power returns).
 
+**QDevice (Dell Pro 14, F2 at boot):** SATA/NVMe operation → **AHCI/NVMe, not "RAID On"** — Dell's default hides the disk from the Debian installer entirely; plus the same power-on-after-AC-loss setting. No VT-x/VT-d needed, it runs no VMs. Details and the rest of its build: [8.1](../cluster/08-qdevice.md#81-the-box-and-its-os).
+
 > **Every one of these settings is reset by a BIOS update.** That's not a reason to avoid firmware updates, it's a reason to come back to this section after each one — the checklist is in [16.3](../operations/16-maintenance.md#163-firmware--detect-always-flash-rarely), along with which of them fails loudly and which fails months later.
 
 ## 0.2 USB stick
@@ -70,7 +72,7 @@ No 10G switch (they're still expensive for what they'd add here). Instead: **two
 | ② | pve2 — **onboard** 1G RJ45 | Existing router / home switch | Cat5e or better | Same as ① |
 | ③ | pve1 — X550-T2 **port 1** | pve2 — Thunderbolt→10GbE adapter (in a **TB4** port) | **Cat6a** | Migration, replication, corosync Link 0 — direct, no switch |
 
-**Power:** pve1 and the QDevice on the UPS. pve2 (the ZBook) can go on the UPS too, though its own battery already covers it. No switch to worry about — one less thing on the UPS and one less failure domain.
+**Power:** pve1 on the UPS — it's the only machine of the three with no battery of its own, so it's the one that needs the runtime. pve2 (the ZBook) and the QDevice (the Dell Pro) can go on the UPS too, but both are already covered by their own batteries and each one you leave off buys pve1 more of the 5h. No switch to worry about — one less thing on the UPS and one less failure domain.
 
 **Notes on the physical side:**
 - **Cable ③ needs no crossover cable.** Both ends do Auto MDI/MDIX. Use Cat6a here — Cat5e negotiates 10G only over very short runs, and Cat6a is cheap enough to remove the doubt.

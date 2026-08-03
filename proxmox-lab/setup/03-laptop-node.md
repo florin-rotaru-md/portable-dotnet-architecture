@@ -1,6 +1,8 @@
-# Stage 3 — Laptop-specific configuration (pve2 ONLY)
+# Stage 3 — Laptop-specific configuration (pve2 now, the QDevice at Stage 8)
 
 *Part of the [Proxmox lab guide](../README.md).*
+
+Two of the three machines in this build are laptops: pve2, and the QDevice ([8.1](../cluster/08-qdevice.md#81-the-box-and-its-os)). **3.1 and 3.2 apply to both** — run them here for pve2, and again on the QDevice once it has Debian, as [8.3](../cluster/08-qdevice.md#83-its-a-laptop--stage-3-applies-here-too) says. **3.3 is pve2 only:** it tunes a hypervisor whose load swings with the VMs on it; the QDevice is idle by design and has nothing for the governor script to react to.
 
 ## 3.1 Ignore the lid + disable sleep
 
@@ -70,9 +72,9 @@ systemctl enable --now battery-check.timer
 systemctl status battery-check.timer
 ```
 
-> Cluster note: when the battery hits 10% and pve2 shuts down, HA VMs restart on pve1 from the latest replica. The 5h UPS + laptop battery cover long outages; this script is the final safety net.
+> Cluster note: when the battery hits 10% and pve2 shuts down, HA VMs restart on pve1 from the latest replica. The 5h UPS + laptop battery cover long outages; this script is the final safety net. On the QDevice the same script has a different meaning — nothing migrates, it just ends the third vote *cleanly* instead of at whatever second the battery gives out ([4.4](04-ups.md#44-the-long-outage-timeline-end-to-end)).
 
-## 3.3 TLP + dynamic governor
+## 3.3 TLP + dynamic governor (pve2 only)
 
 ```bash
 apt install tlp -y
