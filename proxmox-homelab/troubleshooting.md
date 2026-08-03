@@ -3,6 +3,8 @@
 *Part of the [Proxmox homelab guide](README.md).*
 
 - **An NVMe drive isn't visible at install** → VMD/RST in BIOS (Stage 0.1).
+- **A node stopped seeing its NVMe drives, or won't boot, right after a BIOS update** → the flash reset the settings to defaults and VMD/RST came back on. Redo Stage 0.1 in full — VT-x/VT-d and "restore on AC" are gone too, and the last one fails silently until the next power cut (16.3, "After every flash").
+- **A node is unreachable after a BIOS update, both corosync rings down** → the NICs were renamed, so `/etc/network/interfaces` now configures nothing. Physical console, then the same fix as a disk transplant: new names in, `ifreload -a` (19.3 step 5 / 16.3).
 - **Replication fails** → does a pool with the same name exist on the target? Does it have space? (`zpool list`)
 - **Migration is slow** → Migration Settings pointing at the wrong network (Stage 7).
 - **"cluster not ready - no quorum"** → QDevice down/unreachable; emergency on the surviving node: `pvecm expected 1` (temporary!).

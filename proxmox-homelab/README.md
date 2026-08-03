@@ -28,7 +28,7 @@ The result, in one paragraph: two nodes joined by a direct 10G cable (corosync L
 |---|---|
 | [Stage 0 — Preparation](setup/00-preparation.md) | BIOS settings, install USB, the network plan and why there's no 10G switch, physical cabling, **and the whole SSH key model** — what exists, generated up-front (Windows + Linux), and where each half is stored |
 | [Stage 1 — Installation](setup/01-installation.md) | Proxmox installer choices, identical on both nodes |
-| [Stage 2 — Post-install](setup/02-post-install.md) | No-Subscription repositories (click-by-click), first upgrade, hardware sanity check, helper scripts, each node's SSH key pair |
+| [Stage 2 — Post-install](setup/02-post-install.md) | No-Subscription repositories (click-by-click), first upgrade, **CPU microcode + `fwupd` (2.2)**, hardware sanity check, helper scripts, each node's SSH key pair |
 | [Stage 3 — Laptop node](setup/03-laptop-node.md) | pve2 only: lid/sleep, battery-driven clean shutdown, TLP + dynamic CPU governor |
 | [Stage 4 — UPS monitoring](setup/04-ups.md) | pve1 only: NUT, clean shutdown when the UPS runs dry, the full long-outage timeline |
 | [Stage 5 — Network](setup/05-network.md) | `vmbr0` on 1G, the 10G point-to-point link, the one-default-route rule |
@@ -70,7 +70,7 @@ The result, in one paragraph: two nodes joined by a direct 10G cable (corosync L
 
 | | Covers |
 |---|---|
-| [Stage 16 — Maintenance](operations/16-maintenance.md) | Zero-downtime hardware maintenance; returning a node after a long outage (days–weeks) |
+| [Stage 16 — Maintenance](operations/16-maintenance.md) | Zero-downtime hardware maintenance; returning a node after a long outage (days–weeks); firmware — what to detect, when a BIOS is worth flashing, and what a flash breaks in *this* build |
 | [Stage 19 — Node replacement](operations/19-node-replacement.md) | Swapping in new hardware: clean swap vs disk transplant, step by step |
 | [Stage 20 — Upgrades](operations/20-upgrades.md) | Postgres minors (automatic, by design) and majors (a project with a rehearsal); the same pattern for OS and Proxmox upgrades |
 | [Stage 21 — Credentials](operations/21-credentials.md) | What authenticates what, what a restore gives back, recovery when a key is lost, the console password, key rotation via Ansible |
@@ -87,7 +87,7 @@ The whole build, in execution order, with the two deliberate "come back later" p
 
 - [ ] **0** Preparation — BIOS (both nodes), USB stick, network plan, cabling, **the SSH keys (0.5)** into the password manager
 - [ ] **1** Install Proxmox — pve1, then pve2
-- [ ] **2** Post-install — repos, upgrade, hardware check, **helper scripts (2.4)**, **each node's key pair (2.5)** — both nodes
+- [ ] **2** Post-install — repos, upgrade, **microcode + `fwupd` (2.2)**, hardware check, **helper scripts (2.4)**, **each node's key pair (2.5)** — both nodes
 - [ ] **3** Laptop config — pve2 only
 - [ ] **4** UPS monitoring (NUT) — pve1 only
 - [ ] **5** Network — `vmbr0` + 10G link, both nodes; verify one default route
@@ -115,6 +115,7 @@ The whole build, in execution order, with the two deliberate "come back later" p
 - **Which key opens what, and where it's stored:** [0.5](setup/00-preparation.md#05-keys--generate-all-of-them-now) is the whole key model in one place — four of the five generated up-front, the fifth on the VM that owns it; [21.1](operations/21-credentials.md#211-inventory--what-exists-and-where-it-lives) is the same set seen from the "what if I lose it" side.
 - **Locked out / lost a key:** [21.5](operations/21-credentials.md#215-recovery-scenarios--what-losing-each-thing-actually-means) has the way back for each case.
 - **Restoring anything:** [17.7](backup/17-backup-restore.md#177-restore--pick-your-scenario) — pick scenario A–G, then the [post-restore checklist](backup/17-backup-restore.md#178-post-restore-checklist).
+- **A firmware update is being offered:** [16.3](operations/16-maintenance.md#163-firmware--detect-always-flash-rarely) — the answer is usually *don't*, and when it isn't, the order is QDevice → pve2 → wait a week → pve1, with the post-flash checklist that catches the settings a BIOS update quietly reset.
 - **Something looks wrong:** `cluster-health` on either node ([what it checks](scripts/README.md)), then [troubleshooting](troubleshooting.md).
 
 ## Relationship to the rest of the repo

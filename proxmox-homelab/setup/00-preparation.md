@@ -8,6 +8,8 @@
 
 **pve2 (ZBook, F10 at boot):** VT-x/VT-d → Enabled; RST/VMD → AHCI-NVMe if the option exists; also look for a "Wake on AC / Power on AC" setting → Enabled (so the laptop powers back on when power returns).
 
+> **Every one of these settings is reset by a BIOS update.** That's not a reason to avoid firmware updates, it's a reason to come back to this section after each one — the checklist is in [16.3](../operations/16-maintenance.md#163-firmware--detect-always-flash-rarely), along with which of them fails loudly and which fails months later.
+
 ## 0.2 USB stick
 
 Download the Proxmox VE ISO (latest 9.x): https://www.proxmox.com/en/downloads

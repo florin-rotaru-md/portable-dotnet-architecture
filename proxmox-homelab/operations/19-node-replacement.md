@@ -80,7 +80,7 @@ rm -rf /etc/pve/nodes/pve2
 ### 5. Build the new node
 
 Follow the guide from the top on the new machine:
-- **Stage 0.1** BIOS — VT-x, VT-d, VMD/RST disabled
+- **Stage 0.1** BIOS — VT-x, VT-d, VMD/RST disabled. New hardware is also the one moment a firmware update costs nothing: flash it *now*, while the machine holds no data and is in no cluster ([16.3](16-maintenance.md#163-firmware--detect-always-flash-rarely))
 - **Stage 1** install, hostname `pve2` (or `pve3` if you'd rather not reuse it), IP `192.168.0.12`
 - **Stage 2** repos + upgrade, and **2.5** — *restore* this node's key pair from the password manager ([0.5](../setup/00-preparation.md#05-keys--generate-all-of-them-now)) rather than generating a new one. The old public half is already in `authorized_keys` on every existing VM; a fresh pair would open none of them until Ansible re-seeded it
 - **Stage 3** only if the replacement is a laptop
@@ -133,7 +133,7 @@ If the same three NVMe drives are moving into a new chassis, the ZFS pools come 
 
 1. Shut down the node cleanly (VMs migrate off automatically if `shutdown_policy=migrate` is set).
 2. Move all three drives into the new machine, keeping the same roles.
-3. Configure BIOS as in Stage 0.1 and boot.
+3. Configure BIOS as in Stage 0.1 and boot. If the new chassis is also due a firmware update, this is the trip to do it on — the node is already down and empty ([16.3](16-maintenance.md#163-firmware--detect-always-flash-rarely)).
 4. **Expect the network to be broken.** The new machine has different NICs, so interface names change (`eno1` → `enp5s0`, and the Thunderbolt adapter gets a new name if the MAC differs). Proxmox boots fine but is unreachable.
 5. At the **physical console**, fix it:
 ```bash

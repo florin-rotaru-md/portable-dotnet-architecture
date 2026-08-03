@@ -16,13 +16,26 @@ The result should show the enterprise rows greyed out and a `pve-no-subscription
 
 > The "No valid subscription" dialog at login stays — it's a reminder, not an error, and everything works. The no-subscription repo is the officially provided free tier; its packages are the same, just published without the extra enterprise QA soak.
 
-## 2.2 Update and reboot
+## 2.2 Update, microcode, and reboot
 
 **Shell** (node → Shell, or SSH as root):
 ```bash
 apt update && apt full-upgrade -y
+```
+
+Then the firmware baseline. Two of the three layers in [16.3](../operations/16-maintenance.md#163-firmware--detect-always-flash-rarely) are ordinary apt packages, and this is where they go in: **CPU microcode**, which is where most firmware-level security fixes actually reach you, and **`fwupd`**, which from here on tells you what the *flashed* firmware is running without you having to look it up. Microcode lives in Debian's `non-free-firmware` component, which a Proxmox install doesn't enable:
+
+```bash
+# adjust the suite to your Proxmox release: trixie on PVE 9, bookworm on PVE 8
+echo 'deb http://deb.debian.org/debian trixie main contrib non-free-firmware' \
+    > /etc/apt/sources.list.d/non-free-firmware.list
+apt update && apt install -y intel-microcode fwupd
 reboot
 ```
+
+After the reboot, `grep -m1 microcode /proc/cpuinfo` should show a higher revision than before, and `journalctl -k | grep -i microcode` records the early load. Do the same on the QDevice when you get to [Stage 8](../cluster/08-qdevice.md) — same two packages, stock Debian repositories, no extra line needed.
+
+Take these updates whenever they appear; they carry no more risk than any other package. That is emphatically **not** the policy for flashing a BIOS, which is the rest of [16.3](../operations/16-maintenance.md#163-firmware--detect-always-flash-rarely).
 
 ## 2.3 Hardware check
 

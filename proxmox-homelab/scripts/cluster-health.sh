@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # cluster-health.sh — the 18.7 health checks as one command, plus the ones that
 # are easy to forget: pool capacity, pinned snapshots, version skew between the
-# nodes, NVMe wear, power state. Run it on either node; a few checks are
-# node-aware (UPS on pve1, battery on pve2).
+# nodes, firmware, NVMe wear, power state. Run it on either node; a few checks
+# are node-aware (UPS on pve1, battery on pve2).
 #
 # Output: one line per check, [ OK ] / [WARN] / [FAIL].
 # Exit:   0 = all OK, 1 = warnings, 2 = at least one failure.
@@ -132,6 +132,24 @@ if [ -n "$PEER_ADDR" ]; then
     fi
 else
     warn "versions: could not find a peer in corosync.conf"
+fi
+
+# ── Firmware ──────────────────────────────────────────────────────────────────
+# Detection only — nothing here ever flashes anything (16.3: flashing is a
+# planned window, per machine, on a reason). fwupd refreshes LVFS metadata on
+# its own timer and this just reads the result. A machine LVFS doesn't cover
+# reports zero forever, which is NOT the same as being current — that one stays
+# a quarterly look at the vendor's page.
+BIOS_VER=$(dmidecode -s bios-version 2>/dev/null | head -1)
+if command -v fwupdmgr >/dev/null 2>&1; then
+    FW_PENDING=$(fwupdmgr get-updates --json 2>/dev/null | grep -c '"Releases"')
+    if [ "${FW_PENDING:-0}" -gt 0 ]; then
+        warn "firmware: $FW_PENDING device(s) with an update on LVFS — read 16.3 before flashing; it is a maintenance window, not an apt run"
+    else
+        ok "firmware: nothing pending on LVFS${BIOS_VER:+ (BIOS $BIOS_VER)}"
+    fi
+else
+    warn "firmware: fwupd not installed — no detection at all on this node (2.2)"
 fi
 
 # ── Time sync ─────────────────────────────────────────────────────────────────
