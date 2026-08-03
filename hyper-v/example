@@ -148,6 +148,9 @@ ansible_user: devops
 
 # Once EVERY key you rely on is listed in vault.yml, flip to true: keys not in
 # the list are removed on the next run — key rotation = one playbook run.
+# Include the keys seeded outside Ansible (hypervisor root, installer-imported)
+# or the first run deletes them; check first with:
+#   ansible all -m command -a 'cat ~/.ssh/authorized_keys' -b --become-user devops
 ssh_authorized_keys_exclusive: false
 
 # Grow the root partition/LVM/filesystem into whatever the hypervisor granted —

@@ -1,5 +1,14 @@
 on local pc
 ---
+# Scratch snippets for the controller key. Two rules the per-project READMEs
+# spell out, and this file is easy to use without reading them:
+#   1. The private half belongs in a password manager the day it is created —
+#      unless it was generated on the machine that uses it and is meant to have
+#      no copy at all (proxmox-homelab 0.5 explains which case is which).
+#   2. This public key was seeded OUTSIDE Ansible. Put it in
+#      ansible_ssh_extra_public_keys before setting
+#      ssh_authorized_keys_exclusive: true, or the first run deletes it.
+
 # ── Generate SSH key (run once; reuse across all VMs) ──────────────────────────
 # Windows (PowerShell — OpenSSH built-in, Windows 10 1809+)
 if (-not (Test-Path "$env:USERPROFILE\.ssh\id_ed25519_devops")) {

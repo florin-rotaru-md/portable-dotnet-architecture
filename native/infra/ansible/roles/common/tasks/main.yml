@@ -131,6 +131,8 @@
 # Authorized keys are managed declaratively — add keys to
 # ansible_ssh_extra_public_keys (workstation key, break-glass key) instead of
 # editing ~/.ssh/authorized_keys by hand. One key is a single point of failure.
+# The list must also name the keys seeded OUTSIDE Ansible that are still a way
+# in — a hypervisor's root key, a key cloud-init or the installer injected.
 # With ssh_authorized_keys_exclusive: true, keys NOT listed are removed on the
 # next run — key rotation becomes a playbook run. Enable it only after every
 # key you rely on is in the list.

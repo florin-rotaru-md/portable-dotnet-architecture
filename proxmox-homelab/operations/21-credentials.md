@@ -11,7 +11,7 @@ Three kinds of SSH material, easy to conflate, with completely different loss pr
 | What | Where it lives | What it is | If lost |
 |---|---|---|---|
 | **Your workstation's private key** (`~/.ssh/id_ed25519`) | Your PC | **Your identity.** Opens whatever it's authorized on | You knock on other doors (21.5) |
-| **control-ubuntu's private key** (`~/.ssh/id_ed25519_devops`) | VM 1020 | **Ansible's identity.** Every playbook run flows through it | Config management stops until restored |
+| **control-ubuntu's private key** (`~/.ssh/id_ed25519_devops`) | VM 1020, and **nowhere else** — generated there in [Stage 10](../vms/10-vms.md#ssh-keys--control-ubuntu--the-other-three), never copied out | **Ansible's identity.** Every playbook run flows through it | Config management stops until you restore 1020 or re-issue the key (21.5) — deliberately the cheapest loss on this list |
 | **Each node's root private key** (`/root/.ssh/id_ed25519`, pve1 and pve2) | The nodes | Injected via `--sshkeys /root/.ssh/vm_keys.pub` ([9.4](../vms/09-ubuntu-template.md#94-cloud-init-defaults)) → opens **every VM**, and is the *only* thing that opens a freshly cloned one ([Stage 10](../vms/10-vms.md#ssh-access--key-only-from-the-first-boot)). Two nodes, two keys, so losing a node doesn't lose the path | One less recovery path; also: guard these, they're skeleton keys |
 | **The break-glass private key** | Password manager + paper, **never in the lab** | Authorized everywhere from birth, used nowhere. The one that still works when the four above are gone | The recovery of last resort is gone — regenerate and re-seed via Ansible the same day |
 | **Public keys** in `~/.ssh/authorized_keys` | Each VM's disk | **The locks, not the keys.** Travel with the disk: replicated by Stage 12, backed up by Stage 17 | Nothing — regenerate from the role |
@@ -45,7 +45,7 @@ Circular recovery dependencies are invisible until the day they bite, because ev
 
 **The minimum that must exist outside the lab** — password manager, plus ideally a paper copy somewhere physically separate. [0.5](../setup/00-preparation.md#05-keys--generate-all-of-them-now) exists to make this list true from day one rather than as a retrofit; if you're reading this on an already-built lab, it's a checklist instead:
 
-1. **SSH private keys** — workstation + `id_ed25519_devops` + both nodes' root keys (and the break-glass key, 21.6)
+1. **SSH private keys** — your workstation's, both nodes' root keys, and the break-glass key (21.6). **Not `id_ed25519_devops`**: it's the one key whose recovery doesn't run through a copy — you restore 1020 or re-issue the key from a node (21.5) — so it stays where it was born and this list stays shorter by one secret
 2. **rclone crypt passwords** — [17.6](../backup/17-backup-restore.md#176-offsite--digi-storage-via-rclone) already says this; it bears repeating because it's load-bearing
 3. **Proxmox root passwords** — both nodes
 4. **The VM `--cipassword`** — the one most people miss, and the subject of 21.4
@@ -74,7 +74,7 @@ Two properties worth being precise about:
 | You lost | Still working | The way back |
 |---|---|---|
 | **Workstation key** | control-ubuntu's key, pve1 root's key | Get in via the control VM or pve1. Generate a new pair, add the public key to `ansible_ssh_extra_public_keys`, run the playbook. Remove the old one from the list (21.6) |
-| **control-ubuntu** (the VM or its key) | Your workstation key, pve1 root's key | Restore VM 1020 from backup — its key is on the restored disk (21.2). Or rebuild it and restore `id_ed25519_devops` from the password manager |
+| **control-ubuntu** (the VM or its key) | Your workstation key, the nodes' root keys | Restore VM 1020 from backup — its key is on the restored disk (21.2). Or rebuild it and **re-issue** the key: [Stage 10](../vms/10-vms.md#ssh-keys--control-ubuntu--the-other-three) verbatim, since a node's root key still opens 1021/1022/1023. There is no copy to restore, by design ([0.5](../setup/00-preparation.md#05-keys--generate-all-of-them-now)) |
 | **Every SSH key at once** | The Proxmox console + `--cipassword` | Log in on the console, re-seed `authorized_keys`, then rotate everything deliberately |
 | **Every SSH key, and no cipassword** | The hypervisor's access to the disk | Mount the zvol from pve1/pve2 and edit `authorized_keys` manually (21.4). Set the cipassword right after |
 | **Proxmox root password** | Physical access | Standard Debian recovery: boot with `init=/bin/bash` from GRUB, `passwd`, reboot. Then store it properly |

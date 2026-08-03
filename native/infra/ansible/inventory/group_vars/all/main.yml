@@ -9,9 +9,18 @@ ansible_user: devops
 # ansible_ssh_extra_public_keys:
 #   - "ssh-ed25519 AAAA... workstation"
 #   - "ssh-ed25519 AAAA... break-glass"
+#   - "ssh-ed25519 AAAA... hypervisor-root"     # see the note below
+
+# The list must also contain every key that was seeded OUTSIDE Ansible and is
+# still a way in — a hypervisor's root key, an installer-imported key. Those
+# don't feel like "identities", which is exactly why the first exclusive run
+# deletes them and takes the get-in-from-the-host path with it. On the Proxmox
+# build that means both nodes' /root/.ssh/id_ed25519.pub (proxmox-homelab 21.6).
 
 # Once EVERY key you rely on is listed above, flip to true: keys not in the list
 # are removed on the next run — rotating a compromised key = one playbook run.
+# Check what is actually authorized first:
+#   ansible all -m command -a 'cat ~/.ssh/authorized_keys' -b --become-user devops
 ssh_authorized_keys_exclusive: false
 
 # The common role pins PasswordAuthentication no in sshd, so a console password

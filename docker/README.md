@@ -99,6 +99,8 @@ ansible_ssh_extra_public_keys:
 
 Once every key you rely on is listed, set `ssh_authorized_keys_exclusive: true` in `main.yml`: keys **not** in the list are removed on the next run, so rotating a compromised key is *delete the line, run the playbook*. Don't edit `~/.ssh/authorized_keys` by hand; the next run reconciles it.
 
+> **The keys people leave out are the ones seeded outside Ansible** — a hypervisor's root key injected at VM creation, a key the OS installer imported. They don't read as "someone's identity", so they're forgotten, and the first `exclusive: true` run deletes them from every host along with the log-in-from-the-host recovery path. Before flipping the flag: `ansible all -m command -a 'cat ~/.ssh/authorized_keys' -b --become-user devops`, and reconcile against the list.
+
 > **Credentials that must live outside this environment** (password manager, ideally plus a paper copy kept physically separate): the private keys, every password in `vault.yml`, and the vault password itself if you encrypt the file. Recovery credentials must never exist only inside the thing they recover. The role also pins SSH to key-only (`PasswordAuthentication no` drop-in), so a provider/console password can never open password auth over SSH.
 
 ## Configure

@@ -190,20 +190,35 @@ ansible --version
 
 ## SSH keys — control-ubuntu → the other three
 
-Ansible runs from 1020 and logs into 1021/1022/1023 as `devops`, so the control VM needs `id_ed25519_devops`. Its **public** half is already there — it went into `vm_keys.pub` at [9.4](09-ubuntu-template.md#94-cloud-init-defaults), so all three VMs were born authorizing it. That's what dissolves the chicken-and-egg this section used to be about: `ssh-copy-id` can't install a key without a password, and there is no password ([above](#ssh-access--key-only-from-the-first-boot)). What's left is delivering the **private** half to 1020, which your own key already opens.
+Ansible runs from 1020 and logs into 1021/1022/1023 as `devops`, so the control VM needs its own key authorized on the other three. This is the **fifth** key of [0.5](../setup/00-preparation.md#05-keys--generate-all-of-them-now) and the only one deliberately *not* generated there: it's created here, on the machine that uses it, and no copy of it ever exists anywhere else. If 1020 is lost, this key is recovered by restoring 1020 ([21.2](../operations/21-credentials.md#212-what-a-restore-actually-gives-back)) or re-issued in ten minutes by repeating this section — which is a cheaper property to maintain than a private key in transit.
 
-**1. Copy the pair in**, from the workstation staging folder or straight from the password manager — both halves, because `vault.yml` reads the `.pub` with a file lookup:
+The cost of that choice is right here: nothing on 1020 opens 1021 yet. `ssh-copy-id` **cannot** close the gap — it authenticates with a password to install the key, and [password authentication is off from the first boot](#ssh-access--key-only-from-the-first-boot). So the key has to be delivered by something that already has access, which is pve1.
 
+**1. Generate the key on control-ubuntu (1020):**
 ```bash
-scp ~/lab-keys/id_ed25519_devops ~/lab-keys/id_ed25519_devops.pub devops@192.168.0.20:~/.ssh/
-ssh devops@192.168.0.20 'chmod 600 ~/.ssh/id_ed25519_devops && chmod 644 ~/.ssh/id_ed25519_devops.pub'
+test -f ~/.ssh/id_ed25519_devops || ssh-keygen -t ed25519 -N "" -C "devops" -f ~/.ssh/id_ed25519_devops
+scp ~/.ssh/id_ed25519_devops.pub root@192.168.0.11:/tmp/     # pve1 accepts its root password
 ```
 
-On Windows, `$env:USERPROFILE\lab-keys\...` for the source paths. This is the last private half to reach its machine — [0.5](../setup/00-preparation.md#05-keys--generate-all-of-them-now) says to delete `~/lab-keys` once it's done, and now it's done.
+No passphrase, for the reason [0.5](../setup/00-preparation.md#05-keys--generate-all-of-them-now) gives: every unattended playbook run authenticates with it.
 
-> **Didn't do 0.5?** Then 1020 has no key and the other three don't authorize one. Generate it on 1020 (`ssh-keygen -t ed25519 -C devops -f ~/.ssh/id_ed25519_devops`), `scp` the `.pub` to pve1, and install it from there — pve1's root key is the only thing that opens all three: `for ip in 21 22 23; do ssh devops@192.168.0.$ip 'install -d -m 700 ~/.ssh && cat >> ~/.ssh/authorized_keys' < /tmp/id_ed25519_devops.pub; done`. Then append it to `vm_keys.pub` and `qm set 9000 --sshkeys` it, so clone number five doesn't repeat the chore.
+**2. Install it from pve1**, whose root key already opens all three:
+```bash
+# on pve1, as root
+for ip in 21 22 23; do
+  ssh -o StrictHostKeyChecking=accept-new "devops@192.168.0.$ip" \
+    'install -d -m 700 ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys' \
+    < /tmp/id_ed25519_devops.pub
+done
 
-**2. Verify from control-ubuntu**, and make the key the default for this subnet so you don't type `-i` forever:
+cat /tmp/id_ed25519_devops.pub >> /root/.ssh/vm_keys.pub     # the fifth key joins the list
+qm set 9000 --sshkeys /root/.ssh/vm_keys.pub                 # future clones are born with it
+rm -f /tmp/id_ed25519_devops.pub
+```
+
+Those middle two lines are what keeps this a one-time chore rather than a recurring one: `vm_keys.pub` is now complete at five keys, and VM number five is born trusting the control VM. (Running step 2 twice just appends a duplicate line — harmless, and Stage 11 rewrites the file declaratively anyway.)
+
+**3. Verify from control-ubuntu**, and make the key the default for this subnet so you don't type `-i` forever:
 ```bash
 cat >> ~/.ssh/config << 'EOF'
 Host 192.168.0.2?

@@ -58,7 +58,7 @@ The pairs were generated in [0.5](00-preparation.md#05-keys--generate-all-of-the
 From your workstation, with the node's root password (the hosts *do* accept passwords — only the VMs don't):
 
 ```bash
-# pve1 — its own pair, plus all five public halves, which 9.4 turns into vm_keys.pub
+# pve1 — its own pair, plus the four public halves that 9.4 turns into vm_keys.pub
 scp ~/lab-keys/pve1_root ~/lab-keys/*.pub root@192.168.0.11:/tmp/
 ssh root@192.168.0.11 'install -d -m 700 /root/.ssh &&
     install -m 600 /tmp/pve1_root     /root/.ssh/id_ed25519 &&
@@ -79,5 +79,7 @@ Verify on each node — the fingerprint should match the one your password manag
 ```bash
 ssh-keygen -lf /root/.ssh/id_ed25519.pub
 ```
+
+**Then delete the staging folder** (`rm -rf ~/lab-keys`, or `Remove-Item -Recurse -Force "$env:USERPROFILE\lab-keys"`). The two node keys are now on their nodes *and* in your password manager, the four public halves are on pve1, and the break-glass private key belongs nowhere but the password manager and paper. What's left after this point is one copy of each key on the machine that uses it — which is the property the rest of [21.5](../operations/21-credentials.md#215-recovery-scenarios--what-losing-each-thing-actually-means) assumes.
 
 Two things this is **not**. It is not the key Proxmox uses between the nodes — cluster root SSH is set up by `pvecm add` and lives in `/etc/pve/priv/authorized_keys`, untouched by any of this. And it is not backed up by [`pve-config-backup`](../scripts/README.md), deliberately: that archive lands unencrypted on the USB drive, and a skeleton key doesn't belong there. The password manager copy from [0.5](00-preparation.md#05-keys--generate-all-of-them-now) is this key's backup — which is also what turns a rebuilt node ([19.2 step 5](../operations/19-node-replacement.md#5-build-the-new-node)) back into a node that opens every existing VM.

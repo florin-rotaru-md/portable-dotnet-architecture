@@ -42,9 +42,18 @@ ansible_user: ops
 # ansible_ssh_extra_public_keys:
 #   - "ssh-ed25519 AAAA... workstation"
 #   - "ssh-ed25519 AAAA... break-glass"
+#   - "ssh-ed25519 AAAA... cloud-init"          # see the note below
+
+# The list must also contain every key that was seeded OUTSIDE Ansible and is
+# still a way in — here that's ssh_public_key from terraform.tfvars, which
+# cloud-init put on every VM at creation, plus any hypervisor root key you
+# authorized by hand. They don't feel like "identities", which is exactly why
+# the first exclusive run deletes them and takes your way in with them.
 
 # Once EVERY key you rely on is listed above, flip to true: keys not in the list
 # are removed on the next run — rotating a compromised key = one playbook run.
+# Check what is actually authorized first:
+#   ansible all -m command -a 'cat ~/.ssh/authorized_keys' -b --become-user ops
 ssh_authorized_keys_exclusive: false
 
 # The common role pins PasswordAuthentication no in sshd, so a console password

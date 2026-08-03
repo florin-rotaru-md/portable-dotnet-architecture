@@ -5,7 +5,9 @@
 # Controller public key installed into the service account's authorized_keys
 ansible_ssh_public_key: "{{ lookup('file', '~/.ssh/id_ed25519_devops.pub') }}"
 
-# Additional authorized keys — workstation, break-glass kept offline.
+# Additional authorized keys — workstation, break-glass kept offline, and every
+# key seeded outside Ansible that is still a way in (ssh_public_key from
+# terraform.tfvars, which cloud-init installed at node creation).
 # See ssh_authorized_keys_exclusive in main.yml for declarative rotation.
 # ansible_ssh_extra_public_keys:
 #   - "ssh-ed25519 AAAA... workstation"

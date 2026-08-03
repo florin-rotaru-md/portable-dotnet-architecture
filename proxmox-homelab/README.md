@@ -26,7 +26,7 @@ The result, in one paragraph: two nodes joined by a direct 10G cable (corosync L
 
 | | Covers |
 |---|---|
-| [Stage 0 — Preparation](setup/00-preparation.md) | BIOS settings, install USB, the network plan and why there's no 10G switch, physical cabling, **and the five SSH keys generated up-front** (Windows + Linux) with where each half is stored |
+| [Stage 0 — Preparation](setup/00-preparation.md) | BIOS settings, install USB, the network plan and why there's no 10G switch, physical cabling, **and the whole SSH key model** — what exists, generated up-front (Windows + Linux), and where each half is stored |
 | [Stage 1 — Installation](setup/01-installation.md) | Proxmox installer choices, identical on both nodes |
 | [Stage 2 — Post-install](setup/02-post-install.md) | No-Subscription repositories (click-by-click), first upgrade, hardware sanity check, helper scripts, each node's SSH key pair |
 | [Stage 3 — Laptop node](setup/03-laptop-node.md) | pve2 only: lid/sleep, battery-driven clean shutdown, TLP + dynamic CPU governor |
@@ -85,7 +85,7 @@ One command each for the daily question (`cluster-health`), the protection quest
 
 The whole build, in execution order, with the two deliberate "come back later" points made explicit. Tick as you go; every line links to its stage above.
 
-- [ ] **0** Preparation — BIOS (both nodes), USB stick, network plan, cabling, **the five SSH keys (0.5)** into the password manager
+- [ ] **0** Preparation — BIOS (both nodes), USB stick, network plan, cabling, **the SSH keys (0.5)** into the password manager
 - [ ] **1** Install Proxmox — pve1, then pve2
 - [ ] **2** Post-install — repos, upgrade, hardware check, **helper scripts (2.4)**, **each node's key pair (2.5)** — both nodes
 - [ ] **3** Laptop config — pve2 only
@@ -112,7 +112,7 @@ The whole build, in execution order, with the two deliberate "come back later" p
 - **A node just died:** [18.2](ha/18-failover.md#182-anatomy-of-an-unplanned-failover) for what's happening on its own, [18.3](ha/18-failover.md#183-scenario-table) for your row, [18.5](ha/18-failover.md#185-emergency-forcing-quorum) only if the QDevice is also down.
 - **A node comes back after weeks:** [16.2](operations/16-maintenance.md#162-returning-a-node-after-a-long-outage-days-to-weeks) — order matters: rejoin → update → replicate → migrate.
 - **A brand-new VM won't let me in, or came up on the wrong IP:** [Stage 10](vms/10-vms.md#first-boot--confirm-each-vm-took-its-static-ip) — the two first-boot surprises of the cloud image, in order.
-- **Which key opens what, and where it's stored:** [0.5](setup/00-preparation.md#05-keys--generate-all-of-them-now) creates all five and says where each half lives; [21.1](operations/21-credentials.md#211-inventory--what-exists-and-where-it-lives) is the same set seen from the "what if I lose it" side.
+- **Which key opens what, and where it's stored:** [0.5](setup/00-preparation.md#05-keys--generate-all-of-them-now) is the whole key model in one place — four of the five generated up-front, the fifth on the VM that owns it; [21.1](operations/21-credentials.md#211-inventory--what-exists-and-where-it-lives) is the same set seen from the "what if I lose it" side.
 - **Locked out / lost a key:** [21.5](operations/21-credentials.md#215-recovery-scenarios--what-losing-each-thing-actually-means) has the way back for each case.
 - **Restoring anything:** [17.7](backup/17-backup-restore.md#177-restore--pick-your-scenario) — pick scenario A–G, then the [post-restore checklist](backup/17-backup-restore.md#178-post-restore-checklist).
 - **Something looks wrong:** `cluster-health` on either node ([what it checks](scripts/README.md)), then [troubleshooting](troubleshooting.md).

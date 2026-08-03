@@ -121,6 +121,8 @@ ansible_ssh_public_key: "ssh-ed25519 AAAA...  control-ubuntu"
 
 **More than one key, and rotation.** One key is a single point of failure — the `common` role manages `authorized_keys` declaratively and takes a list via `ansible_ssh_extra_public_keys` (workstation key, break-glass key kept offline). Once every key you rely on is listed, set `ssh_authorized_keys_exclusive: true` in `main.yml`: keys **not** in the list are removed on the next run, so rotating a compromised key is *delete the line, run the playbook*.
 
+> **The keys people leave out of that list are the ones seeded outside Ansible** — here, `ssh_public_key` from `terraform.tfvars`, which cloud-init installed on every VM at creation, plus any hypervisor root key you authorized by hand. They don't read as "someone's identity", so they're forgotten, and then the first `exclusive: true` run deletes them from every VM and takes the log-in-from-the-hypervisor recovery path with them. Before flipping the flag: `ansible all -m command -a 'cat ~/.ssh/authorized_keys' -b --become-user ops`, and reconcile against the list. The same trap, in its Proxmox form: [proxmox-homelab 21.6](../proxmox-homelab/operations/21-credentials.md#216-two-habits-that-make-key-loss-boring).
+
 > **Credentials that must live outside this environment** (password manager, ideally plus paper): the private keys, `vault.yml` contents, the vault password itself if encrypted — and the Proxmox root password plus any VM `--cipassword` (the console is your no-SSH recovery path). Recovery credentials must never exist only inside the thing they recover. The role also pins SSH to key-only, so a console password can never open password auth over SSH.
 
 ```bash

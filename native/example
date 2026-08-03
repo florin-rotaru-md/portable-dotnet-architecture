@@ -67,10 +67,14 @@ git clone https://github.com/florin-rotaru-md/portable-dotnet-architecture
 cat << 'EOF' > ~/src/portable-dotnet-architecture/native/infra/ansible/inventory/group_vars/all/vault.yml
 ansible_ssh_public_key:  "{{ lookup('file', '~/.ssh/id_ed25519_devops.pub') }}"
 
-# Additional authorized keys — workstation, break-glass kept offline.
+# Additional authorized keys — workstation, break-glass kept offline, and every
+# key seeded outside Ansible that is still a way in (on the Proxmox build: both
+# nodes' /root/.ssh/id_ed25519.pub).
 # ansible_ssh_extra_public_keys:
 #   - "ssh-ed25519 AAAA... workstation"
 #   - "ssh-ed25519 AAAA... break-glass"
+#   - "ssh-ed25519 AAAA... pve1-root"
+#   - "ssh-ed25519 AAAA... pve2-root"
 
 postgres_password: "postgres"
 
@@ -93,6 +97,9 @@ ansible_user: devops
 
 # Once EVERY key you rely on is listed in vault.yml, flip to true: keys not in
 # the list are removed on the next run — key rotation = one playbook run.
+# Include the keys seeded outside Ansible (hypervisor root, installer-imported)
+# or the first run deletes them; check first with:
+#   ansible all -m command -a 'cat ~/.ssh/authorized_keys' -b --become-user devops
 ssh_authorized_keys_exclusive: false
 
 # Grow the root partition/LVM/filesystem into whatever the hypervisor granted —
