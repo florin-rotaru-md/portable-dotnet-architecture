@@ -1,0 +1,82 @@
+---
+# Deploy a new version of one application (or every repo-based one) from the
+# control node — the repo token comes straight from vault.yml, nothing is
+# typed and nothing extra lands on the VM.
+#
+#   ansible-playbook playbooks/deploy.yml -e app=api.waa.ro    # one app
+#   ansible-playbook playbooks/deploy.yml                      # all repo-based apps
+#   # encrypted vault: add --ask-vault-pass
+#
+# Requires bootstrap.yml to have run at least once (it renders deploy.sh).
+- name: Deploy applications (blue/green)
+  hosts: app
+  become: "{{ ansible_user != 'root' }}"
+  pre_tasks:
+    - name: Ensure applications are defined
+      assert:
+        that:
+          - applications is defined
+          - applications | length > 0
+        fail_msg: >-
+          Define at least one application in inventory/group_vars/all/main.yml under
+          the applications list.
+
+    - name: Select repo-based applications
+      set_fact:
+        deploy_apps: >-
+          {{ applications
+             | selectattr('repo_url', 'defined')
+             | selectattr('project_path', 'defined')
+             | rejectattr('repo_url', 'equalto', '')
+             | rejectattr('project_path', 'equalto', '')
+             | list }}
+
+    - name: Limit to the requested app
+      set_fact:
+        deploy_apps: "{{ deploy_apps | selectattr('name', 'equalto', app) | list }}"
+      when: app is defined
+
+    - name: Ensure there is something to deploy
+      assert:
+        that:
+          - deploy_apps | length > 0
+        fail_msg: >-
+          No application with repo_url + project_path matched{% if app is defined %} name '{{ app }}'{% endif %}.
+
+    - name: Validate repository credentials
+      assert:
+        that:
+          - item.repo_token | default('') | string | trim | length > 0
+          - item.repo_token | string | trim != 'ghp_...'
+        fail_msg: >-
+          Invalid repo_token for {{ item.name }}. Set a real token in vault.yml
+          (fine-grained PAT, Contents read-only) — not empty, not the placeholder.
+      loop: "{{ deploy_apps }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+  tasks:
+    - name: Run deploy.sh (build → idle slot → health check → switch)
+      command:
+        argv:
+          - "{{ apps_root }}/{{ item.name }}/scripts/deploy.sh"
+          - --repo-url
+          - "{{ item.repo_url }}"
+          - --branch
+          - "{{ item.repo_branch | default('master') }}"
+          - --project-path
+          - "{{ item.project_path }}"
+      environment:
+        APP_REPO_TOKEN: "{{ item.repo_token }}"
+      become_user: "{{ app_user }}"
+      loop: "{{ deploy_apps }}"
+      loop_control:
+        label: "{{ item.name }}"
+      register: deploy_results
+
+    - name: Deploy summary
+      debug:
+        msg: "{{ item.stdout_lines | default(['(no output)']) | last }}"
+      loop: "{{ deploy_results.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"

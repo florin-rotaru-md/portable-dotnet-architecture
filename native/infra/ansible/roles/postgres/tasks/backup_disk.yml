@@ -12,8 +12,9 @@
   fail:
     msg: >-
       postgres_backup_device={{ postgres_backup_device }} does not exist on
-      this host. Attach the disk in Hyper-V (or your hypervisor) before running
-      bootstrap, or unset the variable to skip the dedicated backup disk.
+      this host. Attach a second disk to the VM in your hypervisor before
+      running bootstrap, or leave the variable unset to keep backups on the
+      OS disk under /opt/postgres/backups.
   when: not backup_dev_stat.stat.exists
 
 - name: Detect existing filesystem on backup device

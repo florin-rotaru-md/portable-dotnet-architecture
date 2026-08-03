@@ -17,7 +17,9 @@ ansible_ssh_public_key: "{{ lookup('file', '~/.ssh/id_ed25519_devops.pub') }}"
 
 postgres_password: "change-me-strong-password"
 
-# Required only for private Git repositories used by the first auto-deploy
+# Required only for private Git repositories. Used by the first auto-deploy and
+# rendered per app to /opt/apps/<app>/config/repo-token (0600) for later deploys.
+# Prefer a fine-grained PAT: only the deployed repos, Contents: Read-only.
 # app_repo_token: "ghp_xxx"
 
 # Required only when use_cloudflared: true

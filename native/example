@@ -78,7 +78,9 @@ ansible_ssh_public_key:  "{{ lookup('file', '~/.ssh/id_ed25519_devops.pub') }}"
 
 postgres_password: "postgres"
 
-# Required for private repos used in first auto-deploy.
+# Required for private repos. Used by the first auto-deploy, and rendered per app
+# to /opt/apps/<app>/config/repo-token (0600) so later deploys don't retype it.
+# Prefer a fine-grained PAT: only the deployed repos, Contents: Read-only.
 app_repo_token: "ghp_real_token_here"
 
 # Required only when use_cloudflared: true
@@ -224,13 +226,18 @@ ansible-playbook playbooks/bootstrap.yml
 # ansible-playbook playbooks/bootstrap.yml --ask-vault-pass
 
 # Bootstrap performs first deploy automatically for every app that has repo_url + project_path.
-# Manual deploy examples:
+# Later deploys need no token dance: bootstrap rendered each app's repo_token from
+# vault.yml to /opt/apps/<app>/config/repo-token (0600), and deploy.sh falls back
+# to it (--token and APP_REPO_TOKEN still override).
+#
+# Manual deploy examples (on the app VM):
 # sudo -u devops /opt/apps/api.waa.ro/scripts/deploy.sh
 # sudo -u devops /opt/apps/admin.waa.ro/scripts/deploy.sh
-
-# read -s -p "GitHub token: " APP_REPO_TOKEN && echo
-# sudo -u devops env APP_REPO_TOKEN="$APP_REPO_TOKEN" /opt/apps/api.example.local/scripts/deploy.sh
-# unset APP_REPO_TOKEN
+#
+# Or from the control node, token straight from vault.yml:
+# cd ~/src/portable-dotnet-architecture/native/infra/ansible
+# ansible-playbook playbooks/deploy.yml -e app=api.waa.ro   # one app
+# ansible-playbook playbooks/deploy.yml                     # every repo-based app
 
 
 # Manual rollback examples:

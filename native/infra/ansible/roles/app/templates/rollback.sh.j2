@@ -23,7 +23,7 @@ echo "Rolling back: $CURRENT_SLOT → $PREVIOUS_SLOT"
 # Ensure the previous slot is running
 if ! systemctl is-active --quiet "$PREVIOUS_SERVICE"; then
   echo "Starting $PREVIOUS_SERVICE..."
-  systemctl start "$PREVIOUS_SERVICE"
+  sudo systemctl start "$PREVIOUS_SERVICE"
   "$SCRIPTS_DIR/health-check.sh" \
     "http://127.0.0.1:$(cat "$RUNTIME_DIR/port-$PREVIOUS_SLOT" 2>/dev/null || echo 0)" \
     "{{ app_health_max_attempts }}" \

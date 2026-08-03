@@ -218,7 +218,7 @@ ansible-playbook playbooks/bootstrap.yml
 # With vault: ansible-playbook playbooks/bootstrap.yml --ask-vault-pass
 ```
 
-Bootstrap also performs the initial deploy automatically for each entry in `applications` where `repo_url` and `project_path` are configured. For private repositories, set `repo_token` (for that app) and store the secret in `vault.yml`.
+Bootstrap also performs the initial deploy automatically for each entry in `applications` where `repo_url` and `project_path` are configured. For private repositories, set `repo_token` (for that app) and store the secret in `vault.yml` — use a fine-grained PAT scoped to the deployed repositories with *Contents: Read-only*. Bootstrap also renders that token to `/opt/apps/<app>/config/repo-token` (mode 0600, owned by the app user), which is what lets every later deploy run without retyping it.
 
 Database creation is not performed by Ansible. Applications are expected to create/update their own schemas through migrations at startup or deploy time.
 PostGIS is enabled on `template1`, so newly created databases inherit the extension.
@@ -238,10 +238,20 @@ sudo -u devops /opt/apps/myapp/scripts/deploy.sh \
   --project-path "src/MyApp/MyApp.csproj"
 ```
 
-**Subsequent deploys:**
+**Subsequent deploys — on the VM**, nothing to type: the token resolves as `--token` → `APP_REPO_TOKEN` → `/opt/apps/<app>/config/repo-token` (rendered from `vault.yml` by the playbook):
 ```bash
 sudo -u devops /opt/apps/myapp/scripts/deploy.sh
 ```
+
+**Subsequent deploys — from the control node**, token straight from `vault.yml`:
+```bash
+cd infra/ansible
+ansible-playbook playbooks/deploy.yml -e app=myapp    # one app
+ansible-playbook playbooks/deploy.yml                 # every repo-based app
+# encrypted vault: add --ask-vault-pass
+```
+
+**Token rotation:** change `app_repo_token` in `vault.yml`, then `ansible-playbook playbooks/bootstrap.yml --limit app` — the per-app `config/repo-token` files are re-rendered (and removed for apps whose `repo_token` is unset).
 
 **Rollback** (switches Nginx back instantly):
 ```bash

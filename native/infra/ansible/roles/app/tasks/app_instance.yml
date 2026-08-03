@@ -56,6 +56,22 @@
     force:   true
   no_log: true
 
+- name: Write repo token for {{ current_app.name }}
+  copy:
+    dest:    "{{ apps_root }}/{{ current_app.name }}/config/repo-token"
+    content: "{{ current_app.repo_token | string | trim }}\n"
+    owner:   "{{ app_user }}"
+    group:   "{{ app_user }}"
+    mode:    '0600'
+  no_log: true
+  when: current_app.repo_token | default('') | string | trim | length > 0
+
+- name: Remove repo token when not configured
+  file:
+    path:  "{{ apps_root }}/{{ current_app.name }}/config/repo-token"
+    state: absent
+  when: current_app.repo_token | default('') | string | trim | length == 0
+
 - name: Sync appsettings.override.json into blue/green slots
   copy:
     src: "{{ apps_root }}/{{ current_app.name }}/config/appsettings.override.json"

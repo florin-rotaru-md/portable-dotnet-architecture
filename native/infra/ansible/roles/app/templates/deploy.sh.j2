@@ -7,7 +7,8 @@
 #             [--token ghp_xxx] \
 #             --project-path src/MyApp/MyApp.csproj
 #
-# Subsequent deploys (uses cached repo/project):
+# Subsequent deploys (uses cached repo/project; the token resolves from
+# --token → APP_REPO_TOKEN → config/repo-token, so normally none is passed):
 #   deploy.sh [--branch master]
 #
 set -euo pipefail
@@ -59,6 +60,12 @@ if [ -z "$PROJECT_PATH" ]; then
   echo "Error: --project-path is required on first deploy" >&2; exit 1
 fi
 
+# Token fallback: Ansible renders the app's repo_token from vault.yml to
+# config/repo-token (0600), so manual deploys don't need to supply one.
+if [ -z "$REPO_TOKEN" ] && [ -f "$APP_ROOT/config/repo-token" ]; then
+  REPO_TOKEN=$(cat "$APP_ROOT/config/repo-token")
+fi
+
 # Persist config (repo URL stored without token)
 echo "$REPO_URL"     > "$RUNTIME_DIR/repo-url"
 echo "$REPO_BRANCH"  > "$RUNTIME_DIR/repo-branch"
@@ -97,7 +104,7 @@ echo "────────────────────────�
 
 # ── Clone / pull repo (private GitHub repo; token required) ──────────────────
 if [ -z "$REPO_TOKEN" ]; then
-  echo "Error: GitHub token is required for repository deploys. Set APP_REPO_TOKEN or pass --token." >&2
+  echo "Error: GitHub token is required for repository deploys. Pass --token, set APP_REPO_TOKEN, or re-run the playbook so config/repo-token is rendered from vault.yml." >&2
   exit 1
 fi
 

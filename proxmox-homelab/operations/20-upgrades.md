@@ -324,3 +324,18 @@ Doing it the other way — upgrading pve1 first and then trying to migrate onto 
 **Firmware** is the one place the pattern deliberately inverts. Everything else in this stage says *stay current*; firmware says *stay still*. Microcode and driver blobs ride apt like any other package ([2.2](../setup/02-post-install.md#22-update-microcode-and-reboot)), but a BIOS flash gets a reason, a window and one machine at a time — same rolling order as the host upgrade above, except the QDevice goes first and you leave a week between the two nodes. [16.3](16-maintenance.md#163-firmware--detect-always-flash-rarely) has the detection, the policy and the post-flash checklist; the checklist is the part that actually saves you, because a flash resets the BIOS settings this build depends on.
 
 **Application deploys** need none of this. The app role already ships blue/green: `deploy.sh` builds into the idle slot, `health-check.sh` gates it, `switch-nginx.sh` flips the upstream, and `rollback.sh` flips it back. Rolling back a bad release is a script on 1021, not a hypervisor operation — and if it ever isn't, the problem is in the deploy pipeline, not in Proxmox.
+
+Shipping a new version is one command, from either side, and neither asks for credentials — bootstrap already rendered each app's `repo_token` from `vault.yml` to `/opt/apps/<app>/config/repo-token` (0600, `devops`), and `deploy.sh` reads it when no token is passed:
+
+```bash
+# on 1021 — deploy, and the instant undo
+sudo -u devops /opt/apps/api.waa.ro/scripts/deploy.sh
+sudo -u devops /opt/apps/api.waa.ro/scripts/rollback.sh
+
+# on 1020 — the same deploy driven by Ansible, token straight from vault.yml
+cd ~/src/portable-dotnet-architecture/native/infra/ansible
+ansible-playbook playbooks/deploy.yml -e app=api.waa.ro    # one app
+ansible-playbook playbooks/deploy.yml                      # every repo-based app
+```
+
+The token itself is a GitHub fine-grained PAT — only the deployed repositories, *Contents: Read-only* — stored in `vault.yml` as `app_repo_token`. Rotating it is this stage's pattern once more: change it in `vault.yml`, `bootstrap.yml --limit app` re-renders the per-app files. On-disk exposure is nothing new: `appsettings.override.json` sits next to it with the same mode and holds the database password, so a read-only clone token is below the bar already accepted.
