@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # create-vms.sh — Stage 10's four clones as one attended command: clone from
-# template 9000, set CPU/RAM, set the static IP, grow the disk — in the right
-# order (disks are grown BEFORE first boot, so cloud-init's growpart finds the
-# final size on its first run).
+# template 9000, set CPU/RAM, set the static IP, grow the disk, set start-at-boot
+# — in the right order (disks are grown BEFORE first boot, so cloud-init's
+# growpart finds the final size on its first run).
 #
 # The table below is the same table as 10-vms.md — if you change one, change
 # the other. Idempotent: a VM ID that already exists is skipped, so a re-run
@@ -18,12 +18,12 @@ set -euo pipefail
 TEMPLATE=9000
 GATEWAY=192.168.0.1
 
-# VMID  NAME               STORAGE  CORES  RAM_MB  DISK(- = as cloned)  IP
+# VMID  NAME               STORAGE  CORES  RAM_MB  DISK(- = as cloned)  IP  BOOT(- = stays off)
 VMS="\
-1020  control-ubuntu     apps  2  4096   -     192.168.0.20
-1021  app-ubuntu         apps  8  8192   128G  192.168.0.21
-1022  postgres-ubuntu    db    8  32768  640G  192.168.0.22
-1023  monitoring-ubuntu  apps  2  4096   320G  192.168.0.23"
+1020  control-ubuntu     apps  2  4096   -     192.168.0.20  -
+1021  app-ubuntu         apps  8  8192   128G  192.168.0.21  order=2
+1022  postgres-ubuntu    db    8  32768  640G  192.168.0.22  order=1,up=60
+1023  monitoring-ubuntu  apps  2  4096   320G  192.168.0.23  order=3"
 
 ok()      { printf '[ OK ] %s\n' "$1"; }
 skip()    { printf '[SKIP] %s\n' "$1"; }
@@ -51,11 +51,11 @@ if [ -n "${node_cidr:-}" ] && [ "${node_cidr%.*}" != "${GATEWAY%.*}" ]; then
 fi
 
 echo "About to create, from template $TEMPLATE:"
-echo "$VMS" | awk '{printf "  %s  %-18s %-5s %s cores  %5s MB  disk %-5s %s\n", $1, $2, $3, $4, $5, $6, $7}'
+echo "$VMS" | awk '{printf "  %s  %-18s %-5s %s cores  %5s MB  disk %-5s %-13s boot %s\n", $1, $2, $3, $4, $5, $6, $7, $8}'
 confirm "Proceed?" || exit 0
 
 # ── Create ────────────────────────────────────────────────────────────────────
-while read -r id name storage cores ram disk ip; do
+while read -r id name storage cores ram disk ip boot; do
     [ -n "$id" ] || continue
     if qm status "$id" >/dev/null 2>&1; then
         skip "$id ($name) already exists — leaving it untouched"
@@ -65,7 +65,14 @@ while read -r id name storage cores ram disk ip; do
     qm set "$id" --cores "$cores" --memory "$ram" \
         --ipconfig0 "ip=${ip}/24,gw=${GATEWAY}" >/dev/null
     [ "$disk" != "-" ] && qm resize "$id" scsi0 "$disk"
-    ok "$id ($name): ${cores} cores, ${ram} MB, disk ${disk}, ${ip}"
+    # Start at boot: without it a node reboot leaves the VM stopped, and only the
+    # two HA VMs would ever come back on their own (10-vms.md, "Start at boot").
+    if [ "$boot" = "-" ]; then
+        qm set "$id" --onboot 0 >/dev/null
+    else
+        qm set "$id" --onboot 1 --startup "$boot" >/dev/null
+    fi
+    ok "$id ($name): ${cores} cores, ${ram} MB, disk ${disk}, ${ip}, boot ${boot}"
 done <<< "$VMS"
 
 # CPU type is deliberately NOT touched: clones inherit x86-64-v3 from the

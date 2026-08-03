@@ -39,7 +39,7 @@ pve2 dies suddenly (power cut, hardware fault, kernel panic):
 | **QDevice down, both nodes up** | Cluster runs on 2/2 votes, everything normal | 0 | 0 | Restore the QDevice — you have no margin until then |
 | **QDevice down AND a node dies** | Surviving node has 1/3 votes → **no quorum, no automatic failover** | Until you intervene | ≤ replication interval | `pvecm expected 1` on the survivor (see 18.5) |
 | **Internet outage** | 5G router failover | ~30s | 0 | None |
-| **Power outage** | UPS ~5h; pve2's battery script and pve1's NUT ([4](../setup/04-ups.md)) each shut their node down cleanly; everything powers back on and HA restarts the VMs when mains return | 0 while power lasts | 0 | None |
+| **Power outage** | UPS ~5h; pve2's battery script and pve1's NUT ([4](../setup/04-ups.md)) each shut their node down cleanly; everything powers back on when mains return — HA restarts 1021 + 1022, `onboot` restarts 1023 ([Stage 10](../vms/10-vms.md#start-at-boot--what-comes-back-after-a-node-reboot)) | 0 while power lasts | 0 | None; 1020 by hand if you need it |
 | **A data disk fails** | That pool is lost on that node; VMs fail | Minutes | ≤ replication interval | Migrate/restart VMs on the other node, replace the disk, recreate the pool, re-enable replication |
 | **The OS disk fails** | That node is down; HA takes over | ~2-3 min | ≤ replication interval | Reinstall Proxmox on a new OS disk and rejoin — this is a node replacement, follow [19.2](../operations/19-node-replacement.md#192-approach-a--clean-swap-step-by-step) (delnode first, then rejoin; the data pools survive and re-import) |
 | **Ransomware / accidental deletion** | Replication faithfully replicates the damage | — | — | **Restore from backup** (Stage 17) — this is why replication isn't backup |
@@ -68,7 +68,7 @@ pvecm expected 1
 A failover you haven't tested is a hope, not a solution. Run all three before the app goes live, and write down the timings:
 
 1. **Planned live migration.** `ping -t` the app VM, migrate, confirm ≤1 lost packet. Migrate back.
-2. **Clean shutdown with `shutdown_policy=migrate`.** Shut down pve2 from the UI; confirm the VMs migrate on their own rather than restarting. This also validates the battery-script path.
+2. **Clean shutdown with `shutdown_policy=migrate`.** Shut down pve2 from the UI; confirm the VMs migrate on their own rather than restarting. This also validates the battery-script path. Then power pve2 back on and check what returns: whatever non-HA VM lives there comes back by itself ([start-at-boot](../vms/10-vms.md#start-at-boot--what-comes-back-after-a-node-reboot)), while the HA pair stays on pve1 — no failback, by design ([16.2](../operations/16-maintenance.md#162-returning-a-node-after-a-long-outage-days-to-weeks)).
 3. **Hard kill.** Cut power to pve2 (pull the plug, UPS bypassed). Time how long until the app answers again. Then check Postgres: did crash recovery complete cleanly? How much data was lost versus the replication interval? Power pve2 back on and confirm it rejoins and replication reverses on its own.
 
 Repeat test 3 once after any significant infrastructure change.

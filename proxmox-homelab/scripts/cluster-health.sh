@@ -19,6 +19,7 @@ SNAPSHOT_WARN_GB=50       # a single snapshot pinning more than this → warning
 NVME_WEAR_WARN=85         # % NVMe endurance used
 BACKUP_MAX_AGE_H=26       # newest vzdump older than this → warning
 USB_MOUNT=/mnt/usb-backup
+AUTOSTART_VMS="1021 1022 1023"   # must have onboot=1 (10-vms.md); 1020 is manual by design
 
 QUIET=0
 [ "${1:-}" = "--quiet" ] && QUIET=1
@@ -95,6 +96,22 @@ if [ -n "$HA_BAD" ]; then
     warn "ha: not all services started: $(echo "$HA_BAD" | tr '\n' ' ')"
 else
     ok "ha: all services started"
+fi
+
+# ── Start at boot ─────────────────────────────────────────────────────────────
+# HA guests are started by the HA stack; every other VM comes back after a node
+# reboot only if onboot is set. Nothing else surfaces a missing flag — you find
+# out the next time you reboot (10-vms.md, "Start at boot"). Node-local: VMs
+# living on the peer are its own run's business.
+NO_ONBOOT=""
+for id in $AUTOSTART_VMS; do
+    CONF=$(qm config "$id" 2>/dev/null) || continue     # not on this node
+    echo "$CONF" | grep -q '^onboot: 1' || NO_ONBOOT="$NO_ONBOOT $id"
+done
+if [ -n "$NO_ONBOOT" ]; then
+    warn "autostart:$NO_ONBOOT would stay stopped after a node reboot — qm set <id> --onboot 1 (Stage 10)"
+else
+    ok "autostart: every VM that should start at boot is set to"
 fi
 
 # ── Version skew vs the peer node ─────────────────────────────────────────────

@@ -18,7 +18,7 @@ A two-node Proxmox VE cluster for a self-hosted app: ZFS replication, HA with au
 | VM CPU type | `host` | **`x86-64-v3`** | Different CPUs (Raptor Lake vs Arrow Lake) — `host` would crash a migrated VM |
 | Migration network | Everything over the 1G LAN | Direct 10G cable (X550 ↔ TB adapter), no switch; 1G to the router as backup ring | Full 10G for migration/replication at zero extra cost, plus corosync redundancy |
 
-The result, in one paragraph: two nodes joined by a direct 10G cable (corosync Link 0, migration, replication) and by the home LAN (vmbr0, corosync Link 1), with a QDevice holding the third vote. Four VMs — `1020 control` (Ansible), `1021 app` (.NET + nginx + cloudflared), `1022 postgres`, `1023 monitoring` (Loki + Grafana) — replicate between nodes every 1–30 minutes depending on the VM; HA restarts `app` and `postgres` on the surviving node in ~2–3 minutes if a node dies, while `control` and `monitoring` stay out of HA and are started by hand if their node goes down. Backups go to a USB disk nightly and encrypted to Digi Storage offsite.
+The result, in one paragraph: two nodes joined by a direct 10G cable (corosync Link 0, migration, replication) and by the home LAN (vmbr0, corosync Link 1), with a QDevice holding the third vote. Four VMs — `1020 control` (Ansible), `1021 app` (.NET + nginx + cloudflared), `1022 postgres`, `1023 monitoring` (Loki + Grafana) — replicate between nodes every 1–30 minutes depending on the VM; HA restarts `app` and `postgres` on the surviving node in ~2–3 minutes if a node dies, while `control` and `monitoring` stay out of HA and are started by hand if their node goes down — a plain reboot still brings `monitoring` back on its own, via [start-at-boot](vms/10-vms.md#start-at-boot--what-comes-back-after-a-node-reboot). Backups go to a USB disk nightly and encrypted to Digi Storage offsite.
 
 ## The guide
 
@@ -95,7 +95,7 @@ The whole build, in execution order, with the two deliberate "come back later" p
 - [ ] **7** Cluster — two corosync rings, migration network
 - [ ] **8** QDevice — third vote
 - [ ] **9** Ubuntu template from the cloud image — *(9.5's template backup needs the USB drive; postponed to the 17 line below)*
-- [ ] **10** The four VMs — [`create-vms`](scripts/README.md) (or clone + resize by hand), confirm each guest *took* its static IP, then control node, SSH keys
+- [ ] **10** The four VMs — [`create-vms`](scripts/README.md) (or clone + resize + start-at-boot by hand), confirm each guest *took* its static IP, then control node, SSH keys
 - [ ] **11** First Ansible bootstrap — the VMs get their contents; verify app + db + tunnel + Loki/Grafana
 - [ ] **12** Replication schedules per VM
 - [ ] **13** WAL stream to the QDevice — both ends, verified end to end

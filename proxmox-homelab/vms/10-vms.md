@@ -2,7 +2,7 @@
 
 *Part of the [Proxmox homelab guide](../README.md).*
 
-All via cloning. **The short way:** [`create-vms`](../scripts/README.md) (run on pve1) does this entire stage's hypervisor side in one attended run — clone, CPU/RAM, static IP, disk growth, in the right order, from the same table below. It skips VM IDs that already exist, so it also finishes an interrupted run or recreates missing VMs after a disaster.
+All via cloning. **The short way:** [`create-vms`](../scripts/README.md) (run on pve1) does this entire stage's hypervisor side in one attended run — clone, CPU/RAM, static IP, disk growth, start-at-boot, in the right order, from the same table below. It skips VM IDs that already exist, so it also finishes an interrupted run or recreates missing VMs after a disaster.
 
 ```bash
 # installed by Stage 2.4, so it works from anywhere:
@@ -27,14 +27,15 @@ Read on anyway: the table is the specification (script and table are kept in syn
 Then adjust each clone **before its first boot** — the IP especially, because a clone that boots once on DHCP tends to stay there ([First boot](#first-boot--confirm-each-vm-took-its-static-ip)):
 - **Hardware → Memory / Processors** → values below (CPU **Type stays `x86-64-v3`**, inherited)
 - **Cloud-Init → IP Config (net0) → Edit** → static IP + gateway below
+- **Options → Start at boot / Start/Shutdown order** → last column below ([why](#start-at-boot--what-comes-back-after-a-node-reboot))
 - Start the VM, then log in **from pve1**: `ssh devops@<its-IP>`. It won't work from your workstation yet, and that's expected — [SSH access](#ssh-access--key-only-from-the-first-boot) explains why and fixes it
 
-| VM ID | Name | Storage | CPU | RAM | Disk | IP (Cloud-init) |
-|---|---|---|---|---|---|---|
-| 1020 | control-ubuntu | `apps` | 2 | 4 GiB | 32G — as cloned | 192.168.0.20/24, gw .1 |
-| 1021 | app-ubuntu | `apps` | 8 | 8 GiB | **128G** | 192.168.0.21/24, gw .1 |
-| 1022 | postgres-ubuntu | **`db`** | 8 | 32 GiB | **640G** | 192.168.0.22/24, gw .1 |
-| 1023 | monitoring-ubuntu | `apps` | 2 | 4 GiB | **320G** | 192.168.0.23/24, gw .1 |
+| VM ID | Name | Storage | CPU | RAM | Disk | IP (Cloud-init) | Start at boot |
+|---|---|---|---|---|---|---|---|
+| 1020 | control-ubuntu | `apps` | 2 | 4 GiB | 32G — as cloned | 192.168.0.20/24, gw .1 | no |
+| 1021 | app-ubuntu | `apps` | 8 | 8 GiB | **128G** | 192.168.0.21/24, gw .1 | `order=2` |
+| 1022 | postgres-ubuntu | **`db`** | 8 | 32 GiB | **640G** | 192.168.0.22/24, gw .1 | `order=1,up=60` |
+| 1023 | monitoring-ubuntu | `apps` | 2 | 4 GiB | **320G** | 192.168.0.23/24, gw .1 | `order=3` |
 
 1023 is the fourth, last VM: Loki + Grafana, wired up in [Stage 11](11-bootstrap.md#117-the-monitoring-vm-1023--loki--grafana). Its 320G looks generous next to 1020's 32G for the same CPU/RAM — but the `apps` pool is thin-provisioned ([Stage 6.1](../cluster/06-zfs-pools.md#61-thin-provisioning--set-it-before-any-vm-disk-exists)), so a big declared ceiling costs nothing until logs actually fill it. Cheap headroom now beats a `qm resize` interruption later.
 
@@ -58,6 +59,37 @@ Absolute sizes, not `+N`: the target is what it is regardless of what the templa
 **The guest side happens by itself.** The cloud image's root sits on a plain partition, and cloud-init's `growpart` module runs at **every** boot — the first boot finds the bigger disk and grows the partition and filesystem into it. Nothing to run inside the guest, nothing to remember on VM number four; `df -h /` after boot is the proof, and the smoke test in [9.6](09-ubuntu-template.md#96-verify-before-you-build-on-it) already validated the mechanism. (Resized a disk while the VM was running? It's picked up on the next reboot.) This is also why [Stage 11](11-bootstrap.md#114-vaultyml-and-mainyml) sets `grow_root_filesystem: false`: the `common` role's growth chain exists for LVM layouts, and there's no LVM here to grow.
 
 **ISO-alternative layouts only** ([9.8](09-ubuntu-template.md#98-the-alternative-interactive-iso-install)): there the root *is* on LVM, cloud-init can't grow it, and the `common` role does it on every playbook run — keep `grow_root_filesystem: true` and see [9.8g](09-ubuntu-template.md#98-the-alternative-interactive-iso-install) for the manual chain.
+
+## Start at boot — what comes back after a node reboot
+
+Proxmox's default for every new VM is `onboot: 0`. Shut a node down with its VMs running, power it back on, and they stay stopped — the node comes up, the guests don't, and nothing in the cluster contradicts that default. HA ([Stage 15](../ha/15-ha.md)) is the only other thing that starts a guest on its own, and it deliberately covers 1021 and 1022 only, so without this step a planned reboot leaves monitoring off until you happen to notice.
+
+One command per VM. Unlike the resize above these can be run at any time, on a running VM too — they take effect at the next boot (`create-vms` sets them at creation):
+
+```bash
+qm set 1022 --onboot 1 --startup order=1,up=60   # postgres first…
+qm set 1021 --onboot 1 --startup order=2         # …then the app that depends on it
+qm set 1023 --onboot 1 --startup order=3
+qm set 1020 --onboot 0                           # control stays manual — the default, stated explicitly
+
+qm config 1022 | egrep 'onboot|startup'          # the proof, per VM
+```
+
+`order` is the sequence within one node; `up=60` is the pause *after* 1022 before the next one is started — enough for Postgres to finish crash recovery and start listening, so the app doesn't spend its first minute retrying a closed port. (There's a matching `down=` for shutdown; the default is fine.)
+
+**1020 stays out, deliberately** — the same reasoning as [15.1](../ha/15-ha.md#151-which-vms-get-ha): the control VM serves no users, and it's the one you start when you need Ansible. That's this guide's choice, not a constraint; `--onboot 1` if you'd rather always have it.
+
+**On 1021 and 1022 the flag is a safety net, not the mechanism.** The boot-time `startall` skips HA-managed guests on purpose — the HA stack owns them and starts them as soon as the node is quorate, whatever `onboot` says. Setting it anyway costs nothing and covers the two windows HA doesn't: before Stage 15 exists (which is most of this build), and after a VM is ever taken back out of HA.
+
+**Quorum comes first, for both mechanisms.** A node that boots alone — other node down *and* QDevice down — holds 1 of 3 votes, `/etc/pve` stays read-only, and it starts nothing at all, `onboot` or HA. A node that reboots back empty is either this or the missing flag; [`pvecm status`](../ha/18-failover.md#185-emergency-forcing-quorum) tells you which within seconds.
+
+The two mechanisms then differ in how they handle *arriving early*, which matters after a whole-lab power return ([4.4](../setup/04-ups.md#44-the-long-outage-timeline-end-to-end)) when all three machines race to boot: the HA stack keeps reconciling, so it starts its VMs the moment quorum forms, while `startall` runs **once** — a node quorate ten seconds too late leaves 1023 stopped for good. If you ever see that, give the vote time to arrive:
+
+```bash
+pvesh set /cluster/options --startall-onboot-delay 60     # datacenter-wide, seconds
+```
+
+**It cannot start a stale copy.** A node only autostarts the guests it owns, and after a migration the config lives under the *other* node's `/etc/pve/nodes/<node>/qemu-server/` — so the returning-node rule in [16.2](../operations/16-maintenance.md#162-returning-a-node-after-a-long-outage-days-to-weeks) still holds: nothing here can bring up a two-week-old replica behind your back.
 
 ## First boot — confirm each VM took its static IP
 
