@@ -15,7 +15,7 @@ ansible_user: devops
 # still a way in — a hypervisor's root key, an installer-imported key. Those
 # don't feel like "identities", which is exactly why the first exclusive run
 # deletes them and takes the get-in-from-the-host path with it. On the Proxmox
-# build that means both nodes' /root/.ssh/id_ed25519.pub (proxmox-homelab 21.6).
+# build that means both nodes' /root/.ssh/id_ed25519.pub (proxmox-lab 21.6).
 
 # Once EVERY key you rely on is listed above, flip to true: keys not in the list
 # are removed on the next run — rotating a compromised key = one playbook run.
@@ -30,7 +30,7 @@ ssh_disable_password_auth: true
 # The common role grows the root partition/LVM/filesystem into whatever disk the
 # hypervisor granted (e.g. qm resize) — a no-op when nothing changed. LVM layouts
 # only (ISO-installed guests): cloud-image guests have root on a plain partition
-# that cloud-init grows at every boot — set false there (proxmox-homelab Stage 11).
+# that cloud-init grows at every boot — set false there (proxmox-lab Stage 11).
 grow_root_filesystem: true
 
 # ── Apps (required) ───────────────────────────────────────────────────────────
@@ -117,7 +117,7 @@ postgres_extra_cidrs: []
 # ── WAL streaming to a third box (optional) ────────────────────────────────────
 # Streams the write-ahead log to an always-on receiver (pg_receivewal), so an
 # unplanned failover loses seconds instead of the VM-replication interval.
-# Receiver setup + the recovery procedure: proxmox-homelab/ha/13-wal-stream.md
+# Receiver setup + the recovery procedure: proxmox-lab/ha/13-wal-stream.md
 postgres_wal_stream_enabled: false
 postgres_wal_stream_user: "walreceiver"
 postgres_wal_stream_slot: "wal_archive"

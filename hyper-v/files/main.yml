@@ -15,7 +15,7 @@ ssh_authorized_keys_exclusive: false
 # Grow the root partition/LVM/filesystem into whatever the hypervisor granted —
 # a no-op when nothing changed, so it runs on every host, every run. LVM layouts
 # only: cloud-image guests grow themselves via cloud-init — set false there
-# (proxmox-homelab Stage 11).
+# (proxmox-lab Stage 11).
 grow_root_filesystem: true
 
 # ── Infrastructure ─────────────────────────────────────────────────────────────
@@ -55,7 +55,7 @@ postgres_extra_cidrs: []
 # ── WAL streaming to a third box (optional) ────────────────────────────────────
 # Streams the write-ahead log to an always-on receiver (pg_receivewal), so an
 # unplanned failover loses seconds instead of the VM-replication interval.
-# Receiver setup + the recovery procedure: proxmox-homelab/ha/13-wal-stream.md
+# Receiver setup + the recovery procedure: proxmox-lab/ha/13-wal-stream.md
 postgres_wal_stream_enabled: false
 postgres_wal_stream_user: "walreceiver"
 postgres_wal_stream_slot: "wal_archive"

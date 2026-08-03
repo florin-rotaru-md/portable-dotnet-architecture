@@ -55,7 +55,7 @@ ssh_disable_password_auth: true
 # The common role grows the root partition/LVM/filesystem into whatever disk the
 # hypervisor granted — a no-op when nothing changed. LVM layouts only: cloud-image
 # guests have root on a plain partition that cloud-init grows at every boot —
-# set false there (proxmox-homelab Stage 11).
+# set false there (proxmox-lab Stage 11).
 grow_root_filesystem: true
 
 # ── Firewall ───────────────────────────────────────────────────────────────────

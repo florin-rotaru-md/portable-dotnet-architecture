@@ -15,7 +15,7 @@ when you need to.
 
 For a Windows 11 host running Ubuntu VMs on Hyper-V while keeping the `native/` runtime model, see [`hyper-v/`](hyper-v/).
 
-For a self-hosted **two-node Proxmox cluster** running the `native/` runtime model with ZFS replication, HA, live migration and a full backup/recovery story, see [`proxmox-homelab/`](proxmox-homelab/) — a complete build-and-operate guide.
+For a self-hosted **two-node Proxmox cluster** running the `native/` runtime model with ZFS replication, HA, live migration and a full backup/recovery story, see [`proxmox-lab/`](proxmox-lab/) — a complete build-and-operate guide.
 
 `native/` and `docker/` now perform the first application deploy during bootstrap when the required application source or image settings are configured. `native/` uses a multi-app `applications` definition. `k3s/` and `k3s-proxmox/` continue to deploy applications through FluxCD from Git.
 
