@@ -178,9 +178,9 @@ applications:
     # Secrets (passwords, API keys) should reference vault.yml variables.
     appsettings_override:
       ConnectionStrings:
-        App:            "Host=127.0.0.1;Port=5432;Database=waa_ro_app;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
-        Users:          "Host=127.0.0.1;Port=5432;Database=waa_ro_users;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
-        DataProtection: "Host=127.0.0.1;Port=5432;Database=waa_ro_dp;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
+        App:            "Host={{ postgres_host }};Port=5432;Database=waa_ro_app;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
+        Users:          "Host={{ postgres_host }};Port=5432;Database=waa_ro_users;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
+        DataProtection: "Host={{ postgres_host }};Port=5432;Database=waa_ro_dp;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
       # FileStorage:
       #   BaseDirectory: "/data/files"
       # UiClient:
@@ -201,7 +201,7 @@ applications:
 #     repo_token:    "{{ app_repo_token }}"
 #     appsettings_override:
 #       ConnectionStrings:
-#         Main: "Host=127.0.0.1;Port=5432;Database=waa_ro_admin;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
+#         Main: "Host={{ postgres_host }};Port=5432;Database=waa_ro_admin;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
 EOF
 
 
