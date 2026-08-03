@@ -70,6 +70,8 @@ The pairs were generated in [0.5](00-preparation.md#05-keys--generate-all-of-the
 
 From your workstation, with the node's root password (the hosts *do* accept passwords — only the VMs don't):
 
+**Linux / macOS / Git Bash:**
+
 ```bash
 # pve1 — its own pair, plus the four public halves that 9.4 turns into vm_keys.pub
 scp ~/lab-keys/pve1_root ~/lab-keys/*.pub root@192.168.0.11:/tmp/
@@ -85,7 +87,23 @@ ssh root@192.168.0.12 'install -d -m 700 /root/.ssh &&
     install -m 644 /tmp/pve2_root.pub /root/.ssh/id_ed25519.pub && rm -f /tmp/pve2_root*'
 ```
 
-On Windows use `$env:USERPROFILE\lab-keys\...` in the `scp` lines; the remote halves are identical.
+**Windows (PowerShell)** — not a cosmetic path swap, so use these rather than editing the block above:
+
+```powershell
+$k = "$env:USERPROFILE\lab-keys"
+
+# pve1 — its own pair, plus the four public halves that 9.4 turns into vm_keys.pub
+scp "$k\pve1_root" "$k\pve1_root.pub" "$k\pve2_root.pub" "$k\workstation.pub" "$k\breakglass.pub" root@192.168.0.11:/tmp/
+ssh root@192.168.0.11 'install -d -m 700 /root/.ssh && install -m 600 /tmp/pve1_root /root/.ssh/id_ed25519 && install -m 644 /tmp/pve1_root.pub /root/.ssh/id_ed25519.pub && install -m 644 /tmp/*.pub /root/.ssh/ && rm -f /tmp/*_root /tmp/*.pub'
+
+# pve2 — its own pair only
+scp "$k\pve2_root" "$k\pve2_root.pub" root@192.168.0.12:/tmp/
+ssh root@192.168.0.12 'install -d -m 700 /root/.ssh && install -m 600 /tmp/pve2_root /root/.ssh/id_ed25519 && install -m 644 /tmp/pve2_root.pub /root/.ssh/id_ed25519.pub && rm -f /tmp/pve2_root*'
+```
+
+Three differences, because PowerShell hands arguments to a native `.exe` far more literally than a shell does. It doesn't expand `~`, hence `$env:USERPROFILE`. It doesn't expand wildcards either — `scp` receives the literal string `...\*.pub`, copies `pve1_root`, and errors on the rest, so the next command dies with `install: cannot stat '/tmp/pve1_root.pub'`; the four public halves are therefore listed by name. And a quoted argument spanning several lines is truncated at the first newline, so the `ssh` payloads are one line each — that one is the dangerous failure, because the truncated version runs `install -d -m 700 /root/.ssh`, stops, and reports success. The `/tmp/*.pub` glob *inside* the quotes is fine: the node's shell expands that one.
+
+Re-running either pair after a partial failure is safe — `install` overwrites and the `rm` only ever touches `/tmp`.
 
 Verify on each node — the fingerprint should match the one your password manager holds for that key:
 
