@@ -73,7 +73,7 @@ From your workstation, with the node's root password (the hosts *do* accept pass
 **Linux / macOS / Git Bash:**
 
 ```bash
-# pve1 — its own pair, plus the four public halves that 9.4 turns into vm_keys.pub
+# pve1 — its own pair, plus the five public halves that 9.4 turns into vm_keys.pub
 scp ~/lab-keys/pve1_root ~/lab-keys/*.pub root@192.168.0.11:/tmp/
 ssh root@192.168.0.11 'install -d -m 700 /root/.ssh &&
     install -m 600 /tmp/pve1_root     /root/.ssh/id_ed25519 &&
@@ -92,8 +92,8 @@ ssh root@192.168.0.12 'install -d -m 700 /root/.ssh &&
 ```powershell
 $k = "$env:USERPROFILE\lab-keys"
 
-# pve1 — its own pair, plus the four public halves that 9.4 turns into vm_keys.pub
-scp "$k\pve1_root" "$k\pve1_root.pub" "$k\pve2_root.pub" "$k\workstation.pub" "$k\breakglass.pub" root@192.168.0.11:/tmp/
+# pve1 — its own pair, plus the five public halves that 9.4 turns into vm_keys.pub
+scp "$k\pve1_root" "$k\pve1_root.pub" "$k\pve2_root.pub" "$k\devops.pub" "$k\workstation.pub" "$k\breakglass.pub" root@192.168.0.11:/tmp/
 ssh root@192.168.0.11 'install -d -m 700 /root/.ssh && install -m 600 /tmp/pve1_root /root/.ssh/id_ed25519 && install -m 644 /tmp/pve1_root.pub /root/.ssh/id_ed25519.pub && install -m 644 /tmp/*.pub /root/.ssh/ && rm -f /tmp/*_root /tmp/*.pub'
 
 # pve2 — its own pair only
@@ -101,7 +101,7 @@ scp "$k\pve2_root" "$k\pve2_root.pub" root@192.168.0.12:/tmp/
 ssh root@192.168.0.12 'install -d -m 700 /root/.ssh && install -m 600 /tmp/pve2_root /root/.ssh/id_ed25519 && install -m 644 /tmp/pve2_root.pub /root/.ssh/id_ed25519.pub && rm -f /tmp/pve2_root*'
 ```
 
-Three differences, because PowerShell hands arguments to a native `.exe` far more literally than a shell does. It doesn't expand `~`, hence `$env:USERPROFILE`. It doesn't expand wildcards either — `scp` receives the literal string `...\*.pub`, copies `pve1_root`, and errors on the rest, so the next command dies with `install: cannot stat '/tmp/pve1_root.pub'`; the four public halves are therefore listed by name. And a quoted argument spanning several lines is truncated at the first newline, so the `ssh` payloads are one line each — that one is the dangerous failure, because the truncated version runs `install -d -m 700 /root/.ssh`, stops, and reports success. The `/tmp/*.pub` glob *inside* the quotes is fine: the node's shell expands that one.
+Three differences, because PowerShell hands arguments to a native `.exe` far more literally than a shell does. It doesn't expand `~`, hence `$env:USERPROFILE`. It doesn't expand wildcards either — `scp` receives the literal string `...\*.pub`, copies `pve1_root`, and errors on the rest, so the next command dies with `install: cannot stat '/tmp/pve1_root.pub'`; the five public halves are therefore listed by name. And a quoted argument spanning several lines is truncated at the first newline, so the `ssh` payloads are one line each — that one is the dangerous failure, because the truncated version runs `install -d -m 700 /root/.ssh`, stops, and reports success. The `/tmp/*.pub` glob *inside* the quotes is fine: the node's shell expands that one.
 
 Re-running either pair after a partial failure is safe — `install` overwrites and the `rm` only ever touches `/tmp`.
 
@@ -111,6 +111,6 @@ Verify on each node — the fingerprint should match the one your password manag
 ssh-keygen -lf /root/.ssh/id_ed25519.pub
 ```
 
-**Then delete the staging folder** (`rm -rf ~/lab-keys`, or `Remove-Item -Recurse -Force "$env:USERPROFILE\lab-keys"`). The two node keys are now on their nodes *and* in your password manager, the four public halves are on pve1, and the break-glass private key belongs nowhere but the password manager and paper. What's left after this point is one copy of each key on the machine that uses it — which is the property the rest of [21.5](../operations/21-credentials.md#215-recovery-scenarios--what-losing-each-thing-actually-means) assumes.
+**The staging folder stays — one pair is still in it.** `~/lab-keys` still holds the `devops` pair, which [Stage 10](../vms/10-vms.md#ssh-keys--control-ubuntu--the-other-three) installs on VM 1020; the folder is deleted there, on [0.5](00-preparation.md#05-keys--generate-all-of-them-now)'s schedule. After this section: the two node keys are on their nodes *and* in your password manager, all five public halves are on pve1, and the break-glass private half exists nowhere but the password manager and paper. Once Stage 10 runs, what's left is one installed copy of each key on the machine that uses it, backed by the password manager — the property the rest of [21.5](../operations/21-credentials.md#215-recovery-scenarios--what-losing-each-thing-actually-means) assumes.
 
 Two things this is **not**. It is not the key Proxmox uses between the nodes — cluster root SSH is set up by `pvecm add` and lives in `/etc/pve/priv/authorized_keys`, untouched by any of this. And it is not backed up by [`pve-config-backup`](../scripts/README.md), deliberately: that archive lands unencrypted on the USB drive, and a skeleton key doesn't belong there. The password manager copy from [0.5](00-preparation.md#05-keys--generate-all-of-them-now) is this key's backup — which is also what turns a rebuilt node ([19.2 step 5](../operations/19-node-replacement.md#5-build-the-new-node)) back into a node that opens every existing VM.

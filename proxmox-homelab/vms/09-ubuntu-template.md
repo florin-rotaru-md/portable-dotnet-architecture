@@ -89,14 +89,14 @@ At each clone's first boot, cloud-init creates the `devops` user with passwordle
 **SSH key instead of passwords** — and on the cloud image this is not a hardening choice, it's the only door. Canonical ships `/etc/ssh/sshd_config.d/60-cloudimg-settings.conf` with `PasswordAuthentication no` inside the image, so every clone is key-only from its first boot, long before Ansible pins the same setting. A template with no `--sshkeys` produces VMs nobody can SSH into — recoverable only through the console password below. Do this now and every clone comes up reachable:
 
 ```bash
-# on pve1 — 2.5 already placed the four public halves from 0.5 in /root/.ssh
+# on pve1 — 2.5 already placed the five public halves from 0.5 in /root/.ssh
 cd /root/.ssh
-cat pve1_root.pub pve2_root.pub workstation.pub breakglass.pub > vm_keys.pub
-awk 'END {print NR" keys"}' vm_keys.pub          # expect 4
+cat pve1_root.pub pve2_root.pub devops.pub workstation.pub breakglass.pub > vm_keys.pub
+awk 'END {print NR" keys"}' vm_keys.pub          # expect 5
 qm set 9000 --sshkeys /root/.ssh/vm_keys.pub
 ```
 
-One file rather than one key, because extending the list later is then an appended line and a re-run, not an archaeology exercise over which `.pub` was used — and it *will* be extended: the fifth key, Ansible's, is generated on VM 1020 in [Stage 10](10-vms.md#ssh-keys--control-ubuntu--the-other-three) and joins the file there. Skipped [0.5](../setup/00-preparation.md#05-keys--generate-all-of-them-now)? `ssh-keygen -t ed25519 -N "" -f /root/.ssh/id_ed25519 && cp /root/.ssh/id_ed25519.pub /root/.ssh/vm_keys.pub` gives you a working single-key template — and then read 0.5 anyway, because everything below is about the keys it would have produced.
+One file rather than one key, because auditing or extending the list later is then one `cat` away, not an archaeology exercise over which `.pub` was used — and because [0.5](../setup/00-preparation.md#05-keys--generate-all-of-them-now) generated everything up-front, the file is *complete* right here: all five keys, Ansible's included, before the first clone exists. Nothing joins it later. Skipped 0.5? `ssh-keygen -t ed25519 -N "" -f /root/.ssh/id_ed25519 && cp /root/.ssh/id_ed25519.pub /root/.ssh/vm_keys.pub` gives you a working single-key template — and then read 0.5 anyway, because everything below is about the keys it would have produced.
 
 **What `--sshkeys` actually does**, since three later surprises come from misreading it:
 

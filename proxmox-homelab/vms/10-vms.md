@@ -190,33 +190,32 @@ ansible --version
 
 ## SSH keys — control-ubuntu → the other three
 
-Ansible runs from 1020 and logs into 1021/1022/1023 as `devops`, so the control VM needs its own key authorized on the other three. This is the **fifth** key of [0.5](../setup/00-preparation.md#05-keys--generate-all-of-them-now) and the only one deliberately *not* generated there: it's created here, on the machine that uses it, and no copy of it ever exists anywhere else. If 1020 is lost, this key is recovered by restoring 1020 ([21.2](../operations/21-credentials.md#212-what-a-restore-actually-gives-back)) or re-issued in ten minutes by repeating this section — which is a cheaper property to maintain than a private key in transit.
+Ansible runs from 1020 and logs into 1021/1022/1023 as `devops` — with the `devops` pair from [0.5](../setup/00-preparation.md#05-keys--generate-all-of-them-now), the last pair still sitting in `~/lab-keys`. Its public half has been in `vm_keys.pub` since [9.4](09-ubuntu-template.md#94-cloud-init-defaults), so all four VMs were *born* trusting it: nothing to generate, nothing to push, nothing to append. What's left is installing the private half on the one machine that uses it.
 
-The cost of that choice is right here: nothing on 1020 opens 1021 yet. `ssh-copy-id` **cannot** close the gap — it authenticates with a password to install the key, and [password authentication is off from the first boot](#ssh-access--key-only-from-the-first-boot). So the key has to be delivered by something that already has access, which is pve1.
+(`ssh-copy-id` has no role here or anywhere in this lab — it authenticates with a password to deliver a key, and [password authentication is off from the first boot](#ssh-access--key-only-from-the-first-boot). Keys arrive through `vm_keys.pub` at clone time, or from a machine that's already trusted — which is what happens next.)
 
-**1. Generate the key on control-ubuntu (1020):**
+**1. Install the pair on control-ubuntu (1020)** — from your workstation, whose own key every clone already trusts:
+
 ```bash
-test -f ~/.ssh/id_ed25519_devops || ssh-keygen -t ed25519 -N "" -C "devops" -f ~/.ssh/id_ed25519_devops
-scp ~/.ssh/id_ed25519_devops.pub root@192.168.0.11:/tmp/     # pve1 accepts its root password
+scp ~/lab-keys/devops ~/lab-keys/devops.pub devops@192.168.0.20:/tmp/
+ssh devops@192.168.0.20 'install -d -m 700 ~/.ssh &&
+    install -m 600 /tmp/devops     ~/.ssh/id_ed25519_devops &&
+    install -m 644 /tmp/devops.pub ~/.ssh/id_ed25519_devops.pub && rm -f /tmp/devops /tmp/devops.pub'
 ```
 
-No passphrase, for the reason [0.5](../setup/00-preparation.md#05-keys--generate-all-of-them-now) gives: every unattended playbook run authenticates with it.
+On Windows, the same three PowerShell rules as [2.5](../setup/02-post-install.md#25-install-the-nodes-key-pair-both-nodes): explicit paths, and the `ssh` payload on one line —
 
-**2. Install it from pve1**, whose root key already opens all three:
-```bash
-# on pve1, as root
-for ip in 21 22 23; do
-  ssh -o StrictHostKeyChecking=accept-new "devops@192.168.0.$ip" \
-    'install -d -m 700 ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys' \
-    < /tmp/id_ed25519_devops.pub
-done
-
-cat /tmp/id_ed25519_devops.pub >> /root/.ssh/vm_keys.pub     # the fifth key joins the list
-qm set 9000 --sshkeys /root/.ssh/vm_keys.pub                 # future clones are born with it
-rm -f /tmp/id_ed25519_devops.pub
+```powershell
+$k = "$env:USERPROFILE\lab-keys"
+scp "$k\devops" "$k\devops.pub" devops@192.168.0.20:/tmp/
+ssh devops@192.168.0.20 'install -d -m 700 ~/.ssh && install -m 600 /tmp/devops ~/.ssh/id_ed25519_devops && install -m 644 /tmp/devops.pub ~/.ssh/id_ed25519_devops.pub && rm -f /tmp/devops /tmp/devops.pub'
 ```
 
-Those middle two lines are what keeps this a one-time chore rather than a recurring one: `vm_keys.pub` is now complete at five keys, and VM number five is born trusting the control VM. (Running step 2 twice just appends a duplicate line — harmless, and Stage 11 rewrites the file declaratively anyway.)
+**2. Delete the staging folder** — this was the last private half in it to reach its machine, and every pair's permanent copy is already in the password manager ([0.5](../setup/00-preparation.md#05-keys--generate-all-of-them-now)):
+
+```bash
+rm -rf ~/lab-keys        # PowerShell: Remove-Item -Recurse -Force "$env:USERPROFILE\lab-keys"
+```
 
 **3. Verify from control-ubuntu**, and make the key the default for this subnet so you don't type `-i` forever:
 ```bash

@@ -20,7 +20,7 @@ The authoritative command-by-command walkthrough is [`native/example`](../../nat
 | `use_loki_grafana` / `monitoring_target` | `false` / — | `true` / **`monitoring`** — Loki + Grafana run on dedicated 1023 instead of alongside the app, see 11.7 |
 | `grow_root_filesystem` | `true` (LVM layout, the role grows it) | **`false`** — cloud-image clones have no LVM; cloud-init already grew each root at first boot ([Stage 10](10-vms.md#grow-the-disk--per-vm)), and the role's LVM chain has nothing to act on |
 | sudoers / `growpart` prep steps | needed (hand-installed VM) | **skip** — cloud-init created `devops` with passwordless sudo and grew the disks at first boot; nothing to prepare by hand |
-| SSH keys | generated in the walkthrough, seeded with `ssh-copy-id` | already done at the end of [Stage 10](10-vms.md#ssh-keys--control-ubuntu--the-other-three) — reuse `~/.ssh/id_ed25519_devops`. `ssh-copy-id` doesn't apply here: the cloud image has no password auth to bootstrap through, so pve1 delivered the key instead |
+| SSH keys | generated in the walkthrough, seeded with `ssh-copy-id` | already done in [Stage 10](10-vms.md#ssh-keys--control-ubuntu--the-other-three) — the `devops` pair from [0.5](../setup/00-preparation.md#05-keys--generate-all-of-them-now), installed as `~/.ssh/id_ed25519_devops`. `ssh-copy-id` doesn't apply here: the cloud image has no password auth to bootstrap through, so every VM was born trusting the key via `vm_keys.pub` instead |
 
 ## 11.2 On control-ubuntu (1020)
 
