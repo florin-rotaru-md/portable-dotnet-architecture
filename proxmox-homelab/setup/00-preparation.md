@@ -116,7 +116,7 @@ ssh-keygen -t ed25519         -C "break-glass"  -f .\breakglass      # type a pa
 Copy-Item "$env:USERPROFILE\.ssh\id_ed25519.pub" .\workstation.pub
 ```
 
-`-N '""'` is not a typo: PowerShell eats a plain `-N ""` before `ssh-keygen` ever sees it, and you get an interactive prompt instead (harmless — press Enter twice). Windows ships OpenSSH, so nothing needs installing; if you later use a private key from Windows directly, expect `ssh` to refuse one whose ACL is too open — `icacls key /inheritance:r /grant:r "$env:USERNAME:R"` fixes it.
+`-N '""'` is not a typo: PowerShell eats a plain `-N ""` before `ssh-keygen` ever sees it, and you get an interactive prompt instead (harmless — press Enter twice). Windows ships OpenSSH, so nothing needs installing; if you later use a private key from Windows directly, expect `ssh` to refuse one whose ACL is too open — `icacls key /inheritance:r /grant:r "${env:USERNAME}:R"` fixes it (the braces matter: `"$env:USERNAME:R"` parses as one nonexistent variable and expands to an empty string).
 
 ### Generate — Linux / macOS
 

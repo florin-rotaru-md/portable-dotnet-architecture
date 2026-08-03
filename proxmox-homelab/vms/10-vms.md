@@ -172,7 +172,25 @@ Two fallbacks while your key isn't in there yet:
 
 **2. Two hops, no changes.** The Proxmox hosts *do* accept passwords, so `ssh root@192.168.0.11` and then `ssh devops@192.168.0.20` from there works right now. Note that `ssh -J root@192.168.0.11 devops@192.168.0.20` does **not** — ProxyJump tunnels the connection but still authenticates you to the VM with *your* key, which isn't authorized there yet.
 
-**3. Copy pve1's private key to your workstation.** Instant, and the one to think twice about: that key opens every VM in the lab, so moving it around widens the blast radius of a stolen laptop. [21.1](../operations/21-credentials.md#211-inventory--what-exists-and-where-it-lives) calls it the skeleton key for exactly this reason. If you do it, `ssh -i <path> devops@192.168.0.20`, and on Windows expect OpenSSH to reject a key file whose permissions are too open — `icacls key /inheritance:r /grant:r "$env:USERNAME:R"` fixes it.
+**3. Copy pve1's private key to your workstation.** Instant, and the one to think twice about: that key opens every VM in the lab, so moving it around widens the blast radius of a stolen laptop. [21.1](../operations/21-credentials.md#211-inventory--what-exists-and-where-it-lives) calls it the skeleton key for exactly this reason. If you do it, keep the copy next to your other keys in `~/.ssh`, under its [0.5](../setup/00-preparation.md#05-keys--generate-all-of-them-now) name so it stays recognizable — it's the same pair your password manager holds as `pve1_root`:
+
+```bash
+# Linux / macOS / Git Bash — pve1 accepts its root password
+mkdir -p ~/.ssh
+scp root@192.168.0.11:/root/.ssh/id_ed25519 ~/.ssh/pve1_root
+chmod 600 ~/.ssh/pve1_root
+ssh -i ~/.ssh/pve1_root devops@192.168.0.20
+```
+
+```powershell
+# Windows (PowerShell) — OpenSSH refuses a private key whose ACL is too open; icacls locks it down first
+New-Item -ItemType Directory -Force "$env:USERPROFILE\.ssh" | Out-Null
+scp root@192.168.0.11:/root/.ssh/id_ed25519 "$env:USERPROFILE\.ssh\pve1_root"
+icacls "$env:USERPROFILE\.ssh\pve1_root" /inheritance:r /grant:r "${env:USERNAME}:R"
+ssh -i "$env:USERPROFILE\.ssh\pve1_root" devops@192.168.0.20
+```
+
+When the detour is over — your own key is in `vm_keys.pub` and working — delete the copy (`rm ~/.ssh/pve1_root`, or `Remove-Item "$env:USERPROFILE\.ssh\pve1_root"`): the pair's homes are pve1 and the password manager, and a third one on a laptop is exactly what 21.1 counts as drift.
 
 ## Control node — Ansible
 
