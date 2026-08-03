@@ -83,6 +83,7 @@
   notify: restart postgresql
   when: >-
     (postgres_app_cidr | default('') | length > 0)
+    or (postgres_extra_cidrs | default([]) | length > 0)
     or (postgres_wal_stream_enabled | default(false))
 
 - name: Allow PostgreSQL port through UFW from app subnet
@@ -92,6 +93,17 @@
     proto: tcp
     src:   "{{ postgres_app_cidr }}"
   when: postgres_app_cidr | default('') | length > 0
+
+# Entries removed from the list disappear from pg_hba.conf on the next run
+# (the template owns the whole file), but UFW rules are only ever added —
+# delete stale ones by hand: ufw status numbered && ufw delete <n>.
+- name: Allow PostgreSQL port through UFW from extra client CIDRs
+  ufw:
+    rule:  allow
+    port:  "5432"
+    proto: tcp
+    src:   "{{ item }}"
+  loop: "{{ postgres_extra_cidrs | default([]) }}"
 
 # ── WAL streaming to an external receiver (optional) ──────────────────────────
 # Lets an always-on third box run pg_receivewal against a physical replication

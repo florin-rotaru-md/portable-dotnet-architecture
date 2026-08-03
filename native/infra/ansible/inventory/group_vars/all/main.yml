@@ -104,6 +104,16 @@ postgres_host: "127.0.0.1"
 #     e.g. "10.0.0.0/24" for a VPS private network, "192.168.0.0/24" for LAN
 postgres_app_cidr: ""
 
+# postgres_extra_cidrs: additional CIDRs allowed to connect, beyond
+# postgres_app_cidr — e.g. your workstation (psql/pgAdmin/DBeaver) or the
+# whole home LAN. Each entry gets a pg_hba.conf line and a UFW allow for
+# 5432/tcp; authentication still requires the postgres_user password.
+#   postgres_extra_cidrs: ["192.168.0.50/32"]   # a single workstation
+#   postgres_extra_cidrs: ["192.168.0.0/24"]    # the whole LAN
+# Removing an entry closes pg_hba.conf on the next run, but the UFW rule
+# must be deleted by hand (ufw status numbered && ufw delete <n>).
+postgres_extra_cidrs: []
+
 # ── WAL streaming to a third box (optional) ────────────────────────────────────
 # Streams the write-ahead log to an always-on receiver (pg_receivewal), so an
 # unplanned failover loses seconds instead of the VM-replication interval.

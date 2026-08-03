@@ -65,6 +65,11 @@ Create both exactly as `native/example` shows, then apply the homelab deltas fro
 ```yaml
 postgres_host: "192.168.0.22"
 postgres_app_cidr: "192.168.0.21/32"
+
+# Optional — direct Postgres access from your workstation/LAN (pgAdmin, psql):
+# see 11.8 before enabling.
+# postgres_extra_cidrs: ["192.168.0.0/24"]
+
 use_cloudflared: true
 
 # Cloud-image clones (Stage 9): root on a plain partition, grown by cloud-init
@@ -139,3 +144,29 @@ The Ansible side of this needed no new code: `monitoring` and `alloy` are existi
 **What does *not* ship logs yet, and why that's a deliberate stop here rather than an oversight:** Play 1 (postgres) runs only `common` + `postgres` — the `alloy` role isn't in that play, so 1022's Postgres logs stay local (`journalctl -u postgresql@{{ postgres_version }}-main`) and don't reach Grafana. Wiring that up means teaching Alloy to scrape journald instead of files (Postgres on Ubuntu logs to the journal, not a file, unless `logging_collector` is turned on) — a real change to a role shared by every setup in this repo, not a homelab-only tweak. Doing it well is worth its own change, reviewed on its own; bolting it on here to make 1023's job description technically complete would be exactly the kind of half-finished feature this guide tries to avoid. Until then, `journalctl` on 1022 (and `cluster-health`'s existing checks) remain how you look at database-side problems.
 
 **Why 1023 stays out of HA:** see [Stage 15.1](../ha/15-ha.md#151-which-vms-get-ha). Short version — it's an observability tool, not something users depend on; losing dashboards for the few minutes a manual restart takes is a cost worth paying for one less moving part during an actual incident.
+
+## 11.8 Optional — reaching Postgres from the rest of the LAN
+
+The default above is deliberately tight: `postgres_app_cidr: "192.168.0.21/32"` means **only the app VM** can open a TCP connection to 1022. Your workstation can't — `psql`, pgAdmin or DBeaver pointed at `192.168.0.22` just time out on the firewall. That's the right default: the app needs nothing more, and a database reachable by every device on the LAN (phones, TVs, IoT) is added attack surface with no operational gain.
+
+When you *do* want direct access from your desk — a GUI client, ad-hoc queries, inspecting what the app actually wrote — opt in with `postgres_extra_cidrs` in `main.yml`:
+
+```yaml
+postgres_extra_cidrs: ["192.168.0.0/24"]      # the whole LAN…
+# postgres_extra_cidrs: ["192.168.0.50/32"]   # …or, tighter: just your workstation
+```
+
+then re-run the playbook (11.5). For each listed CIDR the postgres role adds a `pg_hba.conf` entry and a UFW allow for 5432/tcp — the same two things it already does for the app's `/32`. If your workstation has a stable address (DHCP reservation, [Stage 5](../setup/05-network.md)), prefer the `/32` form; the `/24` is the convenient-but-broad variant.
+
+What this does **not** change:
+
+- **Authentication.** Every TCP connection still authenticates with `scram-sha-256` — opening the network is useless without the `postgres_password` from `vault.yml`. Nobody connects just by being on the LAN.
+- **Public exposure.** 5432 stays behind your router; the Cloudflare tunnel ([why it's app-only](cloudflare-tunnel.md)) publishes HTTP for the app, never the database.
+
+Verify from your workstation (password: `postgres_password` from `vault.yml`):
+
+```bash
+psql "host=192.168.0.22 user=postgres dbname=postgres" -c 'select version()'
+```
+
+Tightening back later: remove the entry and re-run — the `pg_hba.conf` line disappears (the template owns the whole file), so Postgres refuses the connections again. The UFW rule however is only ever *added*; delete it by hand on 1022 (`sudo ufw status numbered`, then `sudo ufw delete <n>`). Until you do, the leftover rule is cosmetic — the port is open but Postgres rejects anything not in `pg_hba.conf`.

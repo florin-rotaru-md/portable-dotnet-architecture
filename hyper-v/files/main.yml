@@ -47,6 +47,11 @@ postgres_host: "192.168.0.22"
 # Must include the app VM IP (192.168.0.21).
 postgres_app_cidr: "192.168.0.0/24"
 
+# Additional client CIDRs beyond postgres_app_cidr (workstation pgAdmin/psql
+# access etc.). The /24 above already covers the whole LAN, so this usually
+# stays empty here.
+postgres_extra_cidrs: []
+
 # ── WAL streaming to a third box (optional) ────────────────────────────────────
 # Streams the write-ahead log to an always-on receiver (pg_receivewal), so an
 # unplanned failover loses seconds instead of the VM-replication interval.
