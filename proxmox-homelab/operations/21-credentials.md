@@ -6,13 +6,14 @@ Everything before this stage assumes you can log in. Replication, HA, backups, r
 
 ## 21.1 Inventory — what exists and where it lives
 
-Three kinds of SSH material, easy to conflate, with completely different loss profiles:
+Three kinds of SSH material, easy to conflate, with completely different loss profiles. All the pairs below are generated in one sitting in [0.5](../setup/00-preparation.md#05-keys--generate-all-of-them-now) — this table is what each one *becomes* afterwards:
 
 | What | Where it lives | What it is | If lost |
 |---|---|---|---|
 | **Your workstation's private key** (`~/.ssh/id_ed25519`) | Your PC | **Your identity.** Opens whatever it's authorized on | You knock on other doors (21.5) |
 | **control-ubuntu's private key** (`~/.ssh/id_ed25519_devops`) | VM 1020 | **Ansible's identity.** Every playbook run flows through it | Config management stops until restored |
-| **pve1 root's private key** (`/root/.ssh/id_ed25519`) | pve1 | Injected via `--sshkeys /root/.ssh/vm_keys.pub` ([9.4](../vms/09-ubuntu-template.md#94-cloud-init-defaults)) → opens **every VM**, and is the *only* thing that opens a freshly cloned one ([Stage 10](../vms/10-vms.md#ssh-access--key-only-from-the-first-boot)) | One less recovery path; also: guard this one, it's a skeleton key |
+| **Each node's root private key** (`/root/.ssh/id_ed25519`, pve1 and pve2) | The nodes | Injected via `--sshkeys /root/.ssh/vm_keys.pub` ([9.4](../vms/09-ubuntu-template.md#94-cloud-init-defaults)) → opens **every VM**, and is the *only* thing that opens a freshly cloned one ([Stage 10](../vms/10-vms.md#ssh-access--key-only-from-the-first-boot)). Two nodes, two keys, so losing a node doesn't lose the path | One less recovery path; also: guard these, they're skeleton keys |
+| **The break-glass private key** | Password manager + paper, **never in the lab** | Authorized everywhere from birth, used nowhere. The one that still works when the four above are gone | The recovery of last resort is gone — regenerate and re-seed via Ansible the same day |
 | **Public keys** in `~/.ssh/authorized_keys` | Each VM's disk | **The locks, not the keys.** Travel with the disk: replicated by Stage 12, backed up by Stage 17 | Nothing — regenerate from the role |
 | **Host keys** (`/etc/ssh/ssh_host_*`) | Each VM's disk | The **server's** identity toward you — they never authenticate *you*. The cloud image ships without them (and the ISO route strips them, [9.8e](../vms/09-ubuntu-template.md#98-the-alternative-interactive-iso-install)), so every clone generates unique ones at first boot | Nothing — regenerated automatically |
 
@@ -42,9 +43,9 @@ This is the trap that matters more than any single key:
 
 Circular recovery dependencies are invisible until the day they bite, because every partial failure still works — only the total one doesn't. So audit for the cycle, not for the copies.
 
-**The minimum that must exist outside the lab** — password manager, plus ideally a paper copy somewhere physically separate:
+**The minimum that must exist outside the lab** — password manager, plus ideally a paper copy somewhere physically separate. [0.5](../setup/00-preparation.md#05-keys--generate-all-of-them-now) exists to make this list true from day one rather than as a retrofit; if you're reading this on an already-built lab, it's a checklist instead:
 
-1. **SSH private keys** — workstation + `id_ed25519_devops` (or at least one break-glass key, 21.6)
+1. **SSH private keys** — workstation + `id_ed25519_devops` + both nodes' root keys (and the break-glass key, 21.6)
 2. **rclone crypt passwords** — [17.6](../backup/17-backup-restore.md#176-offsite--digi-storage-via-rclone) already says this; it bears repeating because it's load-bearing
 3. **Proxmox root passwords** — both nodes
 4. **The VM `--cipassword`** — the one most people miss, and the subject of 21.4
@@ -85,7 +86,7 @@ The pattern across every row: **each credential's recovery path runs through a *
 
 ## 21.6 Two habits that make key loss boring
 
-**1. At least two authorized keys per VM.** One key is a single point of failure with perfect uptime until it isn't. The `common` role takes a list:
+**1. At least two authorized keys per VM.** One key is a single point of failure with perfect uptime until it isn't. Following [0.5](../setup/00-preparation.md#05-keys--generate-all-of-them-now) you have five, and the list the `common` role takes should name all of them — the same five that are in `vm_keys.pub`:
 
 ```yaml
 # group_vars / vault.yml
@@ -93,13 +94,17 @@ ansible_ssh_public_key: "{{ lookup('file', '~/.ssh/id_ed25519_devops.pub') }}"
 ansible_ssh_extra_public_keys:
   - "ssh-ed25519 AAAA... workstation"
   - "ssh-ed25519 AAAA... break-glass"
+  - "ssh-ed25519 AAAA... pve1-root"
+  - "ssh-ed25519 AAAA... pve2-root"
 ```
 
-The break-glass pair is generated once, offline, and its private half never touches a lab machine:
+> **The two node keys are the ones people leave out, and it's the expensive omission.** They're not "someone's key", so they don't feel like they belong in an identity list — but they are the only keys that open a *freshly cloned* VM, the delivery path in [Stage 10](../vms/10-vms.md#ssh-keys--control-ubuntu--the-other-three), and half the rows in [21.5](#215-recovery-scenarios--what-losing-each-thing-actually-means). Leave them out and the `exclusive` flag below will quietly delete them from every VM on its first run, taking the hypervisor's access with it.
+
+Didn't do 0.5, and the break-glass pair doesn't exist yet? It's generated once, offline, and its private half never touches a lab machine:
 
 ```bash
 ssh-keygen -t ed25519 -C "break-glass" -f ./id_ed25519_breakglass
-# public half  → ansible_ssh_extra_public_keys
+# public half  → ansible_ssh_extra_public_keys, and → /root/.ssh/vm_keys.pub on pve1
 # private half + passphrase → password manager + paper, then delete the local file
 ```
 

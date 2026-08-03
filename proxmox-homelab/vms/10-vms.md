@@ -143,32 +143,32 @@ Canonical's cloud image ships `/etc/ssh/sshd_config.d/60-cloudimg-settings.conf`
 
 - **`ssh devops@<ip>` with a password never works.** Not the `--cipassword`, not anything. You get `Permission denied (publickey)`, and no prompt at all.
 - **The `--cipassword` is still real** — it's the console login, typed into the Proxmox **Console** tab or `qm terminal <id>`. That's the whole recovery path it exists for ([21.4](../operations/21-credentials.md#214-the-console-is-the-final-safety-net--give-it-a-password)), and it is untouched by any of this.
-- **The only key that opens a fresh clone is the one `--sshkeys` put on the template** at [9.4](09-ubuntu-template.md#94-cloud-init-defaults) — in this guide, pve1's root key. Nothing else has been authorized yet, because nothing else existed yet.
+- **The only keys that open a fresh clone are the ones `--sshkeys` put on the template** at [9.4](09-ubuntu-template.md#94-cloud-init-defaults) — the five from [0.5](../setup/00-preparation.md#05-keys--generate-all-of-them-now), yours among them. Nothing outside that file is authorized, because Ansible hasn't run yet.
 
-Which makes the first login a hypervisor login. From pve1's shell, as root, its own key is already the right one:
+The hypervisor is the path that works regardless, since its own key is in that file — and it's where you'll be standing anyway, having just created the VMs:
 
 ```bash
-ssh devops@192.168.0.20        # works from pve1, and only from pve1
+ssh devops@192.168.0.20        # from pve1, always
 ```
 
 ### From your workstation
 
-Three ways, in the order worth trying:
+**1. It should already work.** Your public key went into `vm_keys.pub` in [9.4](09-ubuntu-template.md#94-cloud-init-defaults), so `ssh devops@192.168.0.20` from your own machine is the normal path, not a privilege to earn. That's the entire payoff of doing [0.5](../setup/00-preparation.md#05-keys--generate-all-of-them-now) up-front.
 
-**1. Authorize your own key** — the one that pays off, because it also fixes every future clone. Keep one file on pve1 holding every public key that should reach the VMs:
+If it refuses with `Permission denied (publickey)`, one of two things: you skipped 0.5 and the template only ever had pve1's key, or this VM was cloned before your key joined the file. Same fix either way — extend the list, then re-apply it to the VM that predates it:
 
 ```bash
 # on pve1
-cat /root/.ssh/id_ed25519.pub > /root/.ssh/vm_keys.pub
 cat >> /root/.ssh/vm_keys.pub          # paste your workstation's id_ed25519.pub, then Ctrl-D
-chmod 600 /root/.ssh/vm_keys.pub
 
-qm set 9000 --sshkeys /root/.ssh/vm_keys.pub     # future clones are born with both keys
-qm set 1020 --sshkeys /root/.ssh/vm_keys.pub     # an existing VM: applies at the next boot
+qm set 9000 --sshkeys /root/.ssh/vm_keys.pub     # future clones are born with it
+qm set 1020 --sshkeys /root/.ssh/vm_keys.pub     # this one: applies at the next boot
 qm reboot 1020
 ```
 
-The reboot is doing the same per-instance work as the IP above — the key list is user-data, changing it changes the instance-id, and the next boot re-applies it. If a VM stubbornly refuses to pick the new key up, `sudo cloud-init clean --logs && sudo reboot` from inside forces it. Don't have a key on the workstation yet? `ssh-keygen -t ed25519` — on Windows too, PowerShell ships OpenSSH; the pair lands in `%USERPROFILE%\.ssh\`.
+The reboot is doing the same per-instance work as the IP above — the key list is user-data, changing it changes the instance-id, and the next boot re-applies it. If a VM stubbornly refuses to pick the new key up, `sudo cloud-init clean --logs && sudo reboot` from inside forces it. Don't have a key on the workstation at all? [0.5](../setup/00-preparation.md#05-keys--generate-all-of-them-now) has the one-liner for Windows and Linux both.
+
+Two fallbacks while your key isn't in there yet:
 
 **2. Two hops, no changes.** The Proxmox hosts *do* accept passwords, so `ssh root@192.168.0.11` and then `ssh devops@192.168.0.20` from there works right now. Note that `ssh -J root@192.168.0.11 devops@192.168.0.20` does **not** — ProxyJump tunnels the connection but still authenticates you to the VM with *your* key, which isn't authorized there yet.
 
@@ -190,30 +190,20 @@ ansible --version
 
 ## SSH keys — control-ubuntu → the other three
 
-Ansible runs from 1020 and logs into 1021/1022/1023 as `devops`, so the control VM needs its own key authorized on the other three. The usual `ssh-copy-id` **cannot do this here**: it authenticates with a password to install the key, and [password authentication is off from the first boot](#ssh-access--key-only-from-the-first-boot). Nothing on 1020 opens 1021 yet, so the key has to be delivered by something that already has access — pve1.
+Ansible runs from 1020 and logs into 1021/1022/1023 as `devops`, so the control VM needs `id_ed25519_devops`. Its **public** half is already there — it went into `vm_keys.pub` at [9.4](09-ubuntu-template.md#94-cloud-init-defaults), so all three VMs were born authorizing it. That's what dissolves the chicken-and-egg this section used to be about: `ssh-copy-id` can't install a key without a password, and there is no password ([above](#ssh-access--key-only-from-the-first-boot)). What's left is delivering the **private** half to 1020, which your own key already opens.
 
-**1. Generate the key on control-ubuntu (1020):**
+**1. Copy the pair in**, from the workstation staging folder or straight from the password manager — both halves, because `vault.yml` reads the `.pub` with a file lookup:
+
 ```bash
-test -f ~/.ssh/id_ed25519_devops || ssh-keygen -t ed25519 -C "devops" -f ~/.ssh/id_ed25519_devops
-scp ~/.ssh/id_ed25519_devops.pub root@192.168.0.11:/tmp/     # pve1 accepts its root password
+scp ~/lab-keys/id_ed25519_devops ~/lab-keys/id_ed25519_devops.pub devops@192.168.0.20:~/.ssh/
+ssh devops@192.168.0.20 'chmod 600 ~/.ssh/id_ed25519_devops && chmod 644 ~/.ssh/id_ed25519_devops.pub'
 ```
 
-**2. Install it from pve1**, whose root key already opens all three:
-```bash
-# on pve1, as root
-for ip in 21 22 23; do
-  ssh -o StrictHostKeyChecking=accept-new "devops@192.168.0.$ip" \
-    'install -d -m 700 ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys' \
-    < /tmp/id_ed25519_devops.pub
-done
+On Windows, `$env:USERPROFILE\lab-keys\...` for the source paths. This is the last private half to reach its machine — [0.5](../setup/00-preparation.md#05-keys--generate-all-of-them-now) says to delete `~/lab-keys` once it's done, and now it's done.
 
-cat /tmp/id_ed25519_devops.pub >> /root/.ssh/vm_keys.pub     # so future clones are born with it
-qm set 9000 --sshkeys /root/.ssh/vm_keys.pub
-```
+> **Didn't do 0.5?** Then 1020 has no key and the other three don't authorize one. Generate it on 1020 (`ssh-keygen -t ed25519 -C devops -f ~/.ssh/id_ed25519_devops`), `scp` the `.pub` to pve1, and install it from there — pve1's root key is the only thing that opens all three: `for ip in 21 22 23; do ssh devops@192.168.0.$ip 'install -d -m 700 ~/.ssh && cat >> ~/.ssh/authorized_keys' < /tmp/id_ed25519_devops.pub; done`. Then append it to `vm_keys.pub` and `qm set 9000 --sshkeys` it, so clone number five doesn't repeat the chore.
 
-The last two lines are what turns this into a one-time chore: a clone created after them already trusts the control VM, and this whole section becomes a no-op for VM number five. (Running step 2 twice just appends a duplicate line — harmless, and Stage 11 rewrites the file declaratively anyway.)
-
-**3. Verify from control-ubuntu**, and make the key the default for this subnet so you don't type `-i` forever:
+**2. Verify from control-ubuntu**, and make the key the default for this subnet so you don't type `-i` forever:
 ```bash
 cat >> ~/.ssh/config << 'EOF'
 Host 192.168.0.2?

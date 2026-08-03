@@ -87,30 +87,26 @@ qm set 9000 --searchdomain lan
 At each clone's first boot, cloud-init creates the `devops` user with passwordless sudo (default-user semantics), sets the IP you give it in the Cloud-Init tab, and grows the root filesystem into the clone's disk — that's Stages 10 and 11 relying on template behavior configured right here.
 
 **SSH key instead of passwords** — and on the cloud image this is not a hardening choice, it's the only door. Canonical ships `/etc/ssh/sshd_config.d/60-cloudimg-settings.conf` with `PasswordAuthentication no` inside the image, so every clone is key-only from its first boot, long before Ansible pins the same setting. A template with no `--sshkeys` produces VMs nobody can SSH into — recoverable only through the console password below. Do this now and every clone comes up reachable:
+
 ```bash
-# on pve1, if you don't already have a key:
-test -f /root/.ssh/id_ed25519 || ssh-keygen -t ed25519 -N "" -f /root/.ssh/id_ed25519
-
-# ...or, if this pair already exists (a previous build, or your password
-# manager if you keep a copy there), restore it instead of generating:
-#   mkdir -p /root/.ssh && chmod 700 /root/.ssh
-#   echo '-----BEGIN OPENSSH PRIVATE KEY...' > /root/.ssh/id_ed25519
-#   echo 'ssh-ed25519 AAAA...' > /root/.ssh/id_ed25519.pub
-#   chmod 600 /root/.ssh/id_ed25519
-#   chmod 644 /root/.ssh/id_ed25519.pub
-# (no chown — on the host this key belongs to root, unlike the control VM's
-#  id_ed25519_devops from native/example, which belongs to devops)
-
-# one file, every key that should reach the VMs — easier to extend later than
-# re-deriving which single .pub was used
-cat /root/.ssh/id_ed25519.pub > /root/.ssh/vm_keys.pub
-chmod 600 /root/.ssh/vm_keys.pub
+# on pve1 — 2.5 already placed the five public halves from 0.5 in /root/.ssh
+cd /root/.ssh
+cat pve1_root.pub pve2_root.pub workstation.pub id_ed25519_devops.pub breakglass.pub > vm_keys.pub
+awk 'END {print NR" keys"}' vm_keys.pub          # expect 5
 qm set 9000 --sshkeys /root/.ssh/vm_keys.pub
 ```
 
-Add your **workstation's** public key to that file now if you have one — otherwise the first login to every clone has to happen from pve1, which is the surprise [Stage 10](10-vms.md#ssh-access--key-only-from-the-first-boot) untangles. `--sshkeys` takes a file, so appending a line and re-running the command is the whole procedure; the control VM's key joins it in [Stage 10](10-vms.md#ssh-keys--control-ubuntu--the-other-three) once 1020 exists.
+One file rather than one key, because extending the list later is then an appended line and a re-run, not an archaeology exercise over which `.pub` was used. Skipped [0.5](../setup/00-preparation.md#05-keys--generate-all-of-them-now)? `ssh-keygen -t ed25519 -N "" -f /root/.ssh/id_ed25519 && cp /root/.ssh/id_ed25519.pub /root/.ssh/vm_keys.pub` gives you a working single-key template — and then read 0.5 anyway, because everything below is about the four keys it would have produced.
 
-Restoring beats regenerating whenever the pair exists: this public key is already in `authorized_keys` on every VM cloned so far, so the restored private half opens all of them immediately — a fresh pair opens nothing until it's re-seeded everywhere, and it silently invalidates the [21.1](../operations/21-credentials.md#211-inventory--what-exists-and-where-it-lives) inventory. This matters most when rebuilding pve1 after an OS-disk failure or a node replacement ([19.2 step 5](../operations/19-node-replacement.md#5-build-the-new-node) sends you through this stage), where the existing VMs and their locks are still alive.
+**What `--sshkeys` actually does**, since three later surprises come from misreading it:
+
+- It stores the *contents* of the file in the template's config (`sshkeys:`, url-encoded — `qm config 9000 | grep sshkeys`). The file on disk is only the source: edit it without re-running `qm set` and nothing has happened.
+- Cloud-init writes those keys into `devops`'s `~/.ssh/authorized_keys` **at first boot, once per instance**. On a VM that already booted, `qm set <id> --sshkeys` + a reboot re-applies it (the config change moves the instance-id); if it stubbornly doesn't, `cloud-init clean --logs` in the guest forces it.
+- **It can only add, never revoke.** Remove a line from `vm_keys.pub` and that key stays authorized on every VM already created. Revocation is Ansible's job — `ssh_authorized_keys_exclusive` in [21.6](../operations/21-credentials.md#216-two-habits-that-make-key-loss-boring).
+
+That last point is also the handover: `vm_keys.pub` decides who opens a clone on its *first* boot; from [Stage 11](11-bootstrap.md) onward the `common` role owns `authorized_keys` and the list that matters is `ansible_ssh_extra_public_keys`. Keep a key in both, or accept that it works in exactly one of the two phases.
+
+Restoring beats regenerating whenever the pair exists — which, after [0.5](../setup/00-preparation.md#05-keys--generate-all-of-them-now), it always does. The old public key is already in `authorized_keys` on every VM cloned so far, so the restored private half opens all of them immediately; a fresh pair opens nothing until it's re-seeded everywhere, and it silently invalidates the [21.1](../operations/21-credentials.md#211-inventory--what-exists-and-where-it-lives) inventory. This matters most when rebuilding pve1 after an OS-disk failure or a node replacement ([19.2 step 5](../operations/19-node-replacement.md#5-build-the-new-node) sends you through this stage) — the existing VMs and their locks are still alive, and the password manager is what lets you meet them as the same machine.
 
 **And a console password** — key-only SSH still needs a last-resort login path that doesn't depend on SSH at all. If every key is ever lost, the Proxmox console is how you get back in, and it only helps if a password exists:
 

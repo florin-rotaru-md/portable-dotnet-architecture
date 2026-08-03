@@ -82,7 +82,7 @@ rm -rf /etc/pve/nodes/pve2
 Follow the guide from the top on the new machine:
 - **Stage 0.1** BIOS — VT-x, VT-d, VMD/RST disabled
 - **Stage 1** install, hostname `pve2` (or `pve3` if you'd rather not reuse it), IP `192.168.0.12`
-- **Stage 2** repos + upgrade
+- **Stage 2** repos + upgrade, and **2.5** — *restore* this node's key pair from the password manager ([0.5](../setup/00-preparation.md#05-keys--generate-all-of-them-now)) rather than generating a new one. The old public half is already in `authorized_keys` on every existing VM; a fresh pair would open none of them until Ansible re-seeded it
 - **Stage 3** only if the replacement is a laptop
 - **Stage 5** both interfaces: `vmbr0` on 192.168.0.12, the 10G interface on 10.10.10.2
 - **Stage 6** ZFS pools — **`apps` and `db`, spelled exactly the same.** This is the single most important detail in the whole procedure; replication matches on pool name

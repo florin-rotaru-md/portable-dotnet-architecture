@@ -75,3 +75,82 @@ No 10G switch (they're still expensive for what they'd add here). Instead: **two
 - **Which TB4 port on the ZBook:** either works; prefer the one not shared with your dock or charger to reduce contention. Plug the adapter in *before* booting, so it's present at install and at every boot.
 - **Label the cables.** At 3AM during an incident, "which one is the corosync link" is not a question you want to answer by tracing.
 - **Don't route the 10G link through the router.** Its whole value is being a private, quiet, point-to-point path.
+
+## 0.5 Keys — generate all of them now
+
+Five SSH key pairs carry this build, and left to the natural order they'd be created at four different moments, on four different machines, each with a "copy this to your password manager" note attached — which is how that step gets postponed four times and done zero. Twenty minutes here, before any hardware is powered on, and every later stage becomes *install the one it needs*.
+
+The stronger reason is [9.4](../vms/09-ubuntu-template.md#94-cloud-init-defaults)'s rule: when a machine dies, **restoring its old key beats generating a new one**, because the old public half is already in `authorized_keys` on every VM while a fresh pair opens nothing. That rule is only actionable if the pair exists somewhere outside the machine that died. Generating up-front is what makes "restore" the normal path later instead of a lucky one.
+
+### The five
+
+| Key | Private half ends up on | What it opens | Installed in |
+|---|---|---|---|
+| `pve1_root` | pve1, `/root/.ssh/id_ed25519` | every VM — the only key that can be there *before* the VM exists | [2.5](02-post-install.md#25-install-the-nodes-key-pair-both-nodes) |
+| `pve2_root` | pve2, `/root/.ssh/id_ed25519` | every VM, from the other node | [2.5](02-post-install.md#25-install-the-nodes-key-pair-both-nodes) |
+| `id_ed25519_devops` | VM 1020, `~/.ssh/` | 1021 / 1022 / 1023 — Ansible's identity, used on every playbook run | [Stage 10](../vms/10-vms.md#ssh-keys--control-ubuntu--the-other-three) |
+| `workstation` | your PC, `~/.ssh/id_ed25519` | every VM, directly — this is *you* | already there |
+| `breakglass` | **nowhere in the lab** — password manager + paper only | every VM, on the day nothing else does | public half only, [21.6](../operations/21-credentials.md#216-two-habits-that-make-key-loss-boring) |
+
+The five **public** halves become one file on pve1, `vm_keys.pub`, which the template hands to every clone at first boot ([9.4](../vms/09-ubuntu-template.md#94-cloud-init-defaults)). A VM created on day 300 is then born opening to all five, including the break-glass key whose private half never touched the lab.
+
+### Generate — Windows (PowerShell)
+
+```powershell
+# your own identity, if you don't have one yet
+if (-not (Test-Path "$env:USERPROFILE\.ssh\id_ed25519")) {
+    ssh-keygen -t ed25519 -C "workstation" -f "$env:USERPROFILE\.ssh\id_ed25519"
+}
+
+# the lab's four, in a scratch folder that gets deleted at the end of Stage 10
+New-Item -ItemType Directory -Force "$env:USERPROFILE\lab-keys" | Out-Null
+cd "$env:USERPROFILE\lab-keys"
+ssh-keygen -t ed25519 -N '""' -C "pve1-root"    -f .\pve1_root
+ssh-keygen -t ed25519 -N '""' -C "pve2-root"    -f .\pve2_root
+ssh-keygen -t ed25519 -N '""' -C "devops-1020"  -f .\id_ed25519_devops
+ssh-keygen -t ed25519         -C "break-glass"  -f .\breakglass      # type a passphrase here
+Copy-Item "$env:USERPROFILE\.ssh\id_ed25519.pub" .\workstation.pub
+```
+
+`-N '""'` is not a typo: PowerShell eats a plain `-N ""` before `ssh-keygen` ever sees it, and you get an interactive prompt instead (harmless — press Enter twice). Windows ships OpenSSH, so nothing needs installing; if you later use a private key from Windows directly, expect `ssh` to refuse one whose ACL is too open — `icacls key /inheritance:r /grant:r "$env:USERNAME:R"` fixes it.
+
+### Generate — Linux / macOS
+
+```bash
+test -f ~/.ssh/id_ed25519 || ssh-keygen -t ed25519 -C "workstation" -f ~/.ssh/id_ed25519
+
+mkdir -p ~/lab-keys && cd ~/lab-keys
+for k in pve1_root pve2_root id_ed25519_devops; do
+    ssh-keygen -t ed25519 -N "" -C "$k" -f "./$k"
+done
+ssh-keygen -t ed25519 -C "break-glass" -f ./breakglass      # type a passphrase here
+cp ~/.ssh/id_ed25519.pub ./workstation.pub
+```
+
+Either way you end up with nine files: four pairs plus `workstation.pub`.
+
+### Passphrases — one yes, four no
+
+`breakglass` gets a passphrase and the others don't, and the asymmetry is the whole point. The four lab keys live on machines whose own access is already the boundary — the Proxmox root password, or a VM you had to log into first — and one of them, `id_ed25519_devops`, is used by every unattended Ansible run, where a passphrase means an agent to keep alive or a playbook that hangs. `breakglass` is the opposite: it never sits on a lab machine, the only place it can leak from is your password manager, and its entire job is to still work on the day everything else is gone. Your workstation key is your call — `ssh-agent` makes a passphrase cheap there.
+
+### Where they go — before you install anything
+
+**One password-manager item per key, private and public half attached as files** (attachments, not pasted text — a mangled newline in a private key is a bad thing to discover during a recovery). Name them exactly as above so [21.1](../operations/21-credentials.md#211-inventory--what-exists-and-where-it-lives)'s inventory reads back cleanly.
+
+Two deliberate exceptions to "all in one place", both from [21.3](../operations/21-credentials.md#213-the-rule-recovery-credentials-must-live-outside-the-thing-they-recover):
+
+- **`breakglass` goes somewhere else** — a different vault, a different manager, or paper in another building. A break-glass key stored next to the four keys it's meant to survive is decoration.
+- **Paper copy:** the break-glass private key and its passphrase, alongside the two other things that are unrecoverable rather than merely inconvenient — the rclone crypt passwords ([17.6](../backup/17-backup-restore.md#176-offsite--digi-storage-via-rclone)) and the VM `--cipassword` ([21.4](../operations/21-credentials.md#214-the-console-is-the-final-safety-net--give-it-a-password)).
+
+**Delete `~/lab-keys` at the end of [Stage 10](../vms/10-vms.md), not before** — that's when the last private half reaches its machine. Until then it's the staging area; after that, leaving it makes your workstation a copy of every key in the lab.
+
+### Then: which key, where, when
+
+| Stage | What happens to the keys |
+|---|---|
+| [2.5](02-post-install.md#25-install-the-nodes-key-pair-both-nodes) | each node gets its own pair as `/root/.ssh/id_ed25519`; pve1 also receives all five public halves |
+| [9.4](../vms/09-ubuntu-template.md#94-cloud-init-defaults) | the five public halves become `vm_keys.pub` → `qm set 9000 --sshkeys` → every clone from here on |
+| [Stage 10](../vms/10-vms.md#ssh-keys--control-ubuntu--the-other-three) | `id_ed25519_devops`'s private half lands on VM 1020; its public half is already authorized everywhere |
+| [Stage 11](../vms/11-bootstrap.md) → [21.6](../operations/21-credentials.md#216-two-habits-that-make-key-loss-boring) | the same five public halves go into `ansible_ssh_extra_public_keys`, and Ansible owns the list from then on |
+
+The last row is the handover that matters: `vm_keys.pub` decides who can open a VM on its *first* boot, Ansible decides it forever after. A key that's in one list and not the other is the whole class of surprise this build can produce — see [21.6](../operations/21-credentials.md#216-two-habits-that-make-key-loss-boring).

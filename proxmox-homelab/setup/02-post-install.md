@@ -50,3 +50,34 @@ chmod +x install-scripts.sh
 This installs them into `/usr/local/sbin` (so `cluster-health` works from anywhere) and schedules the recurring ones via `/etc/cron.d/pve-helper-scripts`. To update later: `cd /root/src/portable-dotnet-architecture && git pull && proxmox-homelab/scripts/install-scripts.sh`.
 
 Right now, most `cluster-health` lines will be warnings — no cluster, no pools, no replication yet. That's expected; it becomes the daily "is everything fine" command once the build reaches Stage 13. Run it after each stage from here on and watch warnings turn into `[ OK ]` lines as the pieces come up.
+
+## 2.5 Install the node's key pair (both nodes)
+
+The pairs were generated in [0.5](00-preparation.md#05-keys--generate-all-of-them-now); this installs each node's own. Do it now rather than at [9.4](../vms/09-ubuntu-template.md#94-cloud-init-defaults) — the key is what will open every VM later, and a node without it can't reach its own guests.
+
+From your workstation, with the node's root password (the hosts *do* accept passwords — only the VMs don't):
+
+```bash
+# pve1 — its own pair, plus all five public halves, which 9.4 turns into vm_keys.pub
+scp ~/lab-keys/pve1_root ~/lab-keys/*.pub root@192.168.0.11:/tmp/
+ssh root@192.168.0.11 'install -d -m 700 /root/.ssh &&
+    install -m 600 /tmp/pve1_root     /root/.ssh/id_ed25519 &&
+    install -m 644 /tmp/pve1_root.pub /root/.ssh/id_ed25519.pub &&
+    install -m 644 /tmp/*.pub         /root/.ssh/ && rm -f /tmp/*_root /tmp/*.pub'
+
+# pve2 — its own pair only
+scp ~/lab-keys/pve2_root ~/lab-keys/pve2_root.pub root@192.168.0.12:/tmp/
+ssh root@192.168.0.12 'install -d -m 700 /root/.ssh &&
+    install -m 600 /tmp/pve2_root     /root/.ssh/id_ed25519 &&
+    install -m 644 /tmp/pve2_root.pub /root/.ssh/id_ed25519.pub && rm -f /tmp/pve2_root*'
+```
+
+On Windows use `$env:USERPROFILE\lab-keys\...` in the `scp` lines; the remote halves are identical.
+
+Verify on each node — the fingerprint should match the one your password manager holds for that key:
+
+```bash
+ssh-keygen -lf /root/.ssh/id_ed25519.pub
+```
+
+Two things this is **not**. It is not the key Proxmox uses between the nodes — cluster root SSH is set up by `pvecm add` and lives in `/etc/pve/priv/authorized_keys`, untouched by any of this. And it is not backed up by [`pve-config-backup`](../scripts/README.md), deliberately: that archive lands unencrypted on the USB drive, and a skeleton key doesn't belong there. The password manager copy from [0.5](00-preparation.md#05-keys--generate-all-of-them-now) is this key's backup — which is also what turns a rebuilt node ([19.2 step 5](../operations/19-node-replacement.md#5-build-the-new-node)) back into a node that opens every existing VM.
