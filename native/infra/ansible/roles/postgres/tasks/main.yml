@@ -86,6 +86,36 @@
     or (postgres_extra_cidrs | default([]) | length > 0)
     or (postgres_wal_stream_enabled | default(false))
 
+# ── Resource tuning (conf.d drop-in) ─────────────────────────────────────────
+# Debian packaging ships postgresql.conf with include_dir = 'conf.d' at the
+# end of the file, so a drop-in overrides packaged defaults and the lineinfile
+# edits above without ever owning the whole file — major upgrades keep working.
+- name: Ensure conf.d include directory exists
+  file:
+    path:  "/etc/postgresql/{{ postgres_version }}/main/conf.d"
+    state: directory
+    owner: postgres
+    group: postgres
+    mode:  '0755'
+
+- name: Ensure postgresql.conf includes conf.d
+  lineinfile:
+    path:   "/etc/postgresql/{{ postgres_version }}/main/postgresql.conf"
+    regexp: "^#?include_dir\\s*=\\s*'conf\\.d'"
+    line:   "include_dir = 'conf.d'"
+  notify: restart postgresql
+
+# max_connections and shared_buffers only apply on restart (not reload), which
+# the notified handler already does.
+- name: Apply resource tuning
+  template:
+    src:   tuning.conf.j2
+    dest:  "/etc/postgresql/{{ postgres_version }}/main/conf.d/10-tuning.conf"
+    owner: postgres
+    group: postgres
+    mode:  '0644'
+  notify: restart postgresql
+
 - name: Allow PostgreSQL port through UFW from app subnet
   ufw:
     rule:  allow

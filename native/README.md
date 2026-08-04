@@ -181,7 +181,7 @@ applications:
     project_path: "src/MyApp/MyApp.csproj"
     appsettings_override:
       ConnectionStrings:
-        Main: "Host=127.0.0.1;Port=5432;Database=myapp_db;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
+        Main: "Host=127.0.0.1;Port=5432;Database=myapp_db;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true;Keepalive=60;Maximum Pool Size=18"
 
   - name: anotherapp
     assembly: AnotherApp
@@ -192,8 +192,18 @@ applications:
     project_path: "src/AnotherApp/AnotherApp.csproj"
     appsettings_override:
       ConnectionStrings:
-        Main: "Host=127.0.0.1;Port=5432;Database=anotherapp_db;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
+        Main: "Host=127.0.0.1;Port=5432;Database=anotherapp_db;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true;Keepalive=60;Maximum Pool Size=18"
 ```
+
+> Npgsql keeps one pool per unique connection string. `Maximum Pool Size` caps each
+> pool — budget ~18–28 connections per app so several apps share one Postgres
+> without exhausting `max_connections`. Server-side, the postgres role matches this
+> with `postgres_max_connections: 128` and renders `conf.d/10-tuning.conf` from the
+> host's RAM (shared_buffers 25%, effective_cache_size 75%, tiered work_mem) — a RAM
+> upgrade plus a playbook re-run re-tunes everything; see the tuning block in
+> `inventory/group_vars/all/main.yml`. `Keepalive=60` lets each pool detect and
+> evict connections killed by a Postgres restart (auto minor upgrades, failover)
+> before requests trip over them.
 
 **3. First bootstrap** — the `devops` user doesn't exist yet, so connect as the initial root/admin user:
 

@@ -97,7 +97,7 @@ flux reconcile kustomization apps --with-source
 4. **Update the k3s Secret** with the new DB host IP:
    ```bash
    kubectl create secret generic myapp-db \
-     --from-literal=ConnectionStrings__Main="Host=<new-pg-ip>;Port=5432;Database=<dbname>;Username=appuser;Password=<pass>" \
+     --from-literal=ConnectionStrings__Main="Host=<new-pg-ip>;Port=5432;Database=<dbname>;Username=appuser;Password=<pass>;Keepalive=60;Maximum Pool Size=18" \
      -n myapp \
      --dry-run=client -o yaml | kubectl apply -f -
    ```

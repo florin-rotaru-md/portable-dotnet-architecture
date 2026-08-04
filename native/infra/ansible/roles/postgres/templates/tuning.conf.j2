@@ -1,0 +1,40 @@
+# Managed by Ansible (roles/postgres/templates/tuning.conf.j2) — edits here
+# are overwritten on the next playbook run. Override via postgres_* group_vars.
+#
+# Sizes derive from the host's RAM at render time, so a RAM upgrade is just:
+# grow the VM, re-run bootstrap — every value below follows on its own.
+{% set ram_mb = ansible_facts['memtotal_mb'] | int %}
+
+# Connection slots are policy, not RAM: sized from the per-app Npgsql pool
+# budget (Maximum Pool Size 18+8+2 per app, several apps sharing this server)
+# plus headroom for psql/monitoring/backup — a RAM upgrade does not move it.
+max_connections = {{ postgres_max_connections | default(128) }}
+
+# 25% of RAM, the dedicated-host starting point. Postgres reads also flow
+# through the OS page cache, so pushing this higher mostly double-caches.
+shared_buffers = {{ postgres_shared_buffers | default((ram_mb // 4) ~ 'MB', true) }}
+
+# Planner hint only, allocates nothing: shared_buffers plus what the OS cache
+# is expected to hold on a host that mostly runs Postgres.
+effective_cache_size = {{ postgres_effective_cache_size | default((ram_mb * 3 // 4) ~ 'MB', true) }}
+
+# Ceiling per sort/hash node, NOT per connection — one query can hold several,
+# and hash nodes get work_mem x hash_mem_multiplier (2.0). Worst case is
+# active queries x heavy nodes x that product, which is why the bigger tier
+# waits for the RAM that arrives with it.
+work_mem = {{ postgres_work_mem | default('64MB' if ram_mb >= 49152 else '32MB', true) }}
+
+# VACUUM, CREATE INDEX, pg_restore.
+maintenance_work_mem = {{ postgres_maintenance_work_mem | default('2GB' if ram_mb >= 49152 else '1GB', true) }}
+
+# The 1GB default checkpoints too often under sustained writes; WAL space is
+# cheap next to the data disk.
+max_wal_size = {{ postgres_max_wal_size | default('4GB', true) }}
+
+# SSD-backed storage: the 4.0 default assumes spinning disks and steers the
+# planner away from index scans it should take.
+random_page_cost = {{ postgres_random_page_cost | default('1.1', true) }}
+effective_io_concurrency = {{ postgres_effective_io_concurrency | default('200', true) }}
+
+# Compress full-page images: less WAL written, archived, and streamed.
+wal_compression = {{ postgres_wal_compression | default('lz4', true) }}

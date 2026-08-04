@@ -32,7 +32,7 @@ Then adjust each clone **before its first boot** — the IP especially, because 
 
 | VM ID | Name | Storage | CPU | RAM | Disk | IP (Cloud-init) | Start at boot |
 |---|---|---|---|---|---|---|---|
-| 1020 | control-ubuntu | `apps` | 2 | 4 GiB | 32G — as cloned | 192.168.0.20/24, gw .1 | no |
+| c | control-ubuntu | `apps` | 2 | 4 GiB | 32G — as cloned | 192.168.0.20/24, gw .1 | no |
 | 1021 | app-ubuntu | `apps` | 8 | 8 GiB | **128G** | 192.168.0.21/24, gw .1 | `order=2` |
 | 1022 | postgres-ubuntu | **`db`** | 8 | 32 GiB | **640G** | 192.168.0.22/24, gw .1 | `order=1,up=60` |
 | 1023 | monitoring-ubuntu | `apps` | 2 | 4 GiB | **320G** | 192.168.0.23/24, gw .1 | `order=3` |

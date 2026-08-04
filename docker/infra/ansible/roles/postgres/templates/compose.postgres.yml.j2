@@ -1,8 +1,35 @@
+{% set ram_mb = ansible_facts['memtotal_mb'] | int %}
 services:
   postgres:
     image: {{ postgres_image }}
     container_name: postgres
     restart: unless-stopped
+    # Same tuning formula as the native role (shared_buffers 25% of RAM,
+    # effective_cache_size 75%, tiered work_mem), derived from the docker
+    # host's RAM. On this single-host layout Postgres shares that RAM with
+    # the app containers — override the postgres_* group_vars if the derived
+    # sizes crowd them. max_connections is policy (per-app Npgsql pool
+    # budget), not RAM. Values apply on container restart.
+    command:
+      - postgres
+      - -c
+      - max_connections={{ postgres_max_connections | default(128) }}
+      - -c
+      - shared_buffers={{ postgres_shared_buffers | default((ram_mb // 4) ~ 'MB', true) }}
+      - -c
+      - effective_cache_size={{ postgres_effective_cache_size | default((ram_mb * 3 // 4) ~ 'MB', true) }}
+      - -c
+      - work_mem={{ postgres_work_mem | default('64MB' if ram_mb >= 49152 else '32MB', true) }}
+      - -c
+      - maintenance_work_mem={{ postgres_maintenance_work_mem | default('2GB' if ram_mb >= 49152 else '1GB', true) }}
+      - -c
+      - max_wal_size={{ postgres_max_wal_size | default('4GB', true) }}
+      - -c
+      - random_page_cost={{ postgres_random_page_cost | default('1.1', true) }}
+      - -c
+      - effective_io_concurrency={{ postgres_effective_io_concurrency | default('200', true) }}
+      - -c
+      - wal_compression={{ postgres_wal_compression | default('lz4', true) }}
     env_file:
       - /opt/postgres/docker/postgres.env
     environment:

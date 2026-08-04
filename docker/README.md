@@ -144,6 +144,7 @@ Bootstrap also performs the initial deploy automatically for each application us
 |-------------------------|---------------------------------------------------------|
 | `applications`          | List of app definitions (see below)                     |
 | `postgres_image`        | Full Postgres image (default `postgis/postgis:18-3.6`)  |
+| `postgres_max_connections` | Server connection ceiling (default 128, sized from the per-app pool budgets) |
 | `backup_retention_days` | Days to keep nightly dumps (default 7)                  |
 | `use_cloudflared`       | `true` to install Cloudflare Tunnel                     |
 
@@ -164,7 +165,7 @@ applications:
     drain_seconds: 32
     appsettings_override:               # → appsettings.override.json (see below)
       ConnectionStrings:
-        App: "Host=postgres;Port=5432;Database=myapp_db;Username=appuser;Password={{ postgres_password }};Pooling=true"
+        App: "Host=postgres;Port=5432;Database=myapp_db;Username=appuser;Password={{ postgres_password }};Pooling=true;Keepalive=60;Maximum Pool Size=18"
 ```
 
 > Databases are **not** pre-created by Ansible — .NET EF Core creates them
@@ -181,6 +182,12 @@ image when `DOTNET_ENVIRONMENT=Production` (set via `common.env`).
 Put **only the values that differ per environment** here — connection strings, secrets,
 URLs.  Everything else stays in the image's `appsettings.json`.
 
+Npgsql keeps one pool per unique connection string, so give every string an explicit
+`Maximum Pool Size` — budget ~18–28 connections per app (hot path 18, auth 8, key
+ring 2) so several apps can share one Postgres without exhausting `max_connections`.
+`Keepalive=60` lets each pool detect and evict connections killed by a Postgres
+restart (container recreate, minor image update) before requests trip over them.
+
 Reference vault variables for secrets:
 
 ```yaml
@@ -191,9 +198,9 @@ smtp_password:     "smtp-secret"
 # inventory/group_vars/all/main.yml  (inside application entry)
 appsettings_override:
   ConnectionStrings:
-    Users:          "Host=postgres;Port=5432;Database=waa_users;Username=appuser;Password={{ postgres_password }};Pooling=true"
-    DataProtection: "Host=postgres;Port=5432;Database=waa_dp;Username=appuser;Password={{ postgres_password }};Pooling=true"
-    App:            "Host=postgres;Port=5432;Database=waa;Username=appuser;Password={{ postgres_password }};Pooling=true"
+    Users:          "Host=postgres;Port=5432;Database=waa_users;Username=appuser;Password={{ postgres_password }};Pooling=true;Keepalive=60;Maximum Pool Size=8"
+    DataProtection: "Host=postgres;Port=5432;Database=waa_dp;Username=appuser;Password={{ postgres_password }};Pooling=true;Keepalive=60;Maximum Pool Size=2"
+    App:            "Host=postgres;Port=5432;Database=waa;Username=appuser;Password={{ postgres_password }};Pooling=true;Keepalive=60;Maximum Pool Size=18"
   FileStorage:
     BaseDirectory: "/data/files"
   Email:

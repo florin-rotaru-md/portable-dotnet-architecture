@@ -142,7 +142,7 @@ export KUBECONFIG=~/src/portable-dotnet-architecture/kubeconfig
 
 # DB connection string for myapp:
 kubectl create secret generic myapp-db \
-  --from-literal=ConnectionStrings__Main="Host=<postgres-private-ip>;Port=5432;Database=myapp_db;Username=appuser;Password=<pass>" \
+  --from-literal=ConnectionStrings__Main="Host=<postgres-private-ip>;Port=5432;Database=myapp_db;Username=appuser;Password=<pass>;Keepalive=60;Maximum Pool Size=18" \
   -n myapp
 
 # Cloudflare tunnel token:

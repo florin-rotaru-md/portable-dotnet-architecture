@@ -125,6 +125,26 @@ backup_retention_days: 7
 # with the PGDG origin; majors always require a deliberate postgres_version bump.
 postgres_auto_minor_upgrades: true
 
+# ── Postgres tuning (conf.d/10-tuning.conf) ───────────────────────────────────
+# max_connections is policy, not RAM: sized from the per-app Npgsql pool budget
+# (Maximum Pool Size caps in the connection strings, ~18-28 per app, ~4 apps)
+# plus headroom for psql/monitoring/backup. A RAM upgrade does not move it.
+postgres_max_connections: 128
+
+# Everything else derives from the host's RAM on every playbook run
+# (shared_buffers 25%, effective_cache_size 75%, work_mem and
+# maintenance_work_mem step up at 48GB) — growing the VM and re-running
+# bootstrap is the whole tuning upgrade. Override only when the derived value
+# is wrong for the workload:
+# postgres_shared_buffers:           "8GB"
+# postgres_effective_cache_size:     "24GB"
+# postgres_work_mem:                 "32MB"
+# postgres_maintenance_work_mem:     "1GB"
+# postgres_max_wal_size:             "4GB"
+# postgres_random_page_cost:         "1.1"
+# postgres_effective_io_concurrency: "200"
+# postgres_wal_compression:          "lz4"
+
 # Nightly logical dump schedule — keep it BEFORE any VM-image backup.
 postgres_backup_hour:   "2"
 postgres_backup_minute: "15"
@@ -197,11 +217,17 @@ applications:
     # appsettings.json baked into the image (DOTNET_ENVIRONMENT=Production).
     # Put connection strings, secrets, and env-specific URLs here.
     # Secrets (passwords, API keys) should reference vault.yml variables.
+    # Npgsql keeps one pool per unique connection string; Maximum Pool Size
+    # caps each pool. Per-app budget: 18+8+2 = 28 connections worst case, so
+    # ~4 apps sharing one Postgres stay inside max_connections = 128.
+    # Keepalive=60 lets the pool detect and evict connections killed by a
+    # Postgres restart (auto minor upgrades, HA failover) before requests
+    # trip over them.
     appsettings_override:
       ConnectionStrings:
-        App:            "Host={{ postgres_host }};Port=5432;Database=waa_ro_app;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
-        Users:          "Host={{ postgres_host }};Port=5432;Database=waa_ro_users;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
-        DataProtection: "Host={{ postgres_host }};Port=5432;Database=waa_ro_dp;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
+        App:            "Host={{ postgres_host }};Port=5432;Database=waa_ro_app;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true;Keepalive=60;Maximum Pool Size=18"
+        Users:          "Host={{ postgres_host }};Port=5432;Database=waa_ro_users;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true;Keepalive=60;Maximum Pool Size=8"
+        DataProtection: "Host={{ postgres_host }};Port=5432;Database=waa_ro_dp;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true;Keepalive=60;Maximum Pool Size=2"
       # FileStorage:
       #   BaseDirectory: "/data/files"
       # UiClient:
@@ -222,7 +248,7 @@ applications:
 #     repo_token:    "{{ app_repo_token }}"
 #     appsettings_override:
 #       ConnectionStrings:
-#         Main: "Host={{ postgres_host }};Port=5432;Database=waa_ro_admin;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
+#         Main: "Host={{ postgres_host }};Port=5432;Database=waa_ro_admin;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true;Keepalive=60;Maximum Pool Size=5"
 EOF
 
 

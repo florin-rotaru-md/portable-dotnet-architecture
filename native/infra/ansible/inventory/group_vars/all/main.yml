@@ -57,9 +57,14 @@ applications:
     # Set when this app renders through a headless browser (needs use_headless_browser: true):
     # headless_browser: true
     # repo_token: "{{ app_repo_token }}"
+    # Npgsql keeps one pool per unique connection string; cap each with
+    # Maximum Pool Size (budget ~18-28 connections per app) so several apps
+    # can share one Postgres inside max_connections = 128. Keepalive=60 lets
+    # the pool detect and evict connections killed by a Postgres restart
+    # (auto minor upgrades, HA failover) before requests trip over them.
     # appsettings_override:
     #   ConnectionStrings:
-    #     Main: "Host={{ postgres_host }};Port=5432;Database=myapp_db;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true"
+    #     Main: "Host={{ postgres_host }};Port=5432;Database=myapp_db;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true;Keepalive=60;Maximum Pool Size=18"
     # env:
     #   SomeSetting__Nested__Value: "example"
 
@@ -86,6 +91,26 @@ backup_retention_days: 7
 # so a new major always requires a deliberate postgres_version bump.
 # The minor install restarts the cluster briefly (~06:00, apt-daily-upgrade.timer).
 postgres_auto_minor_upgrades: true
+
+# ── Postgres tuning (conf.d/10-tuning.conf) ───────────────────────────────────
+# max_connections is policy, not RAM: sized from the per-app Npgsql pool budget
+# (Maximum Pool Size caps in the connection strings, ~18-28 per app, ~4 apps)
+# plus headroom for psql/monitoring/backup. A RAM upgrade does not move it.
+postgres_max_connections: 128
+
+# Everything else derives from the host's RAM on every playbook run
+# (shared_buffers 25%, effective_cache_size 75%, work_mem and
+# maintenance_work_mem step up at 48GB) — growing the VM and re-running
+# bootstrap is the whole tuning upgrade. Override only when the derived value
+# is wrong for the workload:
+# postgres_shared_buffers:           "8GB"
+# postgres_effective_cache_size:     "24GB"
+# postgres_work_mem:                 "32MB"
+# postgres_maintenance_work_mem:     "1GB"
+# postgres_max_wal_size:             "4GB"
+# postgres_random_page_cost:         "1.1"
+# postgres_effective_io_concurrency: "200"
+# postgres_wal_compression:          "lz4"
 
 # Nightly logical dump schedule (cron on the postgres host).
 # Ordering contract: in-VM dump BEFORE the VM-image backup, which runs BEFORE

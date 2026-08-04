@@ -14,6 +14,26 @@ postgres_user:        appuser
 # arrive this way — bumping postgres_version is always deliberate).
 postgres_auto_minor_upgrades: true
 
+# ── Postgres tuning (conf.d/10-tuning.conf) ───────────────────────────────────
+# max_connections is policy, not RAM: sized from the per-app Npgsql pool budget
+# (Maximum Pool Size caps in the connection strings, ~18-28 per app, ~4 apps)
+# plus headroom for psql/monitoring/backup. A RAM upgrade does not move it.
+postgres_max_connections: 128
+
+# Everything else derives from the VM's RAM on every playbook run
+# (shared_buffers 25%, effective_cache_size 75%, work_mem and
+# maintenance_work_mem step up at 48GB) — growing the VM and re-running
+# bootstrap is the whole tuning upgrade. Override only when the derived value
+# is wrong for the workload:
+# postgres_shared_buffers:           "1GB"
+# postgres_effective_cache_size:     "3GB"
+# postgres_work_mem:                 "32MB"
+# postgres_maintenance_work_mem:     "1GB"
+# postgres_max_wal_size:             "4GB"
+# postgres_random_page_cost:         "1.1"
+# postgres_effective_io_concurrency: "200"
+# postgres_wal_compression:          "lz4"
+
 # Nightly S3 dump schedule (cron on the postgres host).
 postgres_backup_hour:   "2"
 postgres_backup_minute: "15"

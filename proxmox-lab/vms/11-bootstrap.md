@@ -108,12 +108,17 @@ The first run takes a while: PGDG + PostGIS on 1022, the .NET SDK on 1021, Docke
 
 Re-running it later is always safe — that's the point of it being the single owner of in-VM state.
 
+One thing the run did without being asked: the postgres role rendered `/etc/postgresql/18/main/conf.d/10-tuning.conf` from the VM's RAM — 32 GiB → `shared_buffers = 8GB`, `effective_cache_size = 24GB`, `work_mem = 32MB` — plus `max_connections = 128`, sized from the per-app Npgsql pool budget rather than from memory. When 1022 later grows to 64 GiB (the planned upgrade alongside apps three and four), this same re-run *is* the whole tuning procedure: the sizes step up to 16GB / 48GB / 64MB on their own, and only `max_connections` deliberately stays put.
+
 ## 11.6 Verify before moving on
 
 ```bash
 # Postgres up, PostGIS present, dump script installed (on 1022)
 ssh devops@192.168.0.22 'systemctl is-active postgresql && ls -l /opt/postgres/scripts/pg-backup.sh'
 ssh devops@192.168.0.22 'sudo -u postgres psql -tAc "select version(), postgis_version()"'
+
+# Tuning followed the VM's RAM (conf.d/10-tuning.conf): 32 GiB → expect 8GB
+ssh devops@192.168.0.22 'sudo -u postgres psql -tAc "show shared_buffers"'
 
 # App slot up and healthy, nginx routing it (on 1021)
 ssh devops@192.168.0.21 '/opt/apps/api.example.com/scripts/current-slot.sh'

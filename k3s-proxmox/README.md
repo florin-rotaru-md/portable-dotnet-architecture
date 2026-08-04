@@ -156,7 +156,7 @@ export KUBECONFIG=~/src/portable-dotnet-architecture/kubeconfig
 
 # DB connection (use internal bridge IP 10.10.0.50):
 kubectl create secret generic myapp-db \
-  --from-literal=ConnectionStrings__Main="Host=10.10.0.50;Port=5432;Database=myapp_db;Username=appuser;Password=<pass>" \
+  --from-literal=ConnectionStrings__Main="Host=10.10.0.50;Port=5432;Database=myapp_db;Username=appuser;Password=<pass>;Keepalive=60;Maximum Pool Size=18" \
   -n myapp
 
 # Cloudflare Tunnel token (strongly recommended — VMs have no public IP):
