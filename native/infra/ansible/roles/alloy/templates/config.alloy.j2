@@ -16,10 +16,16 @@ loki.write "default" {
 {% set app_label = app.name | regex_replace('[^a-zA-Z0-9_]', '_') %}
 local.file_match "{{ app_label }}" {
   path_targets = [{
-    __path__ = "{{ alloy_logs_root }}/{{ app.name }}/{{ alloy_log_glob }}",
+    // Same expression the app role uses to create the directory and to grant the unit write
+    // access. It used to read app.name alone, which is only ever equal by luck — the day someone
+    // sets log_dir_name, Alloy tails an empty directory and reports nothing wrong.
+    __path__ = "{{ alloy_logs_root }}/{{ app.log_dir_name | default(app.name) }}/{{ alloy_log_glob }}",
     job      = "dotnet",
     service  = "{{ app.name }}",
     host     = "{{ inventory_hostname }}",
+    // A target label, not a field parsed out of every line: one label on the stream costs nothing
+    // per event, where a Serilog property would have cost its bytes on all of them.
+    env      = "{{ alloy_env_label | default('production') }}",
   }]
 }
 
@@ -29,13 +35,15 @@ loki.source.file "{{ app_label }}" {
 }
 
 loki.process "{{ app_label }}" {
+  // The app writes one JSON object per line: @t timestamp, @l level, @m rendered message,
+  // @x exception. `env` used to be extracted here too, from a Serilog Properties block that no
+  // deployment ever emitted — it is a target label above now, where it costs nothing per line.
   stage.json {
     expressions = {
       ts        = "\"@t\"",
       level     = "\"@l\"",
       msg       = "\"@m\"",
       exception = "\"@x\"",
-      env       = "env",
     }
   }
 

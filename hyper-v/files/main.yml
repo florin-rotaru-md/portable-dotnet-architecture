@@ -150,33 +150,41 @@ applications:
     project_path: "src/MyApp.Api/MyApp.Api.csproj"
     # repo_token: "{{ app_repo_token }}"
     appsettings_override:
+      # Levels only — and only for an app that calls ReadFrom.Configuration; anything written
+      # here reaches a logger built purely in code as inert JSON. Statics-based apps read this
+      # section, having already applied their own baseline, so what follows raises a category
+      # back up for the length of an incident without a deploy.
+      #
+      # Do NOT add Using / WriteTo / Enrich / Properties. Serilog *adds* sinks read from
+      # configuration to the ones the app configured, it never substitutes for them: a WriteTo
+      # block writes every event a second time, and that copy bypasses the async wrapper that
+      # keeps file writes off the request threads. The path, rolling interval and retention are
+      # the app's to declare, so that a config file which goes missing cannot lift them.
       Serilog:
-        Using:
-          - Serilog.Sinks.File
-          - Serilog.Formatting.Compact
         MinimumLevel:
           Default: Information
           Override:
             Microsoft: Warning
+            Microsoft.Hosting.Lifetime: Information
             System: Warning
-        Enrich:
-          - FromLogContext
-          - WithMachineName
-          - WithThreadId
-        WriteTo:
-          - Name: File
-            Args:
-              path: "{{ app_log_root }}/api.example.local/app.log"
-              rollingInterval: Day
-              formatter: "Serilog.Formatting.Compact.CompactJsonFormatter, Serilog.Formatting.Compact"
-              shared: true
-              buffered: false
-              rollOnFileSizeLimit: true
-              fileSizeLimitBytes: 104857600
-              retainedFileCountLimit: 14
-        Properties:
-          service: api.example.local
-          env: production
+            # Every SQL statement the app executes, each line carrying the command twice. Raise
+            # to Information only while chasing a query, and put it back afterwards.
+            Microsoft.EntityFrameworkCore.Database.Command: Warning
+      # Where the app writes, and what to. Absolute, and matching the directory the app role
+      # creates and the unit grants write access to — a relative value would land inside the slot,
+      # which deploy.sh empties on every release, and which Alloy does not tail. The file name gets
+      # the SLOT_NAME the units export, so blue and green never open the same file during a drain.
+      #
+      # FileEnabled/ConsoleEnabled pick the destinations: leave them alone on a systemd host, and
+      # set FileEnabled false + ConsoleEnabled true where stdout is collected instead (a container).
+      # Turning both off is not a way to disable logging — the console comes back on rather than
+      # leave the process writing nowhere.
+      Diagnostics:
+        LogsDirectory: "{{ app_log_root }}/api.example.local"
+      # Status code at or above which a request log keeps the request/response body. 400 keeps
+      # them for failures only, 0 logs every body, 500 narrows to server faults.
+      RequestLogging:
+        BodyMinimumStatusCode: 400
       # Npgsql keeps one pool per unique connection string; Maximum Pool Size
       # caps each pool (budget ~18-28 connections per app) so several apps
       # can share one Postgres inside max_connections = 128. Keepalive=60 lets
@@ -184,9 +192,9 @@ applications:
       # (auto minor upgrades) before requests trip over them.
       ConnectionStrings:
         Main: "Host={{ postgres_host }};Port=5432;Database=myapp_main;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true;Keepalive=60;Maximum Pool Size=18"
-      Logging:
-        LogLevel:
-          Default: "Information"
+      # No Logging:LogLevel here on purpose: UseSerilog() replaces the logging provider with one
+      # that never consults LoggerFilterOptions, so that section filters nothing. Levels are the
+      # Serilog block above.
     env:
       ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
       ASPNETCORE_ENVIRONMENT: "Production"

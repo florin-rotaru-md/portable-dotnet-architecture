@@ -177,11 +177,16 @@ grafana_admin_user: admin
 grafana_loki_datasource_name: "Loki"
 grafana_loki_datasource_url: "http://loki:3100"
 grafana_loki_is_default: true
+# How long Loki keeps a stream. Enforced by the compactor, which the config enables alongside it —
+# left unset, Loki's own default is to keep everything for ever on a disk that only grows.
+loki_retention_period: "720h"
 
 # ── Grafana Alloy (optional, runs on app host) ────────────────────────────────
 alloy_http_port: 12345
 alloy_logs_root: "{{ app_log_root }}"
 alloy_log_glob: "*.log"
+# Static label on every stream this host ships. One label per stream, not a field per line.
+alloy_env_label: "production"
 # alloy_loki_url can override automatic endpoint discovery, for example:
 # alloy_loki_url: "http://192.168.0.23:3100/loki/api/v1/push"
 

@@ -28,6 +28,17 @@ schema_config:
 limits_config:
   allow_structured_metadata: true
   volume_enabled: true
+  # Without this Loki keeps every stream for ever: the default retention is unlimited, and on
+  # filesystem storage that is a disk which only grows. It is enforced by the compactor below —
+  # the period alone deletes nothing.
+  retention_period: {{ loki_retention_period | default('720h') }}
+
+compactor:
+  working_directory: /loki/compactor
+  retention_enabled: true
+  # Required once retention is on: Loki refuses to start without somewhere to record delete
+  # requests, and filesystem matches the object store configured above.
+  delete_request_store: filesystem
 
 query_range:
   results_cache:

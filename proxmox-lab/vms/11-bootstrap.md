@@ -128,11 +128,13 @@ curl -s -H "Host: api.example.com" http://192.168.0.21/.well-known/ready    # ex
 ssh devops@192.168.0.21 'systemctl is-active cloudflared'
 
 # Loki + Grafana up (on 1023), and app logs already arriving
-ssh devops@192.168.0.23 'cd /opt/monitoring && docker compose ps'
+ssh devops@192.168.0.23 'cd /opt/monitoring && sudo docker compose ps'
 ssh devops@192.168.0.21 'systemctl is-active alloy'
 curl -s 'http://192.168.0.23:3100/loki/api/v1/label/service/values'
 # expect {"status":"success","data":["api.example.com"]} — one entry per app in `applications[]`
 ```
+
+**Every `docker` command on 1023 needs `sudo`** — this one, and any later `logs`/`restart` you run by hand. The playbook installs Docker and runs `docker compose up -d` as root, and nothing adds `devops` to the `docker` group: that group is root-equivalent on the machine (a container can mount `/`), which is a poor trade for saving four characters on a VM you visit to read logs. Without it you get `permission denied while trying to connect to the Docker daemon socket`.
 
 All green → the machines are done. From here on, **change VM state via the playbook, not by hand** ([the ownership boundary, 20.5](../operations/20-upgrades.md#205-the-same-pattern-applied-elsewhere)) — and continue with [Stage 12](../ha/12-replication.md), which replicates disks that now hold their real content.
 

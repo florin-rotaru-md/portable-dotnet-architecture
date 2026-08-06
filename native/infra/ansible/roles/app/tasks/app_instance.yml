@@ -17,6 +17,10 @@
     - "{{ apps_root }}/{{ current_app.name }}/nginx"
     - "{{ apps_root }}/{{ current_app.name }}/runtime"
 
+# The app creates and rolls its own files in here, one name per slot. The role only has to make
+# the directory exist and belong to the service user — a placeholder app.log used to be created
+# too, which no app ever wrote to, so Alloy tailed an empty file for ever and it showed up in
+# every log listing as a file that never had anything in it.
 - name: Ensure app log directory exists
   file:
     path: "{{ app_log_root }}/{{ current_app.log_dir_name | default(current_app.name) }}"
@@ -24,15 +28,6 @@
     owner: "{{ app_user }}"
     group: "{{ app_user }}"
     mode: "0755"
-
-- name: Ensure app log file exists
-  copy:
-    dest: "{{ app_log_root }}/{{ current_app.log_dir_name | default(current_app.name) }}/app.log"
-    content: ""
-    owner: "{{ app_user }}"
-    group: "{{ app_user }}"
-    mode: "0644"
-    force: false
 
 - name: Render common env file
   template:
