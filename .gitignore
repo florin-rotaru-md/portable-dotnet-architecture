@@ -331,7 +331,5 @@ ASALocalRun/
 
 [Ll]ogs/
 
-pre-render/
-
 # Ansible vault (real secrets — only vault.yml.example is committed)
 **/vault.yml

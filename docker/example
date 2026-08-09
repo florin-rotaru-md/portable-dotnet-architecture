@@ -224,8 +224,12 @@ applications:
       # FileStorage:
       #   BaseDirectory: "/data/files"
       # UiClient:
-      #   Urls:
-      #     SignInWithToken: "https://www.example.com/auth/sign-in"
+      #   BaseUrl: "https://example.com"
+    # Deployment identity: APP_PROFILE selects appsettings.{APP_PROFILE}.json — the one file
+    # that names hosts, language, market. A deploy-time env var, not a build-time flavor: one
+    # image runs as any deployment, and the app fails at boot if the profile is missing.
+    # env:
+    #   APP_PROFILE: "example.com"
 
 EOF
 

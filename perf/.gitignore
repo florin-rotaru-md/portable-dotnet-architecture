@@ -1,0 +1,11 @@
+# Database dumps restored into the drill box. A dump of production IS production
+# data — it does not become less sensitive by sitting in a folder called perf.
+dumps/*
+!dumps/.gitkeep
+
+# Drill artifacts: CSV samples, k6 summaries, deploy logs. Keep the pair from
+# before and after a major upgrade somewhere deliberate, not by accident in git.
+runs/
+
+# Built from the database on every run.
+scenarios/.fixtures.json

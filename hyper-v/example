@@ -324,10 +324,15 @@ applications:
       # FileStorage:
       #   BaseDirectory: "/data/files"
       # UiClient:
-      #   Urls:
-      #     SignInWithToken: "https://www.example.com/auth/sign-in"
+      #   BaseUrl: "https://example.com"
     env:
       ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
+      # Deployment identity: selects appsettings.{APP_PROFILE}.json from the repo — the one
+      # file that names hosts, language, market. Deploy-time env var, deliberately NOT a
+      # build-time flavor: one published artifact can run as any deployment, and the app
+      # fails at boot if the profile is missing rather than inheriting another's identity.
+      # The override block above stays for secrets and machine-local values only.
+      # APP_PROFILE: "example.com"
 
 #   - name:          admin.waa.ro
 #     assembly:      Waa.Admin

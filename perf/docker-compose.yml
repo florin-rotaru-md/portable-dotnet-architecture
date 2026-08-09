@@ -1,0 +1,54 @@
+# Isolated Postgres for load drills — the same major and the same tuning the
+# Ansible role renders in production, so a number measured here means something
+# there. Nothing else runs in this file: the application under test is the real
+# binary, started by hand or by deploy.sh against POSTGRES_HOST pointed here.
+#
+# Brought up and torn down by load-drill.sh; `docker compose up -d` works too.
+#
+#   PGPORT      host port to publish (default 55432 — deliberately not 5432, so
+#               a drill can never be pointed at a real local database by accident)
+#   PGDATA_VOL  named volume; `docker compose down -v` discards it between drills
+
+name: perf-drill
+
+services:
+  postgres:
+    image: postgres:${POSTGRES_MAJOR:-18}
+    container_name: perf-drill-postgres
+    # Load the same conf.d layout the postgres role uses, so tuning.conf is the
+    # only file that differs between this box and production.
+    command:
+      - postgres
+      - -c
+      - config_file=/etc/postgresql/postgresql.conf
+      - -c
+      - include_dir=/etc/postgresql/conf.d
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+      # Faster restores; a drill database is throwaway by definition.
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    ports:
+      - "${PGPORT:-55432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - ./postgres/conf.d:/etc/postgresql/conf.d:ro
+      # Dumps dropped here are visible to pg_restore inside the container.
+      - ./dumps:/dumps
+    shm_size: 1gb
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d postgres"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    # A drill that OOMs tells you nothing about connections. Cap deliberately,
+    # and keep the cap above shared_buffers + max_connections * work_mem worst case.
+    deploy:
+      resources:
+        limits:
+          memory: ${PG_MEMORY_LIMIT:-4g}
+
+volumes:
+  pgdata:

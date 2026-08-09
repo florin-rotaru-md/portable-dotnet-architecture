@@ -1,0 +1,87 @@
+{
+  "_readme": [
+    "The application-specific half of the drill. The harness (load-drill.sh, k6 scripts)",
+    "knows nothing about Waa; everything app-shaped lives here, so pointing the drill at a",
+    "different .NET service is editing this file and nothing else.",
+    "",
+    "'fixtures' are SQL queries run against the restored database before the drill starts.",
+    "Each one fills a named list the scenarios draw from at random. This is what stops the",
+    "test from hammering a single row: real traffic spreads across slugs, and a benchmark",
+    "that reads one row measures the buffer cache, not the database.",
+    "",
+    "'weight' is relative pick frequency within a scenario, not a percentage."
+  ],
+
+  "fixtures": {
+    "slugs": {
+      "query": "SELECT \"PublicSlug\" FROM \"EventInfos\" WHERE \"PublicSlug\" IS NOT NULL ORDER BY random() LIMIT 200",
+      "minimum": 1,
+      "onEmpty": "The public-event read is the hot path of this app; with no published events the drill would measure 404s. Restore a dump that has some, or drop the read from 'traffic' below."
+    }
+  },
+
+  "traffic": [
+    {
+      "name": "public-event-snapshot",
+      "method": "GET",
+      "path": "/api/events/public/${slugs}",
+      "weight": 60,
+      "expect": [200, 404],
+      "note": "The hot path — every invite open hits it. Rate-limited by the 'public' policy (64/min per IP), which is why the harness varies the client IP per VU."
+    },
+    {
+      "name": "client-config",
+      "method": "GET",
+      "path": "/api/client-config",
+      "weight": 20,
+      "expect": [200],
+      "note": "Fetched on every SPA load, so it rides along with every real visit."
+    },
+    {
+      "name": "pricing-plans",
+      "method": "GET",
+      "path": "/api/events/pricing-plans",
+      "weight": 10,
+      "expect": [200]
+    },
+    {
+      "name": "gallery-config",
+      "method": "GET",
+      "path": "/api/events/gallery-config",
+      "weight": 10,
+      "expect": [200]
+    }
+  ],
+
+  "health": {
+    "ready": "/.well-known/ready",
+    "live": "/.well-known/live",
+    "note": "Exempt from rate limiting by design, so the harness can probe them freely during a drill."
+  },
+
+  "clientIp": {
+    "header": "CF-Connecting-IP",
+    "cidrBase": "10.99",
+    "note": [
+      "ClientIpMiddleware trusts CF-Connecting-IP and X-Forwarded-For from loopback and RFC1918",
+      "sources. A drill runs from exactly such a source, so each VU can present its own client IP.",
+      "Without this the whole load collapses into one rate-limit partition and the drill measures",
+      "the rate limiter (64 req/min) instead of the connection pool — roughly 1 req/s, which would",
+      "look like a pass while proving nothing."
+    ]
+  },
+
+  "pools": {
+    "_readme": "Per-connection-string Maximum Pool Size, mirroring the app's ConnectionStrings. The drill uses these to tell 'the pool is the ceiling' apart from 'Postgres is the ceiling' — the two failures look identical from the outside and have opposite fixes.",
+    "app": { "database": "waa_ro_app", "maxPoolSize": 18 },
+    "users": { "database": "waa_ro_users", "maxPoolSize": 8 },
+    "dataProtection": { "database": "waa_ro_dp", "maxPoolSize": 2 }
+  },
+
+  "deployment": {
+    "_readme": "Blue/green doubles the connection budget for the length of a drain — the window this whole drill exists to size. Used by the verdict to compute worst-case headroom.",
+    "instances": 2,
+    "drainSeconds": 32,
+    "note": "instances = how many applications share this Postgres (api.waa.ro + api.waa.events)."
+  }
+}
