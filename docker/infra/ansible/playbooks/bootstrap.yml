@@ -1,30 +1,49 @@
 ---
+# Every role carries a tag, so applying one change does not mean re-running the whole host.
+#
+#   ansible-playbook playbooks/bootstrap.yml                      # everything
+#   ansible-playbook playbooks/bootstrap.yml --tags app_host      # the app role only
+#   ansible-playbook playbooks/bootstrap.yml --tags app_host,nginx    # a port change
+#   ansible-playbook playbooks/bootstrap.yml --list-tags          # what is available
+#
+# `--tags app_host` deliberately skips the initial deploy at the bottom: it is a no-op on a host
+# that has deployed before, but a tagged run is something an operator reaches for during an
+# incident and it should not pull an image or move traffic.
 - name: Bootstrap multi-app VPS (Docker Compose)
   hosts: app
   become: true
   roles:
-    - common
-    - docker
-    - postgres
-    - app_host
-    - nginx
+    - role: common
+      tags: [common]
+    - role: docker
+      tags: [docker]
+    - role: postgres
+      tags: [postgres]
+    - role: app_host
+      tags: [app_host]
+    - role: nginx
+      tags: [nginx]
     - role: cloudflared
       when: use_cloudflared | bool
+      tags: [cloudflared]
 
   tasks:
-    - name: Check whether initial deploy has already run
-      stat:
-        path: "{{ apps_root }}/{{ app.name }}/runtime/deploy-history.log"
-      register: initial_deploy_status
-      loop: "{{ applications }}"
-      loop_control:
-        loop_var: app
-        label: "{{ app.name }}"
+    - name: Deploy applications that have never been deployed
+      tags: [initial-deploy]
+      block:
+        - name: Check whether initial deploy has already run
+          stat:
+            path: "{{ apps_root }}/{{ app.name }}/runtime/deploy-history.log"
+          register: initial_deploy_status
+          loop: "{{ applications }}"
+          loop_control:
+            loop_var: app
+            label: "{{ app.name }}"
 
-    - name: Run initial deploy for applications that are not live yet
-      command: "{{ apps_root }}/{{ item.app.name }}/scripts/deploy.sh {{ item.app.image_default }}"
-      become_user: "{{ app_user }}"
-      loop: "{{ initial_deploy_status.results }}"
-      loop_control:
-        label: "{{ item.app.name }}"
-      when: not item.stat.exists
+        - name: Run initial deploy for applications that are not live yet
+          command: "{{ apps_root }}/{{ item.app.name }}/scripts/deploy.sh {{ item.app.image_default }}"
+          become_user: "{{ app_user }}"
+          loop: "{{ initial_deploy_status.results }}"
+          loop_control:
+            label: "{{ item.app.name }}"
+          when: not item.stat.exists

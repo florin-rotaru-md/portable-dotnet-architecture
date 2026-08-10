@@ -7,7 +7,7 @@ A drill answers one question before a release: **does the connection budget hold
 ```bash
 ./load-drill.sh up                                            # isolated Postgres
 ./load-drill.sh steady         --base-url http://10.0.0.5:5000 \
-                               --inventory ../native/infra/ansible/inventory/group_vars/all/main.yml
+                               --inventory ~/app-inventory/group_vars/all/main.yml
 ./load-drill.sh deploy-overlap --base-url http://10.0.0.5:5000 \
                                --deploy-cmd "ssh app 'sudo /opt/apps/deploy.sh api.example.com'"
 ./load-drill.sh down

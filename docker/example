@@ -93,7 +93,7 @@ mkdir -p ~/src && cd ~/src && \
 git clone https://github.com/florin-rotaru-md/portable-dotnet-architecture
 
 
-cat << 'EOF' > ~/src/portable-dotnet-architecture/docker/infra/ansible/inventory/group_vars/all/vault.yml
+cat << 'EOF' > ~/app-inventory/group_vars/all/vault.yml
 ansible_ssh_public_key:  "{{ lookup('file', '~/.ssh/id_ed25519_devops.pub') }}"
 
 # Additional authorized keys — workstation, break-glass kept offline, and every
@@ -116,7 +116,7 @@ ghcr_token:              "ghp_..."
 EOF
 
 
-cat << 'EOF' > ~/src/portable-dotnet-architecture/docker/infra/ansible/inventory/group_vars/all/main.yml
+cat << 'EOF' > ~/app-inventory/group_vars/all/main.yml
 ---
 # ── Infrastructure ─────────────────────────────────────────────────────────────
 app_user: devops
@@ -234,7 +234,7 @@ applications:
 EOF
 
 
-cat << 'EOF' > ~/src/portable-dotnet-architecture/docker/infra/ansible/inventory/hosts.ini
+cat << 'EOF' > ~/app-inventory/hosts.ini
 [app]
 192.168.0.22 ansible_user=devops ansible_private_key_file=~/.ssh/id_ed25519_devops
 
@@ -247,7 +247,7 @@ EOF
 cd ~/src/portable-dotnet-architecture/docker/infra/ansible && \
 ansible-playbook playbooks/bootstrap.yml
 
-# If you encrypted inventory/group_vars/all/vault.yml with ansible-vault, use:
+# If you encrypted ~/app-inventory/group_vars/all/vault.yml with ansible-vault, use:
 # ansible-playbook playbooks/bootstrap.yml --ask-vault-pass
 
 # The bootstrap playbook also performs the first deploy automatically using image_default.

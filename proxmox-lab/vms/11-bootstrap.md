@@ -33,8 +33,15 @@ git clone https://github.com/florin-rotaru-md/portable-dotnet-architecture
 
 ## 11.3 Inventory — the lab addresses
 
+The inventory lives **outside** the clone, so a `git pull` on 1020 is never a conflict against your
+own edits ([why](../../native/README.md#configure)). Create the directory, point Ansible at it, and
+write the lab's three groups:
+
 ```bash
-cat << 'EOF' > ~/src/portable-dotnet-architecture/native/infra/ansible/inventory/hosts.ini
+mkdir -p ~/app-inventory/group_vars/all
+echo 'export ANSIBLE_INVENTORY=~/app-inventory/hosts.ini' >> ~/.bashrc && . ~/.bashrc
+
+cat << 'EOF' > ~/app-inventory/hosts.ini
 [app]
 192.168.0.21 ansible_user=devops ansible_private_key_file=~/.ssh/id_ed25519_devops
 
@@ -60,7 +67,16 @@ ansible all -b -m command -a whoami        # expect: root, three times
 
 ## 11.4 `vault.yml` and `main.yml`
 
-Create both exactly as `native/example` shows, then apply the lab deltas from the 11.1 table — in `main.yml`:
+Both live next to `hosts.ini`, in `~/app-inventory/group_vars/all/`. Start from the reference copies
+in the clone and then apply the lab deltas from the 11.1 table:
+
+```bash
+cd ~/src/portable-dotnet-architecture/native/infra/ansible
+cp inventory/group_vars/all/main.yml.example  ~/app-inventory/group_vars/all/main.yml
+cp inventory/group_vars/all/vault.yml.example ~/app-inventory/group_vars/all/vault.yml
+```
+
+In `main.yml`:
 
 ```yaml
 postgres_host: "192.168.0.22"
@@ -94,8 +110,8 @@ grafana_admin_password: "<strong password>"   # min. 12 chars — the role asser
 
 Two rules worth internalizing now, because they outlive this stage:
 
-- **`vault.yml` is never committed** (it's gitignored); `postgres_password` and every token live only there and in the password manager — see the credential inventory in [Stage 21.1](../operations/21-credentials.md#211-inventory--what-exists-and-where-it-lives).
-- **Any `group_vars` change you make here must be mirrored** into the example files (`native/example` and the hyper-v/docker counterparts) — they are full copies meant to stay in sync, per the [repo rule](../README.md#relationship-to-the-rest-of-the-repo).
+- **`vault.yml` is never committed**; `postgres_password` and every token live only in `~/app-inventory/` and in the password manager — see the credential inventory in [Stage 21.1](../operations/21-credentials.md#211-inventory--what-exists-and-where-it-lives). `~/app-inventory/` is outside the clone, and both belt and braces apply: the repo also gitignores those filenames.
+- **Any `group_vars` change you make here must be mirrored** into the example files (`native/example`, `main.yml.example`, and the hyper-v/docker counterparts) — they are full copies meant to stay in sync, per the [repo rule](../README.md#relationship-to-the-rest-of-the-repo). Your own `~/app-inventory/` is worth its own private git repo: it is the only record of when a host or a version changed.
 
 ## 11.5 Run it
 

@@ -47,7 +47,7 @@ flux reconcile kustomization apps --with-source
 
 2. **Update inventory** with the new IP:
    ```bash
-   vim k3s/infra/ansible/inventory/hosts.ini
+   vim ~/app-inventory/hosts.ini      # wherever ANSIBLE_INVENTORY points
    ```
 
 3. **Run bootstrap playbook**:

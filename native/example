@@ -63,8 +63,13 @@ ssh-copy-id -i ~/.ssh/id_ed25519_devops.pub devops@192.168.0.21
 mkdir -p ~/src && cd ~/src && \
 git clone https://github.com/florin-rotaru-md/portable-dotnet-architecture
 
+# The inventory lives OUTSIDE the clone, so `git pull` on this control node is never a
+# conflict against your own edits. See native/README.md § Configure.
+mkdir -p ~/app-inventory/group_vars/all && \
+echo 'export ANSIBLE_INVENTORY=~/app-inventory/hosts.ini' >> ~/.bashrc && . ~/.bashrc
 
-cat << 'EOF' > ~/src/portable-dotnet-architecture/native/infra/ansible/inventory/group_vars/all/vault.yml
+
+cat << 'EOF' > ~/app-inventory/group_vars/all/vault.yml
 ansible_ssh_public_key:  "{{ lookup('file', '~/.ssh/id_ed25519_devops.pub') }}"
 
 # Additional authorized keys — workstation, break-glass kept offline, and every
@@ -91,7 +96,7 @@ app_repo_token: "ghp_real_token_here"
 EOF
 
 
-cat << 'EOF' > ~/src/portable-dotnet-architecture/native/infra/ansible/inventory/group_vars/all/main.yml
+cat << 'EOF' > ~/app-inventory/group_vars/all/main.yml
 ---
 # ── Ansible service account ────────────────────────────────────────────────────
 ansible_user: devops
@@ -257,7 +262,7 @@ applications:
 EOF
 
 
-cat << 'EOF' > ~/src/portable-dotnet-architecture/native/infra/ansible/inventory/hosts.ini
+cat << 'EOF' > ~/app-inventory/hosts.ini
 [app]
 192.168.0.21 ansible_user=devops ansible_private_key_file=~/.ssh/id_ed25519_devops
 

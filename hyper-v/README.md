@@ -65,11 +65,13 @@ Suggested addressing example:
 
 ## Copy targets
 
-Use these copy targets inside the repo checkout on `control-ubuntu`:
+Copy these into your inventory directory on `control-ubuntu` — **outside** the repo checkout, so a
+`git pull` never collides with your own edits ([why](../native/README.md#configure)), then point
+Ansible at it with `export ANSIBLE_INVENTORY=~/app-inventory/hosts.ini`:
 
-- `hyper-v/files/hosts.ini` -> `native/infra/ansible/inventory/hosts.ini`
-- `hyper-v/files/main.yml` -> `native/infra/ansible/inventory/group_vars/all/main.yml`
-- `hyper-v/files/vault.yml.example` -> `native/infra/ansible/inventory/group_vars/all/vault.yml`
+- `hyper-v/files/hosts.ini` -> `~/app-inventory/hosts.ini`
+- `hyper-v/files/main.yml` -> `~/app-inventory/group_vars/all/main.yml`
+- `hyper-v/files/vault.yml.example` -> `~/app-inventory/group_vars/all/vault.yml`
 
 ## Production notes
 

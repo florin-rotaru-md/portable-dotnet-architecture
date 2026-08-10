@@ -61,23 +61,35 @@ terraform output
 
 ### 2. Update Ansible inventory
 
+**Keep your inventory outside the clone.** Only the `.example` files are committed; a real
+inventory on a tracked path turns every `git pull` on the control node into a conflict against your
+own edits. Ansible resolves `group_vars/` relative to the inventory file, so the layout is all that
+has to match — the reasoning is spelled out in the
+[native setup's Configure section](../native/README.md#configure).
+
 ```bash
-vim infra/ansible/inventory/hosts.ini   # set IPs from terraform output
+mkdir -p ~/app-inventory/group_vars/all
+cd ~/src/portable-dotnet-architecture/k3s/infra/ansible
+cp inventory/hosts.ini.example                ~/app-inventory/hosts.ini
+cp inventory/group_vars/all/main.yml.example  ~/app-inventory/group_vars/all/main.yml
+cp inventory/group_vars/all/vault.yml.example ~/app-inventory/group_vars/all/vault.yml
+
+echo 'export ANSIBLE_INVENTORY=~/app-inventory/hosts.ini' >> ~/.bashrc && . ~/.bashrc
+#   ...or pass -i ~/app-inventory/hosts.ini per command.
+
+vim ~/app-inventory/hosts.ini   # set IPs from terraform output
 ```
 
 ### 3. Configure Ansible variables
 
 ```bash
-vim infra/ansible/inventory/group_vars/all/main.yml
-
-cd ~/src/portable-dotnet-architecture/k3s/infra/ansible
-cp --update=none inventory/group_vars/all/vault.yml.example inventory/group_vars/all/vault.yml
-vim inventory/group_vars/all/vault.yml
+vim ~/app-inventory/group_vars/all/main.yml
+vim ~/app-inventory/group_vars/all/vault.yml
 # required values:
 # postgres_password: "replace-me"
 # s3_access_key: "replace-me"
 # s3_secret_key: "replace-me"
-ansible-vault encrypt inventory/group_vars/all/vault.yml
+ansible-vault encrypt ~/app-inventory/group_vars/all/vault.yml
 ```
 
 #### *(Optional)* Ansible service account — SSH key setup
@@ -106,9 +118,7 @@ ansible_ssh_public_key: "ssh-ed25519 AAAA...  control-ubuntu"
 ```
 
 ```bash
-cd ~/src/portable-dotnet-architecture/k3s/infra/ansible
-cp --update=none inventory/group_vars/all/vault.yml.example inventory/group_vars/all/vault.yml
-vim inventory/group_vars/all/vault.yml
+vim ~/app-inventory/group_vars/all/vault.yml
 ```
 
 **More than one key, and rotation.** One key is a single point of failure — the `common` role manages `authorized_keys` declaratively and takes a list via `ansible_ssh_extra_public_keys` (workstation key, break-glass key kept offline). Once every key you rely on is listed, set `ssh_authorized_keys_exclusive: true` in `main.yml`: keys **not** in the list are removed on the next run, so rotating a compromised key is *delete the line, run the playbook*.

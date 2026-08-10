@@ -8,7 +8,7 @@ Everything up to here protects you from hardware failing. This stage is about th
 
 ## 20.1 Minor and major upgrades are different operations
 
-Current version is set in one place — `postgres_version` in [`inventory/group_vars/all/main.yml`](../../native/infra/ansible/inventory/group_vars/all/main.yml), today `"18"`, with `postgis_major_version: "3"`.
+Current version is set in one place — `postgres_version` in your inventory's `group_vars/all/main.yml` ([reference copy](../../native/infra/ansible/inventory/group_vars/all/main.yml.example)), today `"18"`, with `postgis_major_version: "3"`.
 
 | | Minor (18.1 → 18.4) | Major (18 → 19) |
 |---|---|---|
@@ -27,7 +27,7 @@ Do not conflate them. Minor upgrades are routine hygiene the machine handles its
 Minors are the quarterly security fixes: you want them promptly and there is nothing version-specific to decide, which makes them the one database change worth automating. The `postgres` role does it with two mechanisms, switched by one variable in group_vars:
 
 ```yaml
-# native/infra/ansible/inventory/group_vars/all/main.yml
+# ~/app-inventory/group_vars/all/main.yml
 postgres_auto_minor_upgrades: true
 ```
 
@@ -80,7 +80,7 @@ qmrestore /mnt/usb-backup/dump/vzdump-qemu-1022-<date>.vma.zst 1122 \
 ⚠️ **The clone must not keep `192.168.0.22`.** Cloud-init gave 1022 a static address; a second VM claiming it takes the real database offline. Either uncheck Hardware → Network Device → *Connected* and work entirely through the console, or — better — set a spare IP via Cloud-init (say `192.168.0.122`) before first boot and point a scratch inventory entry at it:
 
 ```ini
-# native/infra/ansible/inventory/hosts.ini — temporary, do not commit
+# ~/app-inventory/hosts.ini — temporary, remove after the rehearsal
 [pgrehearsal]
 192.168.0.122 ansible_user=devops ansible_private_key_file=~/.ssh/id_ed25519_devops
 ```
@@ -164,11 +164,11 @@ ansible postgres -m service -a 'name=postgresql state=started' -b
 The role already adds the PGDG repository and signing key, so there is nothing to configure — the version is data:
 
 ```yaml
-# native/infra/ansible/inventory/group_vars/all/main.yml
+# ~/app-inventory/group_vars/all/main.yml
 postgres_version: "19"        # was "18"
 ```
 
-Commit it. The whole point of the variable is that the git history records when the database changed major version.
+Commit it. The whole point of the variable is that the git history records when the database changed major version — which is the argument for keeping `~/app-inventory/` under its own (private) git repository, since it lives outside this clone.
 
 ```bash
 cd ~/src/portable-dotnet-architecture/native/infra/ansible

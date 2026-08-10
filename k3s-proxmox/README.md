@@ -75,23 +75,35 @@ terraform output           # note the IPs
 
 ### 2. Update Ansible inventory
 
+**Keep your inventory outside the clone.** Only the `.example` files are committed; a real
+inventory on a tracked path turns every `git pull` on the control node into a conflict against your
+own edits. Ansible resolves `group_vars/` relative to the inventory file, so the layout is all that
+has to match — the reasoning is spelled out in the
+[native setup's Configure section](../native/README.md#configure).
+
 ```bash
-vim infra/ansible/inventory/hosts.ini   # set IPs from terraform output
+mkdir -p ~/app-inventory/group_vars/all
+cd ~/src/portable-dotnet-architecture/k3s-proxmox/infra/ansible
+cp inventory/hosts.ini.example                ~/app-inventory/hosts.ini
+cp inventory/group_vars/all/main.yml.example  ~/app-inventory/group_vars/all/main.yml
+cp inventory/group_vars/all/vault.yml.example ~/app-inventory/group_vars/all/vault.yml
+
+echo 'export ANSIBLE_INVENTORY=~/app-inventory/hosts.ini' >> ~/.bashrc && . ~/.bashrc
+#   ...or pass -i ~/app-inventory/hosts.ini per command.
+
+vim ~/app-inventory/hosts.ini   # set IPs from terraform output
 ```
 
 ### 3. Configure variables and vault
 
 ```bash
-vim infra/ansible/inventory/group_vars/all/main.yml
-
-cd ~/src/portable-dotnet-architecture/k3s-proxmox/infra/ansible
-cp --update=none inventory/group_vars/all/vault.yml.example inventory/group_vars/all/vault.yml
-vim inventory/group_vars/all/vault.yml
+vim ~/app-inventory/group_vars/all/main.yml
+vim ~/app-inventory/group_vars/all/vault.yml
 # required values:
 # postgres_password: "replace-me"
 # s3_access_key: "replace-me"
 # s3_secret_key: "replace-me"
-ansible-vault encrypt inventory/group_vars/all/vault.yml
+ansible-vault encrypt ~/app-inventory/group_vars/all/vault.yml
 ```
 
 #### *(Optional)* Ansible service account — SSH key setup
@@ -126,9 +138,7 @@ ansible_ssh_public_key: "ssh-ed25519 AAAA...  control-ubuntu"
 > **Credentials that must live outside this environment** (password manager, ideally plus paper): the private keys, `vault.yml` contents, the vault password itself if encrypted — and the Proxmox root password plus any VM `--cipassword` (the console is your no-SSH recovery path). Recovery credentials must never exist only inside the thing they recover. The role also pins SSH to key-only, so a console password can never open password auth over SSH.
 
 ```bash
-cd ~/src/portable-dotnet-architecture/k3s-proxmox/infra/ansible
-cp --update=none inventory/group_vars/all/vault.yml.example inventory/group_vars/all/vault.yml
-vim inventory/group_vars/all/vault.yml
+vim ~/app-inventory/group_vars/all/vault.yml
 ```
 
 ### 4. Bootstrap
@@ -208,8 +218,8 @@ k3s-proxmox/
 │   └── user-data.yml             ← same as k3s/ + qemu-guest-agent
 ├── infra/ansible/
 │   ├── ansible.cfg               ← roles_path → ../../k3s/infra/ansible/roles
-│   ├── inventory/hosts.ini
-│   ├── inventory/group_vars/all/main.yml
+│   ├── inventory/hosts.ini.example
+│   ├── inventory/group_vars/all/main.yml.example    ← copy outside the clone
 │   ├── inventory/group_vars/all/vault.yml.example
 │   └── playbooks/bootstrap.yml
 └── docs/

@@ -130,17 +130,22 @@ ssh-copy-id -i ~/.ssh/id_ed25519_devops.pub devops@192.168.0.23
 mkdir -p ~/src && cd ~/src && \
 git clone https://github.com/florin-rotaru-md/portable-dotnet-architecture
 
+# The inventory lives OUTSIDE the clone, so `git pull` on this control node is never a
+# conflict against your own edits. See native/README.md § Configure.
+mkdir -p ~/app-inventory/group_vars/all && \
+echo 'export ANSIBLE_INVENTORY=~/app-inventory/hosts.ini' >> ~/.bashrc && . ~/.bashrc
+
 cd ~/src/portable-dotnet-architecture && \
-cp hyper-v/files/hosts.ini native/infra/ansible/inventory/hosts.ini && \
-cp hyper-v/files/main.yml native/infra/ansible/inventory/group_vars/all/main.yml && \
-cp hyper-v/files/vault.yml.example native/infra/ansible/inventory/group_vars/all/vault.yml
+cp hyper-v/files/hosts.ini          ~/app-inventory/hosts.ini && \
+cp hyper-v/files/main.yml           ~/app-inventory/group_vars/all/main.yml && \
+cp hyper-v/files/vault.yml.example  ~/app-inventory/group_vars/all/vault.yml
 
 # Edit the prepared files
-nano ~/src/portable-dotnet-architecture/native/infra/ansible/inventory/hosts.ini
-nano ~/src/portable-dotnet-architecture/native/infra/ansible/inventory/group_vars/all/vault.yml
-# nano ~/src/portable-dotnet-architecture/native/infra/ansible/inventory/group_vars/all/main.yml
+nano ~/app-inventory/hosts.ini
+nano ~/app-inventory/group_vars/all/vault.yml
+# nano ~/app-inventory/group_vars/all/main.yml
 
-cat << 'EOF' > ~/src/portable-dotnet-architecture/native/infra/ansible/inventory/group_vars/all/main.yml
+cat << 'EOF' > ~/app-inventory/group_vars/all/main.yml
 ---
 # ── Ansible service account ────────────────────────────────────────────────────
 ansible_user: devops
@@ -373,7 +378,7 @@ cd ~/src/portable-dotnet-architecture/native/infra/ansible && \
 ansible-playbook playbooks/bootstrap.yml -u ubuntu --ask-become-pass --limit app
 
 # If vault.yml is encrypted:
-# ansible-vault encrypt inventory/group_vars/all/vault.yml
+# ansible-vault encrypt ~/app-inventory/group_vars/all/vault.yml
 # ansible-playbook playbooks/bootstrap.yml --ask-vault-pass
 
 # Validate monitoring stack (on monitoring-ubuntu)

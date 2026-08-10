@@ -333,3 +333,11 @@ ASALocalRun/
 
 # Ansible vault (real secrets — only vault.yml.example is committed)
 **/vault.yml
+
+# Ansible inventory. Only the .example files are committed; a real one describes
+# somebody's hosts, and while it holds no secret it is not this repository's to
+# carry. Tracking it also made every `git pull` on a control node a conflict
+# against the operator's own edits — the recommended layout keeps the whole
+# inventory directory outside the clone (see each setup's README).
+**/infra/ansible/inventory/hosts.ini
+**/infra/ansible/inventory/group_vars/all/main.yml

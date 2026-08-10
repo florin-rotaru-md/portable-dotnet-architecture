@@ -78,9 +78,11 @@ ssh-copy-id -i ~/.ssh/id_ed25519_devops.pub root@<vps-ip>
 **2. Add the public key to `vault.yml`** (see Configure below):
 
 ```bash
-cd ~/src/portable-dotnet-architecture/docker/infra/ansible
-cp --update=none inventory/group_vars/all/vault.yml.example inventory/group_vars/all/vault.yml
-vim inventory/group_vars/all/vault.yml
+mkdir -p ~/app-inventory/group_vars/all
+cp --update=none \
+  ~/src/portable-dotnet-architecture/docker/infra/ansible/inventory/group_vars/all/vault.yml.example \
+  ~/app-inventory/group_vars/all/vault.yml
+vim ~/app-inventory/group_vars/all/vault.yml
 # set postgres_root_password and postgres_password before bootstrap
 ```
 
@@ -105,19 +107,29 @@ Once every key you rely on is listed, set `ssh_authorized_keys_exclusive: true` 
 
 ## Configure
 
+**Keep your inventory outside the clone.** Only the `.example` files are committed; a real
+inventory on a tracked path turns every `git pull` on the control node into a conflict against your
+own edits. Ansible resolves `group_vars/` relative to the inventory file, so the layout is all that
+has to match — the reasoning is spelled out in the
+[native setup's Configure section](../native/README.md#configure).
+
 ```bash
-cd ~/src/portable-dotnet-architecture/docker
-vim infra/ansible/inventory/hosts.ini                  # VPS IP
-
-vim infra/ansible/inventory/group_vars/all/main.yml    # applications list, ports, etc.
-
+mkdir -p ~/app-inventory/group_vars/all
 cd ~/src/portable-dotnet-architecture/docker/infra/ansible
-cp --update=none inventory/group_vars/all/vault.yml.example inventory/group_vars/all/vault.yml
-vim inventory/group_vars/all/vault.yml
+cp inventory/hosts.ini.example                ~/app-inventory/hosts.ini
+cp inventory/group_vars/all/main.yml.example  ~/app-inventory/group_vars/all/main.yml
+cp inventory/group_vars/all/vault.yml.example ~/app-inventory/group_vars/all/vault.yml
+
+echo 'export ANSIBLE_INVENTORY=~/app-inventory/hosts.ini' >> ~/.bashrc && . ~/.bashrc
+#   ...or pass -i ~/app-inventory/hosts.ini per command.
+
+vim ~/app-inventory/hosts.ini                 # VPS IP
+vim ~/app-inventory/group_vars/all/main.yml   # applications list, ports, etc.
+vim ~/app-inventory/group_vars/all/vault.yml
 # required values:
 # postgres_root_password: "replace-me"
 # postgres_password: "replace-me"
-# ansible-vault encrypt inventory/group_vars/all/vault.yml
+# ansible-vault encrypt ~/app-inventory/group_vars/all/vault.yml
 ```
 
 **Bootstrap**
@@ -138,7 +150,22 @@ ansible-playbook playbooks/bootstrap.yml
 
 Bootstrap also performs the initial deploy automatically for each application using its `image_default`, but only if that application has not been deployed before.
 
-### Key variables in `inventory/group_vars/all/main.yml`
+**Applying a later change**, scope the run to what you edited — every role carries a tag
+(`--list-tags` prints them), and `--check --diff` shows what would change first:
+
+```bash
+ansible-playbook playbooks/bootstrap.yml --check --diff --tags app_host
+ansible-playbook playbooks/bootstrap.yml --tags app_host
+```
+
+`common.env`, the slot env files and `appsettings.override.json` are generated in full from the
+inventory and rewritten on every run, so a hand-edit on the host does not survive one; only runtime
+state (`runtime/active-slot`, `runtime/active-image`) is written once. Unlike the native setup, this
+role does not restart anything — a changed env file applies at the next `deploy.sh`. The full
+procedure, including the two-channel split between infrastructure and application changes, is in
+[native/README.md § Applying a change](../native/README.md#applying-a-change).
+
+### Key variables in `group_vars/all/main.yml`
 
 | Variable                | Description                                             |
 |-------------------------|---------------------------------------------------------|
@@ -191,11 +218,11 @@ restart (container recreate, minor image update) before requests trip over them.
 Reference vault variables for secrets:
 
 ```yaml
-# inventory/group_vars/all/vault.yml
+# group_vars/all/vault.yml
 postgres_password: "strong-password"
 smtp_password:     "smtp-secret"
 
-# inventory/group_vars/all/main.yml  (inside application entry)
+# group_vars/all/main.yml  (inside application entry)
 appsettings_override:
   ConnectionStrings:
     Users:          "Host=postgres;Port=5432;Database=waa_users;Username=appuser;Password={{ postgres_password }};Pooling=true;Keepalive=60;Maximum Pool Size=8"
@@ -223,12 +250,12 @@ For public images, including public GHCR images, no token is required for pulls.
 For private images, add credentials in Ansible variables:
 
 ```yaml
-# infra/ansible/inventory/group_vars/all/vault.yml
+# group_vars/all/vault.yml
 ghcr_token: "github_pat_xxx"
 ```
 
 ```yaml
-# infra/ansible/inventory/group_vars/all/main.yml
+# group_vars/all/main.yml
 applications:
   - name: myapp
     image_default: ghcr.io/org/myapp:latest

@@ -18,8 +18,8 @@
           - applications is defined
           - applications | length > 0
         fail_msg: >-
-          Define at least one application in inventory/group_vars/all/main.yml under
-          the applications list.
+          Define at least one application in your inventory's group_vars/all/main.yml
+          under the applications list.
 
     - name: Select repo-based applications
       set_fact:

@@ -1,135 +1,172 @@
 ---
+# Every role carries a tag, so applying one change does not mean re-running the whole host.
+#
+#   ansible-playbook playbooks/bootstrap.yml                            # everything
+#   ansible-playbook playbooks/bootstrap.yml --limit app --tags app     # the app role only
+#   ansible-playbook playbooks/bootstrap.yml --limit app --tags app,nginx   # a port change
+#   ansible-playbook playbooks/bootstrap.yml --tags postgres            # database host only
+#   ansible-playbook playbooks/bootstrap.yml --list-tags                # what is available
+#
+# The pre_tasks are tagged `always` on purpose: they validate the inventory and build
+# `native_apps`, which the app, nginx and alloy roles all loop over — a tagged run without them
+# fails on an undefined variable. They are assertions and a set_fact, so they cost nothing.
+#
+# `--tags app` deliberately skips the initial deploy at the bottom. That one is tagged
+# `initial-deploy` and is a no-op on a host that has deployed before, but a tagged run is
+# something an operator reaches for during an incident and it should not build anything.
+
 # ── Play 1: Bootstrap postgres VM ──────────────────────────────────────────────
 - name: Bootstrap postgres VM
   hosts: postgres
   become: "{{ ansible_user != 'root' }}"
   roles:
-    - common
-    - postgres
+    - role: common
+      tags: [common]
+    - role: postgres
+      tags: [postgres]
 
 # ── Play 2: Bootstrap app VM (.NET + Nginx) ─────────────────────────────────────
 - name: Bootstrap native multi-app VPS (.NET)
   hosts: app
   become: "{{ ansible_user != 'root' }}"
   pre_tasks:
-    - name: Ensure applications are defined
-      assert:
-        that:
-          - applications is defined
-          - applications | length > 0
-        fail_msg: >-
-          Define at least one application in inventory/group_vars/all/main.yml under
-          the applications list.
+    # One block so a single `always` covers the lot — see the note at the top of the file.
+    - name: Validate the inventory and build the application list
+      tags: [always]
+      block:
+        - name: Ensure applications are defined
+          assert:
+            that:
+              - applications is defined
+              - applications | length > 0
+            fail_msg: >-
+              Define at least one application in your inventory's group_vars/all/main.yml
+              under the applications list.
 
-    - name: Build application definitions
-      set_fact:
-        native_apps: "{{ applications }}"
+        - name: Build application definitions
+          set_fact:
+            native_apps: "{{ applications }}"
 
-    - name: Validate application definitions
-      assert:
-        that:
-          - item.name is defined
-          - item.name | string | trim | length > 0
-          - item.assembly is defined
-          - item.assembly | string | trim | length > 0
-          - item.domain is defined
-          - item.domain | string | trim | length > 0
-          - item.port_blue is defined
-          - item.port_green is defined
-          - item.drain_seconds is defined
-          - (item.drain_seconds | int) > 0
-          - (item.port_blue | int) > 0
-          - (item.port_green | int) > 0
-          - (item.port_blue | int) != (item.port_green | int)
-          - item.repo_url | default('') | length == 0 or (item.repo_token | default('') | string | trim | length > 0)
-          - item.repo_token is not defined or (item.repo_token | string | trim | length == 0) or (item.repo_token | string | trim != 'ghp_...')
-        fail_msg: >-
-          Invalid application configuration for {{ item.name }}. Verify required fields,
-          ports, and repository credentials. For repository-based auto-deploy,
-          set a real GitHub token in vault.yml (not placeholder ghp_...).
-      loop: "{{ native_apps }}"
-      loop_control:
-        label: "{{ item.name }}"
+        - name: Validate application definitions
+          assert:
+            that:
+              - item.name is defined
+              - item.name | string | trim | length > 0
+              - item.assembly is defined
+              - item.assembly | string | trim | length > 0
+              - item.domain is defined
+              - item.domain | string | trim | length > 0
+              - item.port_blue is defined
+              - item.port_green is defined
+              - item.drain_seconds is defined
+              - (item.drain_seconds | int) > 0
+              - (item.port_blue | int) > 0
+              - (item.port_green | int) > 0
+              - (item.port_blue | int) != (item.port_green | int)
+              - item.repo_url | default('') | length == 0 or (item.repo_token | default('') | string | trim | length > 0)
+              - item.repo_token is not defined or (item.repo_token | string | trim | length == 0) or (item.repo_token | string | trim != 'ghp_...')
+            fail_msg: >-
+              Invalid application configuration for {{ item.name }}. Verify required fields,
+              ports, and repository credentials. For repository-based auto-deploy,
+              set a real GitHub token in vault.yml (not placeholder ghp_...).
+          loop: "{{ native_apps }}"
+          loop_control:
+            label: "{{ item.name }}"
 
-    - name: Collect all slot ports
-      set_fact:
-        native_all_ports: "{{ (native_all_ports | default([])) + [item.port_blue | int, item.port_green | int] }}"
-      loop: "{{ native_apps }}"
-      loop_control:
-        label: "{{ item.name }}"
+        - name: Collect all slot ports
+          set_fact:
+            native_all_ports: "{{ (native_all_ports | default([])) + [item.port_blue | int, item.port_green | int] }}"
+          loop: "{{ native_apps }}"
+          loop_control:
+            label: "{{ item.name }}"
 
-    - name: Ensure all slot ports are unique across applications
-      assert:
-        that:
-          - native_all_ports | length == (native_all_ports | unique | length)
-        fail_msg: >-
-          Duplicate ports detected across applications. Ensure every app uses unique
-          blue/green ports.
+        - name: Ensure all slot ports are unique across applications
+          assert:
+            that:
+              - native_all_ports | length == (native_all_ports | unique | length)
+            fail_msg: >-
+              Duplicate ports detected across applications. Ensure every app uses unique
+              blue/green ports.
 
   roles:
-    - common
-    - dotnet
+    - role: common
+      tags: [common]
+    - role: dotnet
+      tags: [dotnet]
     - role: browser
       when: use_headless_browser | bool
-    - nginx
-    - app
+      tags: [browser]
+    - role: nginx
+      tags: [nginx]
+    - role: app
+      tags: [app]
     - role: alloy
       when: use_loki_grafana | bool
+      tags: [alloy, logging]
     - role: monitoring
       when:
         - use_loki_grafana | bool
         - (monitoring_target | default('app')) == 'app'
+      tags: [monitoring, logging]
     - role: cloudflared
       when: use_cloudflared | bool
+      tags: [cloudflared]
 
   tasks:
-    - name: Check whether initial deploy has already run
-      stat:
-        path: "{{ apps_root }}/{{ item.name }}/runtime/deploy-history.log"
-      register: initial_deploy_status
-      loop: "{{ native_apps }}"
-      loop_control:
-        label: "{{ item.name }}"
+    # Only ever fires for an app that has never deployed, but it is the one part of this play
+    # that builds and swaps traffic — hence its own tag, and hence it is not `always`.
+    - name: Deploy applications that have never been deployed
+      tags: [initial-deploy]
+      block:
+        - name: Check whether initial deploy has already run
+          stat:
+            path: "{{ apps_root }}/{{ item.name }}/runtime/deploy-history.log"
+          register: initial_deploy_status
+          loop: "{{ native_apps }}"
+          loop_control:
+            label: "{{ item.name }}"
 
-    - name: Build initial deploy app list
-      set_fact:
-        initial_deploy_apps: "{{ (initial_deploy_apps | default([])) + [item.item.name] }}"
-      loop: "{{ initial_deploy_status.results }}"
-      loop_control:
-        label: "{{ item.item.name }}"
-      when:
-        - not item.stat.exists
+        - name: Build initial deploy app list
+          set_fact:
+            initial_deploy_apps: "{{ (initial_deploy_apps | default([])) + [item.item.name] }}"
+          loop: "{{ initial_deploy_status.results }}"
+          loop_control:
+            label: "{{ item.item.name }}"
+          when:
+            - not item.stat.exists
 
-    - name: Run initial deploy (token required)
-      command:
-        argv:
-          - "{{ apps_root }}/{{ app_cfg.name }}/scripts/deploy.sh"
-          - --repo-url
-          - "{{ app_cfg.repo_url | default('') }}"
-          - --branch
-          - "{{ app_cfg.repo_branch | default('master') }}"
-          - --project-path
-          - "{{ app_cfg.project_path | default('') }}"
-      environment:
-        APP_REPO_TOKEN: "{{ app_cfg.repo_token }}"
-      become_user: "{{ app_user }}"
-      loop: "{{ initial_deploy_apps | default([]) }}"
-      loop_control:
-        label: "{{ item }}"
-      vars:
-        app_cfg: "{{ (native_apps | selectattr('name', 'equalto', item) | list | first) }}"
-      when:
-        - app_cfg is defined
-        - app_cfg.repo_url | default('') | length > 0
-        - app_cfg.project_path | default('') | length > 0
+        - name: Run initial deploy (token required)
+          command:
+            argv:
+              - "{{ apps_root }}/{{ app_cfg.name }}/scripts/deploy.sh"
+              - --repo-url
+              - "{{ app_cfg.repo_url | default('') }}"
+              - --branch
+              - "{{ app_cfg.repo_branch | default('master') }}"
+              - --project-path
+              - "{{ app_cfg.project_path | default('') }}"
+          environment:
+            APP_REPO_TOKEN: "{{ app_cfg.repo_token }}"
+          become_user: "{{ app_user }}"
+          loop: "{{ initial_deploy_apps | default([]) }}"
+          loop_control:
+            label: "{{ item }}"
+          vars:
+            app_cfg: "{{ (native_apps | selectattr('name', 'equalto', item) | list | first) }}"
+          when:
+            - app_cfg is defined
+            - app_cfg.repo_url | default('') | length > 0
+            - app_cfg.project_path | default('') | length > 0
 
 # ── Play 3: Bootstrap dedicated monitoring VM (optional) ─────────────────────
 - name: Bootstrap monitoring VM (Loki + Grafana)
   hosts: monitoring
   become: "{{ ansible_user != 'root' }}"
   roles:
-    - common
+    - role: common
+      tags: [common]
     - role: monitoring
       when:
         - use_loki_grafana | bool
         - (monitoring_target | default('app')) == 'monitoring'
+      tags: [monitoring, logging]

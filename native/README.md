@@ -90,9 +90,11 @@ ssh-copy-id -i ~/.ssh/id_ed25519_devops.pub root@<vps-ip>
 **2. Add the public key to `vault.yml`** (see Configure below):
 
 ```bash
-cd ~/src/portable-dotnet-architecture/native/infra/ansible
-cp --update=none inventory/group_vars/all/vault.yml.example inventory/group_vars/all/vault.yml
-vim inventory/group_vars/all/vault.yml
+mkdir -p ~/app-inventory/group_vars/all
+cp --update=none \
+  ~/src/portable-dotnet-architecture/native/infra/ansible/inventory/group_vars/all/vault.yml.example \
+  ~/app-inventory/group_vars/all/vault.yml
+vim ~/app-inventory/group_vars/all/vault.yml
 ```
 
 ```yaml
@@ -119,26 +121,51 @@ Once every key you rely on is listed, set `ssh_authorized_keys_exclusive: true` 
 
 ## Configure
 
+**Keep your inventory outside the clone.** Nothing in `inventory/` is committed except the three
+`.example` files — copy them somewhere of your own and point Ansible at that directory. Ansible
+resolves `group_vars/` relative to the inventory file, so the layout is the only thing that has to
+match:
+
 ```bash
-cd ~/src/portable-dotnet-architecture/native
-# Edit inventory with your VPS IP:
-vim infra/ansible/inventory/hosts.ini
-
-# Edit app settings (name, domain, ports, .NET version…):
-vim infra/ansible/inventory/group_vars/all/main.yml
-
-# Fill in secrets:
+mkdir -p ~/app-inventory/group_vars/all
 cd ~/src/portable-dotnet-architecture/native/infra/ansible
-cp --update=none inventory/group_vars/all/vault.yml.example inventory/group_vars/all/vault.yml
-vim inventory/group_vars/all/vault.yml
-# required values:
-# postgres_password: "replace-me"
-# cloudflare_token: "replace-me"   # only when use_cloudflared: true
-# grafana_admin_password: "replace-me"   # only when use_loki_grafana: true
-# Optionally encrypt: ansible-vault encrypt inventory/group_vars/all/vault.yml
+cp inventory/hosts.ini.example                    ~/app-inventory/hosts.ini
+cp inventory/group_vars/all/main.yml.example      ~/app-inventory/group_vars/all/main.yml
+cp inventory/group_vars/all/vault.yml.example     ~/app-inventory/group_vars/all/vault.yml
+
+# Point every ansible command at it, once
+echo 'export ANSIBLE_INVENTORY=~/app-inventory/hosts.ini' >> ~/.bashrc && . ~/.bashrc
+#   ...or pass -i ~/app-inventory/hosts.ini per command.
 ```
 
-Key variables in `inventory/group_vars/all/main.yml`:
+Keeping it out of the clone is what makes `git pull --ff-only` on a control node boring: an
+inventory that lives on a tracked path is a modified working tree for ever, so every pull is a
+conflict against your own edits — and the reflex that clears it (`git checkout -- .`) deletes the
+description of your hosts. The paths are also in `.gitignore`, so an inventory left inside the
+clone cannot be committed by accident; that layout still works, it just gives up the clean pull.
+
+Then fill in the three files:
+
+```bash
+vim ~/app-inventory/hosts.ini                   # your VPS IPs
+vim ~/app-inventory/group_vars/all/main.yml     # apps: name, domain, ports, .NET version…
+vim ~/app-inventory/group_vars/all/vault.yml    # secrets
+# required values:
+# postgres_password: "replace-me"
+# cloudflare_token: "replace-me"         # only when use_cloudflared: true
+# grafana_admin_password: "replace-me"   # only when use_loki_grafana: true
+# Optionally encrypt: ansible-vault encrypt ~/app-inventory/group_vars/all/vault.yml
+```
+
+`main.yml.example` is the reference copy — every variable, commented, including the ones left off
+by default. Diff your file against it after a pull to see what a new version added:
+
+```bash
+diff -u ~/app-inventory/group_vars/all/main.yml \
+        infra/ansible/inventory/group_vars/all/main.yml.example
+```
+
+Key variables in `group_vars/all/main.yml`:
 
 | Variable                  | Description                                 
 |---------------------------|---------------------------------------------
@@ -201,7 +228,7 @@ applications:
 > with `postgres_max_connections: 128` and renders `conf.d/10-tuning.conf` from the
 > host's RAM (shared_buffers 25%, effective_cache_size 75%, tiered work_mem) — a RAM
 > upgrade plus a playbook re-run re-tunes everything; see the tuning block in
-> `inventory/group_vars/all/main.yml`. `Keepalive=60` lets each pool detect and
+> `group_vars/all/main.yml`. `Keepalive=60` lets each pool detect and
 > evict connections killed by a Postgres restart (auto minor upgrades, failover)
 > before requests trip over them.
 
@@ -227,6 +254,9 @@ cd infra/ansible
 ansible-playbook playbooks/bootstrap.yml
 # With vault: ansible-playbook playbooks/bootstrap.yml --ask-vault-pass
 ```
+
+The full run is right the first time and after adding an app. For everything after that, scope it
+to what you changed — see [Applying a change](#applying-a-change).
 
 Bootstrap also performs the initial deploy automatically for each entry in `applications` where `repo_url` and `project_path` are configured. For private repositories, set `repo_token` (for that app) and store the secret in `vault.yml` — use a fine-grained PAT scoped to the deployed repositories with *Contents: Read-only*. Bootstrap also renders that token to `/opt/apps/<app>/config/repo-token` (mode 0600, owned by the app user), which is what lets every later deploy run without retyping it.
 
@@ -267,6 +297,78 @@ ansible-playbook playbooks/deploy.yml                 # every repo-based app
 ```bash
 sudo -u devops /opt/apps/myapp/scripts/rollback.sh
 ```
+
+## Applying a change
+
+There are two channels and they are not interchangeable. **`bootstrap.yml` applies changes to the
+host** — this repository's roles, and your inventory. **`deploy.yml` applies changes to the
+application** — a new commit in the app's own repository, built into the idle slot. A change to
+`appsettings_override` or an env var is the first; a change to a `.cs` file is the second. When a
+release needs both, run bootstrap first: it is the one that can fix a host that is currently down.
+
+```bash
+cd ~/src/portable-dotnet-architecture
+git pull --ff-only
+
+# 1. Read what arrived. The step everyone skips, and the only one that tells you the blast radius.
+git diff HEAD@{1}..HEAD --stat -- native/infra
+git log  HEAD@{1}..HEAD --oneline -- native/infra
+
+cd native/infra/ansible
+ansible-playbook playbooks/bootstrap.yml --syntax-check
+
+# 2. Dry run. --diff prints the new content of every file that would change; the two tasks that
+#    write secrets are no_log, so those report "changed" without showing it.
+ansible-playbook playbooks/bootstrap.yml --check --diff --limit app --tags app
+
+# 3. For real, one host group at a time.
+ansible-playbook playbooks/bootstrap.yml --limit app --tags app
+
+# 4. Verify on the host, not in Ansible's output.
+ssh devops@<app-vm> 'systemctl is-active myapp-$(cat /opt/apps/myapp/runtime/active-slot)'
+curl -fsS https://myapp.example.com/.well-known/ready
+```
+
+Add `--ask-vault-pass` throughout if `vault.yml` is encrypted.
+
+**Scope the run to what changed.** `--limit` picks hosts, `--tags` picks roles; `--list-tags`
+prints what is available:
+
+| Change | Run |
+|---|---|
+| App definition, `appsettings_override`, `env` | `--limit app --tags app` |
+| A slot port (`port_blue`/`port_green`) | `--limit app --tags app,nginx` |
+| Domain, TLS, Nginx site config | `--limit app --tags nginx` |
+| Postgres tuning, `pg_hba`, backups | `--tags postgres` |
+| Loki/Grafana/Alloy | `--tags logging` |
+| SSH keys, firewall, unattended upgrades | `--tags common` |
+| A new app added to `applications` | full run, no `--tags` |
+
+The pre-tasks are tagged `always`, so a tagged run still validates the inventory. The initial
+deploy at the end of the play is tagged `initial-deploy` and is skipped by any `--tags` selection
+that does not name it — it is a no-op on a host that has deployed before, but a tagged run is what
+you reach for during an incident and it should not build anything.
+
+**Why `--tags postgres` is worth the discipline:** the postgres role installs with `state: latest`,
+so a full run can pick up a minor release and restart the cluster. Every app on the host drops its
+connections while it does. A change to the app role has no business touching the database VM.
+
+**A changed env file restarts the active slot.** `common.env`, `blue.env`, `green.env` and
+`appsettings.override.json` are generated in full from the inventory and rewritten on every run
+(`force: true`), and the app role restarts the live slot when any of them actually changes — systemd
+reads `EnvironmentFile` only at start, so nothing else would apply it. That restart is a real one,
+not a blue/green swap: a few seconds of downtime for that app. It fires only on a genuine content
+change, which is why the dry run in step 2 is the thing to read — with `check_mode: false` on the two
+read-only probes, `--check` reports the restart it would perform.
+
+The corollary: **hand-edits to those files on the host do not survive a run.** An env var belongs in
+`applications[].env` in your inventory, a setting in `appsettings_override`. Only runtime state
+(`runtime/active-slot`, `runtime/active-image`, the active Nginx upstream) is written once and left
+alone — those belong to `deploy.sh` and `switch-nginx.sh`, not to the inventory.
+
+**Rolling back an infrastructure change** is `git revert` plus another run — the roles are
+declarative, so the previous commit puts the host back. `rollback.sh` is a different thing: it
+switches Nginx to the other slot and is about application code.
 
 ## Deployment sequence
 
@@ -317,13 +419,13 @@ systemctl stop <app>-<active>.service
 
 ## Cloudflare Tunnel (optional)
 
-Set `use_cloudflared: true` in `inventory/group_vars/all/main.yml` and provide `cloudflare_token` in `vault.yml`.
+Set `use_cloudflared: true` in `group_vars/all/main.yml` and provide `cloudflare_token` in `vault.yml`.
 The tunnel is installed as a systemd service and starts automatically.
 With a tunnel active, you can remove ports 80/443 from `ufw_allowed_tcp_ports`.
 
 ## Loki + Grafana (optional, Docker)
 
-Set `use_loki_grafana: true` in `inventory/group_vars/all/main.yml` and provide `grafana_admin_password` in `vault.yml`.
+Set `use_loki_grafana: true` in `group_vars/all/main.yml` and provide `grafana_admin_password` in `vault.yml`.
 
 Default behavior:
 

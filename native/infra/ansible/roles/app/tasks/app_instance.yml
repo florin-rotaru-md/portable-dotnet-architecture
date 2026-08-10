@@ -112,12 +112,17 @@
     force:   true
   register: green_env_render
 
+# check_mode: false on both reads below, so `--check --diff` reports the restart it would do.
+# Without it Ansible skips the `command` in check mode, `active_slot_service_state.rc` is never
+# set, the restart's `when` quietly evaluates false — and the dry run shows the changed files
+# while hiding the one consequence an operator is checking for.
 - name: Read active slot
   slurp:
     src: "{{ apps_root }}/{{ current_app.name }}/runtime/active-slot"
   register: active_slot_raw
   changed_when: false
   failed_when: false
+  check_mode: false
 
 - name: Resolve active slot name
   set_fact:
@@ -131,6 +136,7 @@
   register: active_slot_service_state
   changed_when: false
   failed_when: false
+  check_mode: false
 
 # The env files too, not just the override: systemd reads EnvironmentFile at start, so a changed
 # common.env / <slot>.env reaches the process only through a restart — and an env var the app needs
