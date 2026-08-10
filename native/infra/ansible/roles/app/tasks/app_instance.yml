@@ -29,6 +29,13 @@
     group: "{{ app_user }}"
     mode: "0755"
 
+# force: true, like appsettings.override.json below — this file is generated in full from
+# applications[].env, so the inventory is its only source of truth. It used to be force: false,
+# which meant the file was written once at app creation and never again: an app provisioned before
+# a variable was added to env[] kept running without it for ever. That is how api.waa.ro lost
+# APP_PROFILE — the app silently skipped its optional appsettings.{APP_PROFILE}.json and died at
+# boot on the two settings only that file carries. Hand-edits on the host do not survive a run;
+# the inventory is where an env var belongs.
 - name: Render common env file
   template:
     src:   config.env.j2
@@ -36,10 +43,11 @@
     owner: "{{ app_user }}"
     group: "{{ app_user }}"
     mode:  '0600'
-    force: false
+    force: true
   vars:
     app_name: "{{ current_app.name }}"
     app_env: "{{ current_app.env | default({}) }}"
+  register: common_env_render
 
 - name: Write appsettings.override.json for {{ current_app.name }}
   copy:
@@ -81,6 +89,29 @@
   register: slot_override_sync
   no_log: true
 
+# Rendered before the restart decision below, and force: true for the same reason common.env is:
+# the port comes from the inventory, so a port_blue/port_green change has to reach the file. Left
+# force: false, the nginx upstream moved to the new port and the app kept binding the old one.
+- name: Render blue env file
+  copy:
+    dest:    "{{ apps_root }}/{{ current_app.name }}/env/blue.env"
+    content: "SLOT_NAME=blue\nASPNETCORE_URLS=http://127.0.0.1:{{ current_app.port_blue }}\n"
+    owner:   "{{ app_user }}"
+    group:   "{{ app_user }}"
+    mode:    '0600'
+    force:   true
+  register: blue_env_render
+
+- name: Render green env file
+  copy:
+    dest:    "{{ apps_root }}/{{ current_app.name }}/env/green.env"
+    content: "SLOT_NAME=green\nASPNETCORE_URLS=http://127.0.0.1:{{ current_app.port_green }}\n"
+    owner:   "{{ app_user }}"
+    group:   "{{ app_user }}"
+    mode:    '0600'
+    force:   true
+  register: green_env_render
+
 - name: Read active slot
   slurp:
     src: "{{ apps_root }}/{{ current_app.name }}/runtime/active-slot"
@@ -101,32 +132,22 @@
   changed_when: false
   failed_when: false
 
-- name: Restart active slot service to apply new override
+# The env files too, not just the override: systemd reads EnvironmentFile at start, so a changed
+# common.env / <slot>.env reaches the process only through a restart — and an env var the app needs
+# at boot (APP_PROFILE) would otherwise land on disk and change nothing until the next deploy.
+- name: Restart active slot service to apply new override or env
   systemd:
     name: "{{ current_app.name }}-{{ active_slot_name }}.service"
     state: restarted
   when:
     - slot_override_sync is changed
+      or common_env_render is changed
+      or blue_env_render is changed
+      or green_env_render is changed
     - active_slot_service_state.rc == 0
 
-- name: Render blue env file
-  copy:
-    dest:    "{{ apps_root }}/{{ current_app.name }}/env/blue.env"
-    content: "SLOT_NAME=blue\nASPNETCORE_URLS=http://127.0.0.1:{{ current_app.port_blue }}\n"
-    owner:   "{{ app_user }}"
-    group:   "{{ app_user }}"
-    mode:    '0600'
-    force:   false
-
-- name: Render green env file
-  copy:
-    dest:    "{{ apps_root }}/{{ current_app.name }}/env/green.env"
-    content: "SLOT_NAME=green\nASPNETCORE_URLS=http://127.0.0.1:{{ current_app.port_green }}\n"
-    owner:   "{{ app_user }}"
-    group:   "{{ app_user }}"
-    mode:    '0600'
-    force:   false
-
+# Read by rollback.sh to health-check the slot it falls back to. Inventory-derived, so force: true —
+# a stale port here aims the rollback health check at nothing and reports the rollback as failed.
 - name: Persist slot port metadata
   copy:
     dest:    "{{ apps_root }}/{{ current_app.name }}/runtime/port-{{ item.slot }}"
@@ -134,11 +155,14 @@
     owner:   "{{ app_user }}"
     group:   "{{ app_user }}"
     mode:    '0644'
-    force:   false
+    force:   true
   loop:
     - { slot: 'blue',  port: "{{ current_app.port_blue }}" }
     - { slot: 'green', port: "{{ current_app.port_green }}" }
 
+# The one file here that force: false is right for: it is runtime state, owned by switch-nginx.sh,
+# not something the inventory describes. Rewriting it on every run would tell the scripts blue is
+# live while nginx is pointing at green.
 - name: Initialize active-slot file
   copy:
     dest:  "{{ apps_root }}/{{ current_app.name }}/runtime/active-slot"

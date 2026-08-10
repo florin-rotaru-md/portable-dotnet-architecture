@@ -56,6 +56,9 @@
     app_health_max_attempts: "{{ app.health_max_attempts | default(health_max_attempts | default(16)) }}"
     app_health_interval_seconds: "{{ app.health_interval_seconds | default(health_interval_seconds | default(4)) }}"
 
+# These two are runtime state — which slot is live, which image it runs — owned by deploy.sh and
+# switch-nginx.sh, not described by the inventory. force: false is right for them and only them;
+# everything below is generated and force: true.
 - name: Initialize active-slot file for {{ app.name }}
   copy:
     dest:    "{{ apps_root }}/{{ app.name }}/runtime/active-slot"
@@ -74,6 +77,11 @@
     mode:    '0644'
     force:   false
 
+# force: true on everything generated from the inventory (this file, the override, the slot env
+# files below) — only runtime state above stays force: false. Written once, these silently froze at
+# whatever the inventory said the day the app was created: a later internal_port change moved the
+# healthcheck and the nginx upstream while the container kept binding the old port, and an added
+# env var never reached the process at all. Hand-edits on the host do not survive a run.
 - name: Write common env file for {{ app.name }}
   copy:
     dest: "{{ apps_root }}/{{ app.name }}/env/common.env"
@@ -84,7 +92,7 @@
     owner: "{{ app_user }}"
     group: "{{ app_user }}"
     mode:  '0600'
-    force: false
+    force: true
 
 - name: Write appsettings.override.json for {{ app.name }}
   copy:
@@ -93,7 +101,7 @@
     owner:   "{{ app_user }}"
     group:   "{{ app_user }}"
     mode:    '0600'
-    force:   false
+    force:   true
   no_log: true
 
 - name: Write optional registry auth env file for {{ app.name }}
@@ -115,7 +123,7 @@
     owner:   "{{ app_user }}"
     group:   "{{ app_user }}"
     mode:    '0600'
-    force:   false
+    force:   true
 
 - name: Write green env file for {{ app.name }}
   copy:
@@ -124,4 +132,4 @@
     owner:   "{{ app_user }}"
     group:   "{{ app_user }}"
     mode:    '0600'
-    force:   false
+    force:   true
