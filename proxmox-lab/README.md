@@ -74,6 +74,7 @@ The result, in one paragraph: two nodes joined by a direct 10G cable (corosync L
 | [Stage 19 — Node replacement](operations/19-node-replacement.md) | Swapping in new hardware: clean swap vs disk transplant, step by step |
 | [Stage 20 — Upgrades](operations/20-upgrades.md) | Postgres minors (automatic, by design) and majors (a project with a rehearsal); the same pattern for OS and Proxmox upgrades |
 | [Stage 21 — Credentials](operations/21-credentials.md) | What authenticates what, what a restore gives back, recovery when a key is lost, the console password, key rotation via Ansible |
+| [Stage 22 — R2 mirror: operating it](operations/22-r2-mirror.md) | The media tier day-to-day: how the pieces move, the routine proofs it still works, and the incident table — from a failing sync to a deleted bucket, including writing objects back |
 
 ### [scripts/](scripts/) — speed for the operational side
 
@@ -116,6 +117,7 @@ The whole build, in execution order, with the two deliberate "come back later" p
 - **Locked out / lost a key:** [21.5](operations/21-credentials.md#215-recovery-scenarios--what-losing-each-thing-actually-means) has the way back for each case.
 - **Shipping a new app version:** [20.5](operations/20-upgrades.md#205-the-same-pattern-applied-elsewhere) — one command on 1021 (`deploy.sh`, token already in place) or from 1020 (`playbooks/deploy.yml`), and `rollback.sh` as the instant undo.
 - **Restoring anything:** [17.7](backup/17-backup-restore.md#177-restore--pick-your-scenario) — pick scenario A–G, then the [post-restore checklist](backup/17-backup-restore.md#178-post-restore-checklist).
+- **Media missing from the site, or an R2 object needs to come back:** [Stage 22](operations/22-r2-mirror.md) — the incident table, then the write-back recipe.
 - **A firmware update is being offered:** [16.3](operations/16-maintenance.md#163-firmware--detect-always-flash-rarely) — the answer is usually *don't*, and when it isn't, the order is QDevice → pve2 → wait a week → pve1, with the post-flash checklist that catches the settings a BIOS update quietly reset.
 - **Something looks wrong:** `cluster-health` on either node ([what it checks](scripts/README.md)), then [troubleshooting](troubleshooting.md).
 

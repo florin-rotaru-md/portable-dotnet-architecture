@@ -315,3 +315,7 @@ so copied-back objects are immediately served — no database surgery involved.
 `backup-verify` watches this tier like the others: sync log fresh, no errors. The quarterly
 drill ([17.9](#179-restore-drills)) opens one mirrored file — an image that renders proves the
 whole chain, R2 → USB → eye.
+
+Day-to-day operation — the routine proofs, the incident table (failing sync, mass delete,
+deleted bucket, leaked token, faster-than-the-window erasure) and the write-back recipe — lives
+in [Stage 22](../operations/22-r2-mirror.md).
