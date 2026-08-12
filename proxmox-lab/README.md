@@ -75,6 +75,7 @@ The result, in one paragraph: two nodes joined by a direct 10G cable (corosync L
 | [Stage 20 — Upgrades](operations/20-upgrades.md) | Postgres minors (automatic, by design) and majors (a project with a rehearsal); the same pattern for OS and Proxmox upgrades |
 | [Stage 21 — Credentials](operations/21-credentials.md) | What authenticates what, what a restore gives back, recovery when a key is lost, the console password, key rotation via Ansible |
 | [Stage 22 — R2 mirror: operating it](operations/22-r2-mirror.md) | The media tier day-to-day: how the pieces move, the routine proofs it still works, and the incident table — from a failing sync to a deleted bucket, including writing objects back |
+| [Stage 23 — Drill book](operations/23-drill-book.md) | The run order and the record: the pre-launch drill sequence, the daily/monthly/quarterly verification calendar, the app-level checklist that closes every drill, and the log of measured RTO/RPO |
 
 ### [scripts/](scripts/) — speed for the operational side
 
@@ -103,13 +104,13 @@ The whole build, in execution order, with the two deliberate "come back later" p
 - [ ] **14** First live migration — the ping test, both directions
 - [ ] **15** HA for 1021/1022 only — 1020 and 1023 deliberately stay out, `shutdown_policy=migrate`, notifications
 - [ ] **17** Backups — USB drive, nightly job, offsite rclone + crypt, the R2 media mirror (17.10); **now take the template backup from 9.5**
-- [ ] **18.6** Pre-launch failover tests — all three, timed and written down
-- [ ] **17.9** First restore drill — [`restore-drill`](scripts/README.md), before going live, not after
+- [ ] **23** Pre-launch drills — the [drill book](operations/23-drill-book.md) sequence top to bottom (18.6's three failover tests, 17.9's first restore drill, the offsite + R2 proofs), timed and logged
 - [ ] Go live 🎉
 
 ## Reading paths
 
-- **Building from zero:** the checklist above, top to bottom. Stages 0–15 are a weekend; 17 and the test plan in 18.6 before going live are not optional.
+- **Building from zero:** the checklist above, top to bottom. Stages 0–15 are a weekend; 17 and the drill book (23) before going live are not optional.
+- **Drill day — pre-launch or the quarterly hour:** [Stage 23](operations/23-drill-book.md) is the run order, the pass criteria and the log; the mechanics stay in 14/17/18/22.
 - **A node just died:** [18.2](ha/18-failover.md#182-anatomy-of-an-unplanned-failover) for what's happening on its own, [18.3](ha/18-failover.md#183-scenario-table) for your row, [18.5](ha/18-failover.md#185-emergency-forcing-quorum) only if the QDevice is also down.
 - **A node comes back after weeks:** [16.2](operations/16-maintenance.md#162-returning-a-node-after-a-long-outage-days-to-weeks) — order matters: rejoin → update → replicate → migrate.
 - **A brand-new VM won't let me in, or came up on the wrong IP:** [Stage 10](vms/10-vms.md#first-boot--confirm-each-vm-took-its-static-ip) — the two first-boot surprises of the cloud image, in order.

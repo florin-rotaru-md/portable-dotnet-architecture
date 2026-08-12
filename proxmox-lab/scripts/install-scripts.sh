@@ -12,7 +12,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-for f in cluster-health.sh backup-verify.sh pve-config-backup.sh r2-backup.sh node-return.sh restore-drill.sh create-vms.sh; do
+for f in cluster-health.sh backup-verify.sh pve-config-backup.sh r2-backup.sh node-return.sh restore-drill.sh create-vms.sh infra-report.sh; do
     install -m 755 "$f" "/usr/local/sbin/${f%.sh}"
 done
 
@@ -31,9 +31,12 @@ MAILTO=root
 30 3 * * * root /usr/local/sbin/r2-backup >/dev/null
 
 # Morning sweep: cluster health, then backup freshness once the offsite
-# sync window has passed (backup-verify exits quietly on the non-USB node)
-0  7 * * * root /usr/local/sbin/cluster-health --quiet
-30 7 * * * root /usr/local/sbin/backup-verify  --quiet
+# sync window has passed (backup-verify exits quietly on the non-USB node).
+# infra-report passes output and exit code through untouched (so the mail
+# behaviour is unchanged) and POSTs the outcome to the app's infra monitor —
+# a no-op until /etc/waa-infra-report.conf exists (ADR-0015 in the app repo).
+0  7 * * * root /usr/local/sbin/infra-report cluster-health --quiet
+30 7 * * * root /usr/local/sbin/infra-report backup-verify  --quiet
 EOF
 
 echo "Installed to /usr/local/sbin: cluster-health backup-verify pve-config-backup r2-backup node-return restore-drill create-vms"
