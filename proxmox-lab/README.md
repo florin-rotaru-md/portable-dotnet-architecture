@@ -1,6 +1,6 @@
 # Proxmox lab — 2 nodes, replication, live migration
 
-A two-node Proxmox VE cluster for a self-hosted app: ZFS replication, HA with automatic failover, live migration over a direct 10G link, three backup tiers, and everything inside the VMs managed by Ansible from [`native/infra/ansible`](../native/infra/ansible). Written so it can be followed top-to-bottom by someone building this for the first time.
+A two-node Proxmox VE cluster for a self-hosted app: ZFS replication, HA with automatic failover, live migration over a direct 10G link, multi-tier backups, and everything inside the VMs managed by Ansible from [`native/infra/ansible`](../native/infra/ansible). Written so it can be followed top-to-bottom by someone building this for the first time.
 
 ## Hardware
 
@@ -18,7 +18,7 @@ A two-node Proxmox VE cluster for a self-hosted app: ZFS replication, HA with au
 | VM CPU type | `host` | **`x86-64-v3`** | Different CPUs (Raptor Lake vs Arrow Lake) — `host` would crash a migrated VM |
 | Migration network | Everything over the 1G LAN | Direct 10G cable (X550 ↔ TB adapter), no switch; 1G to the router as backup ring | Full 10G for migration/replication at zero extra cost, plus corosync redundancy |
 
-The result, in one paragraph: two nodes joined by a direct 10G cable (corosync Link 0, migration, replication) and by the home LAN (vmbr0, corosync Link 1), with a QDevice holding the third vote. Four VMs — `1020 control` (Ansible), `1021 app` (.NET + nginx + cloudflared), `1022 postgres`, `1023 monitoring` (Loki + Grafana) — replicate between nodes every 1–30 minutes depending on the VM; HA restarts `app` and `postgres` on the surviving node in ~2–3 minutes if a node dies, while `control` and `monitoring` stay out of HA and are started by hand if their node goes down — a plain reboot still brings `monitoring` back on its own, via [start-at-boot](vms/10-vms.md#start-at-boot--what-comes-back-after-a-node-reboot). Backups go to a USB disk nightly and encrypted to Digi Storage offsite.
+The result, in one paragraph: two nodes joined by a direct 10G cable (corosync Link 0, migration, replication) and by the home LAN (vmbr0, corosync Link 1), with a QDevice holding the third vote. Four VMs — `1020 control` (Ansible), `1021 app` (.NET + nginx + cloudflared), `1022 postgres`, `1023 monitoring` (Loki + Grafana) — replicate between nodes every 1–30 minutes depending on the VM; HA restarts `app` and `postgres` on the surviving node in ~2–3 minutes if a node dies, while `control` and `monitoring` stay out of HA and are started by hand if their node goes down — a plain reboot still brings `monitoring` back on its own, via [start-at-boot](vms/10-vms.md#start-at-boot--what-comes-back-after-a-node-reboot). Backups — VM images, host config and a mirror of the app's R2 media bucket — go to a USB disk nightly and on to Digi Storage offsite, encrypted.
 
 ## The guide
 
@@ -60,11 +60,11 @@ The result, in one paragraph: two nodes joined by a direct 10G cable (corosync L
 | [Stage 15 — HA](ha/15-ha.md) | Which VMs get HA, `shutdown_policy=migrate`, notifications |
 | [Stage 18 — Failover mechanics](ha/18-failover.md) | How detection/fencing/recovery actually work, the full scenario table with RTO/RPO, forcing quorum, the pre-launch test plan, periodic health checks |
 
-### [backup/](backup/) — the three tiers
+### [backup/](backup/) — the tiers
 
 | | Covers |
 |---|---|
-| [Stage 17 — Backup & restore](backup/17-backup-restore.md) | USB tier, offsite (rclone + crypt) tier, the in-VM Postgres dump tier, every restore scenario A–F, post-restore checklist, restore drills |
+| [Stage 17 — Backup & restore](backup/17-backup-restore.md) | USB tier, offsite (rclone + crypt) tier, the in-VM Postgres dump tier, the R2 media mirror (17.10), every restore scenario A–G, post-restore checklist, restore drills |
 
 ### [operations/](operations/) — running it over the years
 
@@ -101,7 +101,7 @@ The whole build, in execution order, with the two deliberate "come back later" p
 - [ ] **13** WAL stream to the QDevice — both ends, verified end to end
 - [ ] **14** First live migration — the ping test, both directions
 - [ ] **15** HA for 1021/1022 only — 1020 and 1023 deliberately stay out, `shutdown_policy=migrate`, notifications
-- [ ] **17** Backups — USB drive, nightly job, offsite rclone + crypt; **now take the template backup from 9.5**
+- [ ] **17** Backups — USB drive, nightly job, offsite rclone + crypt, the R2 media mirror (17.10); **now take the template backup from 9.5**
 - [ ] **18.6** Pre-launch failover tests — all three, timed and written down
 - [ ] **17.9** First restore drill — [`restore-drill`](scripts/README.md), before going live, not after
 - [ ] Go live 🎉

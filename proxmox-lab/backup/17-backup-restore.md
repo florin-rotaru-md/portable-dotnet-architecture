@@ -2,7 +2,7 @@
 
 *Part of the [Proxmox lab guide](../README.md).*
 
-## 17.1 The three tiers
+## 17.1 The tiers
 
 Each one answers a different disaster. None substitutes for another:
 
@@ -12,6 +12,7 @@ Each one answers a different disaster. None substitutes for another:
 | **WAL stream → QDevice** ([Stage 13](../ha/13-wal-stream.md)) | Continuous (~seconds) | The last minute a failover would otherwise lose; also unlocks any-second PITR | Minutes ([scenario G](#g-replaying-the-last-seconds-after-a-failover-wal-from-the-qdevice)) |
 | **Local backup** (USB) | Daily | Deletion, corruption, a bad deploy, ransomware | Minutes to an hour |
 | **Offsite copy** (Digi Storage) | Daily | Fire, theft, flood, both nodes gone | Hours (download-bound) |
+| **R2 media mirror** ([17.10](#1710-a-fifth-tier-for-the-r2-media-bucket)) | Daily | The one data set that lives only in Cloudflare — a deleted bucket, a retention-sweep bug, a leaked write-capable key | Minutes (copy back from the drive) |
 
 > Replication is **not** backup. It copies a `DROP TABLE` to the other node just as faithfully as it copies good data.
 
@@ -106,7 +107,7 @@ rclone config
 
 ⚠️ **Write the encryption passwords down and store them somewhere that survives the house** — a password manager, or on paper away from the lab. Without them the offsite backups are mathematically unrecoverable, which turns your disaster tier into an expensive illusion.
 
-Automatic sync after the nightly backup — the whole drive, not just `dump/`, so the host-config archives from [`pve-config-backup`](../scripts/README.md) ride along:
+Automatic sync after the nightly backup — the whole drive, not just `dump/`, so the host-config archives from [`pve-config-backup`](../scripts/README.md) and the R2 media mirror ([17.10](#1710-a-fifth-tier-for-the-r2-media-bucket)) ride along:
 ```bash
 crontab -e
 ```
@@ -263,7 +264,54 @@ Also check inside the VM:
 A backup you have never restored is a hypothesis.
 
 - **Monthly:** scenario A on one VM — restore to a spare ID, boot it, confirm it works, destroy it. Ten minutes — or one command: [`restore-drill`](../scripts/README.md) does exactly this (NIC disconnected, guest-agent boot proof, auto-cleanup) and logs the measured RTO to `/var/log/restore-drill.log`.
-- **Quarterly:** scenario E — pull one archive from Digi Storage and restore it. This is the only way to find out whether the encryption passwords still work *before* you need them. If [13](../ha/13-wal-stream.md) is enabled, run scenario G's replay against the drill VM while it's up — that proves the WAL archive actually replays, not just accumulates.
+- **Quarterly:** scenario E — pull one archive from Digi Storage and restore it. This is the only way to find out whether the encryption passwords still work *before* you need them. If [13](../ha/13-wal-stream.md) is enabled, run scenario G's replay against the drill VM while it's up — that proves the WAL archive actually replays, not just accumulates. While you're there, open one file out of the R2 mirror ([17.10](#1710-a-fifth-tier-for-the-r2-media-bucket)) — an image that renders is the whole proof.
 - **After any change** to storage layout, Proxmox major version, or backup configuration.
 
 Write down how long each takes. Those numbers are your real RTO, as opposed to the one you assume you have.
+
+## 17.10 A fifth tier for the R2 media bucket
+
+Every tier above protects the VMs and Postgres. The app's media — user uploads, generated
+products, published event snapshots — lives in a Cloudflare R2 bucket and **nowhere else**: no
+vzdump contains it, no dump can regenerate the originals. Snapshots can be rebuilt by
+republishing; a couple's photos cannot. A deleted bucket, a bug in the app's retention sweep
+(which deletes whole prefixes by design), or a leaked write-capable key would be a permanent
+loss. This tier is the answer: a nightly [`r2-backup`](../scripts/README.md) mirror onto the USB
+drive, which the 04:00 sync ([17.6](#176-offsite--digi-storage-via-rclone)) then carries offsite,
+encrypted, with everything else.
+
+**One-time setup, on pve1:**
+
+1. In the Cloudflare dashboard: **R2 → Manage API Tokens → Create API Token** — permission
+   **Object Read only**, scoped to the bucket. Read-only is the point: the backup host must
+   never hold a key that can delete production media, so a compromise of pve1 cannot become a
+   compromise of the bucket.
+2. Configure the remote (the S3 endpoint is on the same dashboard page):
+   ```bash
+   rclone config
+   # n (new) → name: r2 → storage: s3 → provider: Cloudflare
+   # access_key_id / secret_access_key: from the token you just created
+   # endpoint: https://<account-id>.r2.cloudflarestorage.com
+   ```
+3. `rclone ls r2:statics-waa | head` — if that lists objects, the tier works; the cron entry
+   from [`install-scripts.sh`](../scripts/README.md) (03:30) does the rest.
+
+The first run downloads the whole bucket — size it against your line, and add `--bwlimit` in the
+script for that one night if it competes with anything. Every later run moves only the delta.
+
+**Deletions are mirrored on purpose, with an undo window.** The sync uses `--backup-dir`: anything
+deleted or overwritten in R2 is moved into `r2/.trash/<bucket>/<date>/` on the drive and kept 30
+days, then pruned. So a bad mass-delete stays recoverable for a month — while a lawful erasure
+(GDPR) propagates to the mirror the next night and ages out of the trash, and out of the offsite
+copy, on its own. No copy keeps what the law said to delete.
+
+**Restoring media** is `rclone copy` in the other direction — from the mirror (or from
+`digi-crypt:r2/...` if the drive is gone too) back into the bucket. Mint a **write-capable token
+for the occasion and revoke it afterwards**; the stored remote deliberately cannot write. A single
+lost object is `rclone copy /mnt/usb-backup/r2/statics-waa/<path> r2rw:statics-waa/<dir>`; a
+prefix works the same way. The app addresses objects by stable paths (`{root}/events/{uid}/…`),
+so copied-back objects are immediately served — no database surgery involved.
+
+`backup-verify` watches this tier like the others: sync log fresh, no errors. The quarterly
+drill ([17.9](#179-restore-drills)) opens one mirrored file — an image that renders proves the
+whole chain, R2 → USB → eye.

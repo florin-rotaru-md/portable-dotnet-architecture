@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # backup-verify.sh — answers one question: "am I protected RIGHT NOW?"
 #
-# The backup chain has four links (17.1/17.5): nightly vzdump per VM → USB,
-# host-config archives → USB, the 04:00 offsite sync, and the in-VM Postgres
-# dump. Notifications only fire on *failure* — a job that silently stopped
-# running fires nothing. This checks each link for *freshness*, which is the
-# signal silence doesn't give you.
+# The backup chain has five links (17.1/17.5/17.10): nightly vzdump per VM →
+# USB, host-config archives → USB, the R2 media mirror → USB, the 04:00
+# offsite sync, and the in-VM Postgres dump. Notifications only fire on
+# *failure* — a job that silently stopped running fires nothing. This checks
+# each link for *freshness*, which is the signal silence doesn't give you.
 #
 # Run on pve1 (where the USB drive and rclone live). On a node without the USB
 # storage configured it exits 0 quietly, so the same cron entry can be
@@ -26,8 +26,10 @@ MIN_SIZE_MB=100                 # a vzdump smaller than this is almost certainly
 USB_MOUNT=/mnt/usb-backup
 RCLONE_REMOTE=digi-crypt:
 RCLONE_LOG=/var/log/rclone-backup.log
+R2_DIR=/mnt/usb-backup/r2
+R2_LOG=/var/log/rclone-r2.log
 PG_VM_IP=192.168.0.22
-PG_DUMP_DIR=/opt/postgres/backups
+PG_DUMP_DIR=/opt/postgres/backups       # fallback — the real dir is read off the postgres crontab
 
 QUIET=0
 [ "${1:-}" = "--quiet" ] && QUIET=1
@@ -111,6 +113,23 @@ else
     fi
 fi
 
+# ── R2 media mirror (17.10) — the bucket's only copy outside Cloudflare ──────
+if [ ! -d "$R2_DIR" ]; then
+    ok "r2-mirror: not set up on this drive — fine if that's intentional (17.10)"
+elif [ ! -f "$R2_LOG" ]; then
+    fail "r2-mirror: $R2_DIR exists but $R2_LOG is missing — the 03:30 sync has never run (17.10)"
+else
+    R2_AGE_H=$(( ($(date +%s) - $(stat -c %Y "$R2_LOG")) / 3600 ))
+    R2_ERRORS=$(tail -50 "$R2_LOG" | grep -c ERROR || true)
+    if [ "$R2_AGE_H" -gt "$MAX_AGE_H" ]; then
+        fail "r2-mirror: log untouched for ${R2_AGE_H}h — the 03:30 cron isn't running (17.10)"
+    elif [ "$R2_ERRORS" -gt 0 ]; then
+        warn "r2-mirror: $R2_ERRORS ERROR line(s) in the recent log — tail -50 $R2_LOG"
+    else
+        ok "r2-mirror: synced within ${R2_AGE_H}h, no recent errors"
+    fi
+fi
+
 # ── WAL stream to the QDevice (Stage 13) — slot active and not lagging ────────
 # Freshness can't be judged by file age (no traffic → no writes, by design), so
 # ask the primary: is the receiver connected, and how far behind is the slot?
@@ -133,11 +152,15 @@ else
 fi
 
 # ── The fourth tier: in-VM Postgres dumps (17.5) ──────────────────────────────
-# Uses the host root key, which cloud-init authorized in every VM (21.1).
+# Reached with the devops key + passwordless sudo — the same pair the WAL check
+# above uses. Plain devops cannot read the dump dir (0750 postgres:postgres),
+# and the dir itself is read off the postgres crontab, because the Ansible role
+# relocates it to {{ postgres_backup_mount }}/postgres when a dedicated backup
+# disk is attached; PG_DUMP_DIR is only the fallback.
 PG_NEWEST_TS=$(ssh -o BatchMode=yes -o ConnectTimeout=5 "devops@$PG_VM_IP" \
-    "sh -c 'f=\$(ls -t $PG_DUMP_DIR/*.dump 2>/dev/null | head -1); [ -n \"\$f\" ] && stat -c %Y \"\$f\"'" 2>/dev/null)
+    "sudo -n -u postgres sh -c 'd=\$(crontab -l 2>/dev/null | sed -n \"s|.*>> \\(.*\\)/cron\\.log.*|\\1|p\" | head -1); d=\${d:-$PG_DUMP_DIR}; f=\$(ls -t \"\$d\"/*.dump 2>/dev/null | head -1); [ -n \"\$f\" ] && stat -c %Y \"\$f\"'" 2>/dev/null)
 if [ -z "$PG_NEWEST_TS" ]; then
-    warn "pg-dump: could not check $PG_VM_IP:$PG_DUMP_DIR — VM down, key missing, or no dumps yet (17.5)"
+    warn "pg-dump: could not check $PG_VM_IP — VM down, sudo not passwordless for devops, or no dumps yet (17.5)"
 else
     PG_AGE_H=$(( ($(date +%s) - PG_NEWEST_TS) / 3600 ))
     if [ "$PG_AGE_H" -gt "$MAX_AGE_H" ]; then
