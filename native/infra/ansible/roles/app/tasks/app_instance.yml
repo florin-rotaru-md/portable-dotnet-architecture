@@ -59,6 +59,28 @@
     force:   true
   no_log: true
 
+# Optional, and rendered on the controller so vault references inside it resolve. The application
+# seeds its database from this file at first boot, for the config sections the database does not
+# have yet — so a rebuilt database comes up configured instead of silently defaulted. It is a seed,
+# not an apply: the app never overwrites a section that already exists, which is what keeps admin
+# edits from being reverted by the next restart. An app without config_bundle_file is unaffected.
+- name: Render config-bundle.json for {{ current_app.name }}
+  template:
+    src:   "{{ current_app.config_bundle_file }}"
+    dest:  "{{ apps_root }}/{{ current_app.name }}/config/config-bundle.json"
+    owner: "{{ app_user }}"
+    group: "{{ app_user }}"
+    mode:  '0600'
+    force: true
+  no_log: true
+  when: current_app.config_bundle_file | default('') | length > 0
+
+- name: Remove config-bundle.json when not configured
+  file:
+    path:  "{{ apps_root }}/{{ current_app.name }}/config/config-bundle.json"
+    state: absent
+  when: current_app.config_bundle_file | default('') | length == 0
+
 - name: Write repo token for {{ current_app.name }}
   copy:
     dest:    "{{ apps_root }}/{{ current_app.name }}/config/repo-token"
@@ -88,6 +110,23 @@
     - green
   register: slot_override_sync
   no_log: true
+
+# Read from the slot's content root at startup, so it travels with the override file. Not
+# registered for the restart decision below: seeding is idempotent and only ever fills what is
+# missing, so a changed bundle does not by itself justify bouncing a healthy slot.
+- name: Sync config-bundle.json into blue/green slots
+  copy:
+    src: "{{ apps_root }}/{{ current_app.name }}/config/config-bundle.json"
+    dest: "{{ apps_root }}/{{ current_app.name }}/slots/{{ item }}/config-bundle.json"
+    remote_src: true
+    owner: "{{ app_user }}"
+    group: "{{ app_user }}"
+    mode: "0600"
+  loop:
+    - blue
+    - green
+  no_log: true
+  when: current_app.config_bundle_file | default('') | length > 0
 
 # Rendered before the restart decision below, and force: true for the same reason common.env is:
 # the port comes from the inventory, so a port_blue/port_green change has to reach the file. Left

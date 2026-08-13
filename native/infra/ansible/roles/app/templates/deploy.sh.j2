@@ -147,14 +147,19 @@ dotnet publish "$BUILD_DIR/$PROJECT_PATH" \
   --self-contained false \
   -o "$SLOT_DIR/"
 
-# Keep override config identical across blue/green slots.
-if [ -f "$APP_ROOT/config/appsettings.override.json" ]; then
-  for slot in blue green; do
-    cp "$APP_ROOT/config/appsettings.override.json" "$APP_ROOT/slots/$slot/appsettings.override.json"
-    chown {{ app_user }}:{{ app_user }} "$APP_ROOT/slots/$slot/appsettings.override.json"
-    chmod 600 "$APP_ROOT/slots/$slot/appsettings.override.json"
-  done
-fi
+# Keep the config files identical across blue/green slots. `dotnet publish` writes into the slot
+# and does not remove what it did not put there, but a slot created after the last playbook run
+# would otherwise start without them — the override file being the one that carries the connection
+# strings, and config-bundle.json the one an empty database seeds itself from.
+for config_file in appsettings.override.json config-bundle.json; do
+  if [ -f "$APP_ROOT/config/$config_file" ]; then
+    for slot in blue green; do
+      cp "$APP_ROOT/config/$config_file" "$APP_ROOT/slots/$slot/$config_file"
+      chown {{ app_user }}:{{ app_user }} "$APP_ROOT/slots/$slot/$config_file"
+      chmod 600 "$APP_ROOT/slots/$slot/$config_file"
+    done
+  fi
+done
 
 # ── Start idle slot ───────────────────────────────────────────────────────────
 echo "Starting $TARGET_SERVICE..."
