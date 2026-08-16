@@ -227,17 +227,30 @@ Re-verify from your workstation in a second terminal before logging out of the f
 
 ## 8.5 Install and join
 
-On the QDevice:
+Three installs before the join, and the middle one is the one that bites.
+
+**On the QDevice** — the server half:
 ```bash
-apt update && apt install corosync-qnetd
+apt update && apt install -y corosync-qnetd
+ss -lntp | grep ':5403'       # qnetd's port; a listener here means this half is up
 ```
 
-On BOTH Proxmox nodes:
+**On BOTH Proxmox nodes** — pve1 *and* pve2, not only the one you run the setup from:
 ```bash
-apt install corosync-qdevice
+apt update && apt install -y corosync-qdevice
+command -v corosync-qdevice-net-certutil      # /usr/sbin/corosync-qdevice-net-certutil
 ```
 
-On pve1 ONLY:
+That `command -v` is worth the two seconds. `corosync-qdevice` ships the certificate tool that the setup below **executes on each node over SSH**, so missing it on either node doesn't fail early or legibly: the run gets a long way in, prints `INFO` lines that read like progress, copies an SSH key, initializes the qnetd database — and only then dies with
+
+```
+bash: line 1: corosync-qdevice-net-certutil: command not found
+command 'corosync-qdevice-net-certutil -r -n lab' failed
+```
+
+once per node that's missing it. Nothing in that message names a package, and by the time it appears the qnetd database already exists, so the retry needs `--force`.
+
+**On pve1 ONLY:**
 ```bash
 pvecm qdevice setup 192.168.0.10
 ```
@@ -247,7 +260,32 @@ Verify:
 pvecm status    # Total votes: 3, Quorate: Yes
 ```
 
-If this errors on SSH rather than on corosync, it's [8.4](#84-ssh--key-only-from-your-pc-and-from-both-nodes) — go back and make `ssh -o BatchMode=yes root@192.168.0.10 true` print `OK` from pve1 first.
+### What the setup does to SSH
+
+`pvecm qdevice setup` is not an API call. It runs **`ssh-copy-id` as root** toward the QDevice, then drives the certificate tooling there and on both nodes over SSH. Two things follow:
+
+- It installs Proxmox's *own* root key — `/root/.ssh/id_rsa.pub`, which every PVE node generates at install time — and **not** the `id_ed25519` from [2.5](../setup/02-post-install.md#25-install-the-nodes-key-pair-both-nodes). Root's `authorized_keys` on the QDevice therefore goes from [8.4](#84-ssh--key-only-from-your-pc-and-from-both-nodes)'s four lines to **five**. That's correct, not tampering.
+- It is also exactly why 8.4 comes first: `ssh-copy-id` has to get in *somehow*, and with password login closed, the `pve1_root` key you installed by hand is the only thing that lets it. Without 8.4 you'd be back to opening `PermitRootLogin yes`.
+
+The first connection asks you to accept the QDevice's host key — answer `yes` after comparing the fingerprint with `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` run on the box itself.
+
+### Retrying after a failed run
+
+The qnetd database survives a failure, so a plain re-run stops at `Certificate database (/etc/corosync/qnetd/nssdb) already exists. Delete it to initialize new db`. Fix the real cause first, then:
+
+```bash
+pvecm qdevice setup 192.168.0.10 --force
+```
+
+If it's still stuck there, clear the server half by hand on the QDevice and run the setup again — safe for as long as no node has successfully enrolled:
+
+```bash
+systemctl stop corosync-qnetd
+rm -rf /etc/corosync/qnetd/nssdb
+systemctl start corosync-qnetd
+```
+
+And if the run errors on SSH rather than on corosync, it's [8.4](#84-ssh--key-only-from-your-pc-and-from-both-nodes) — go back and make `ssh -o BatchMode=yes root@192.168.0.10 true` print `OK` from pve1 first.
 
 ## 8.6 It's a laptop — Stage 3 applies here too
 
