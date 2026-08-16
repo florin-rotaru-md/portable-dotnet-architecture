@@ -218,7 +218,7 @@ qmrestore /mnt/usb-backup/dump/vzdump-qemu-1022-<last-night>.vma.zst 1122 --stor
 
 # 2. Inside 1122: stop postgres, bring the WAL over, arm recovery
 systemctl stop postgresql
-rsync -a walarchive@<qdevice-ip>:/var/lib/wal-archive/ /var/lib/postgresql/wal-replay/
+rsync -a walarchive@192.168.0.10:/var/lib/wal-archive/ /var/lib/postgresql/wal-replay/
 chown -R postgres:postgres /var/lib/postgresql/wal-replay
 sudo -u postgres tee -a /etc/postgresql/18/main/postgresql.conf << 'EOF'
 restore_command = 'cp /var/lib/postgresql/wal-replay/%f %p'

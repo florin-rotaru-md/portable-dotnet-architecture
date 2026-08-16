@@ -102,7 +102,7 @@ On the new node: **Datacenter → Cluster → Join Cluster**, paste pve1's join 
 Then restore the third vote:
 ```bash
 # on pve1
-pvecm qdevice setup <qdevice-IP>
+pvecm qdevice setup 192.168.0.10
 pvecm status                  # Total votes: 3, Quorate: Yes
 corosync-cfgtool -s           # both rings OK
 ```

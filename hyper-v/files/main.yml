@@ -84,7 +84,7 @@ postgres_extra_cidrs: []
 postgres_wal_stream_enabled: false
 postgres_wal_stream_user: "walreceiver"
 postgres_wal_stream_slot: "wal_archive"
-# The receiver's address as a CIDR, e.g. "192.168.0.13/32" (the QDevice)
+# The receiver's address as a CIDR, e.g. "192.168.0.10/32" (the QDevice)
 postgres_wal_stream_cidr: ""
 # Safety valve: max WAL retained for a disconnected receiver, so a dead
 # receiver breaks the stream instead of filling the database disk.

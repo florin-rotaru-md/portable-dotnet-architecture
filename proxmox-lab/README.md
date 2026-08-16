@@ -6,7 +6,7 @@ A two-node Proxmox VE cluster for a self-hosted app: ZFS replication, HA with au
 
 - **Node 1 `pve1`** — ThinkStation P2 Gen 2, Core Ultra 7 265, 64GB, 3× NVMe, Intel X550-T2
 - **Node 2 `pve2`** — HP ZBook Fury G10 16", i9-13850HX, 64GB, 3× NVMe, Thunderbolt 4 (role: failover)
-- QDevice: Dell Pro 14 (PC14250) — Core Ultra 5 225U, 16GB DDR5, 2TB NVMe, Debian 13. Holds the third vote *and* the continuous WAL archive ([Stage 13](ha/13-wal-stream.md)); being a laptop, it also carries its own battery and needs [Stage 3](setup/03-laptop-node.md)'s lid/sleep treatment ([8.1](cluster/08-qdevice.md#81-the-box-and-its-os))
+- QDevice: Dell Pro 14 (PC14250) — Core Ultra 5 225U, 16GB DDR5, 2TB NVMe, Debian 13, static `192.168.0.10`. Holds the third vote *and* the continuous WAL archive ([Stage 13](ha/13-wal-stream.md)); being a laptop, it also carries its own battery and needs [Stage 3](setup/03-laptop-node.md)'s lid/sleep treatment ([8.1](cluster/08-qdevice.md#81-the-box-and-its-os))
 - ~5h UPS, router with tested 5G failover (~30s), Cloudflare Tunnel already in place
 
 ## Design decisions (vs the defaults you'd otherwise pick)
@@ -95,7 +95,7 @@ The whole build, in execution order, with the two deliberate "come back later" p
 - [ ] **5** Network — `vmbr0` + 10G link, both nodes; verify one default route
 - [ ] **6** ZFS pools `apps` + `db` — both nodes, identical names; **un-pin the storages from their node** and **thin provision (6.1)**, both before any VM disk exists
 - [ ] **7** Cluster — two corosync rings, migration network
-- [ ] **8** QDevice — Debian on the third box (8.1), lid/sleep + battery (8.3), third vote
+- [ ] **8** QDevice — Debian on the third box, wired + static `192.168.0.10` (8.1), lid/sleep + battery (8.3), third vote
 - [ ] **9** Ubuntu template from the cloud image — *(9.5's template backup needs the USB drive; postponed to the 17 line below)*
 - [ ] **10** The four VMs — [`create-vms`](scripts/README.md) (or clone + resize + start-at-boot by hand), confirm each guest *took* its static IP, then control node, SSH keys
 - [ ] **11** First Ansible bootstrap — the VMs get their contents; verify app + db + tunnel + Loki/Grafana

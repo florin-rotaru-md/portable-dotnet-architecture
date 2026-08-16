@@ -25,6 +25,7 @@ No 10G switch (they're still expensive for what they'd add here). Instead: **two
 |---|---|---|---|
 | **1G** | onboard NIC of each host → existing router / home switch | 192.168.0.11 / .12 /24, gw 192.168.0.1 | `vmbr0`: management + VM traffic + internet; corosync **Link 1** (backup) |
 | **10G** | pve1 X550 port 1 ↔ pve2 TB adapter, **direct cable, no switch** | 10.10.10.1 / .2 /24, **no gateway** | Migration + replication; corosync **Link 0** (primary) |
+| **1G (QDevice)** | Dell Pro 14 onboard NIC, or a USB-C adapter → same router / switch | 192.168.0.10 /24, gw 192.168.0.1 | Third corosync vote (qnetd) + Postgres WAL receiver. Wired only — never Wi-Fi ([8.1](../cluster/08-qdevice.md#81-the-box-and-its-os)) |
 
 **Why corosync's primary ring sits on the 10G direct link:** it's point-to-point, deterministic, and has no other tenants competing for it beyond migration bursts — which you cap anyway. The 1G side carries VM traffic *and* the nightly offsite sync to Digi Storage, so it's the link more likely to saturate. The 1G ring stays configured as Link 1, so if the direct cable is unplugged corosync fails over instantly.
 
@@ -34,7 +35,7 @@ No 10G switch (they're still expensive for what they'd add here). Instead: **two
 
 **Other notes:**
 - **pve1's X550 port 2 stays empty** — spare for a future third node.
-- Address plan, all on 192.168.0.0/24 — infrastructure low, guests from `.20` up, deliberately **above** the hosts so nothing guest-side ever sorts below a hypervisor: `.11` pve1, `.12` pve2, `.13` QDevice (any fixed IP works — the guide writes `<qdevice-ip>` where it's needed); then `.20` control (1020), `.21` app (1021), `.22` postgres (1022), `.23` monitoring (1023). **The rule: VM `10NN` lives at `.NN`** — read the ID, know the address — and scratch clones extend it: spare ID `11NN` takes spare IP `.1NN` (the upgrade rehearsal's 1122 at `.122`). The guest trio `.21`/`.22`/`.23` is the same one `native/example` and `hyper-v` use — one addressing dialect across the whole repo.
+- Address plan, all on 192.168.0.0/24 — infrastructure low, guests from `.20` up, deliberately **above** the hosts so nothing guest-side ever sorts below a hypervisor: `.10` QDevice, `.11` pve1, `.12` pve2; then `.20` control (1020), `.21` app (1021), `.22` postgres (1022), `.23` monitoring (1023). All three infrastructure addresses are **static on the machine and outside the router's DHCP pool** — the QDevice's `.10` in particular is not a suggestion you can vary: it is written into `corosync.conf` by `pvecm qdevice setup` *and* into 1022's `pg_hba.conf` + UFW as a `/32` ([8.1](../cluster/08-qdevice.md#81-the-box-and-its-os)), and moving it later breaks the third vote and the WAL stream silently. **The rule: VM `10NN` lives at `.NN`** — read the ID, know the address — and scratch clones extend it: spare ID `11NN` takes spare IP `.1NN` (the upgrade rehearsal's 1122 at `.122`). The guest trio `.21`/`.22`/`.23` is the same one `native/example` and `hyper-v` use — one addressing dialect across the whole repo.
 - Keep MTU at 1500 to start. Jumbo frames (MTU 9000) are genuinely tempting on a dedicated point-to-point link like this one and carry little risk there, since nothing else shares the segment — but leave it until everything else is proven.
 - **Optional later:** a second bridge (`vmbr1`) on the 10G link with its own subnet, giving `app` and `postgres` a second NIC each so DB traffic runs at 10G even when the VMs are split across nodes. Extra complexity for a rare case — skip it for now.
 
@@ -62,6 +63,12 @@ No 10G switch (they're still expensive for what they'd add here). Instead: **two
         │     (unused)     │        │                    │
         └──────────────────┘        └────────────────────┘
                     ③ Cat6a, DIRECT, no switch
+
+        ┌──────────────────┐
+        │  QDevice         │  192.168.0.10 — static, wired, never Wi-Fi
+        │  Dell Pro 14     │
+        │  onboard 1G ─────┼── ④ ──→ same router / switch as ① and ②
+        └──────────────────┘
 ```
 
 **Cable checklist:**
@@ -71,6 +78,7 @@ No 10G switch (they're still expensive for what they'd add here). Instead: **two
 | ① | pve1 — **onboard** 1G RJ45 | Existing router / home switch | Cat5e or better | `vmbr0`: management, VM traffic, internet, corosync Link 1 |
 | ② | pve2 — **onboard** 1G RJ45 | Existing router / home switch | Cat5e or better | Same as ① |
 | ③ | pve1 — X550-T2 **port 1** | pve2 — Thunderbolt→10GbE adapter (in a **TB4** port) | **Cat6a** | Migration, replication, corosync Link 0 — direct, no switch |
+| ④ | QDevice — **onboard** 1G RJ45 (or a USB-C adapter) | Existing router / home switch | Cat5e or better | Third corosync vote (qnetd) + WAL receiver, at static `192.168.0.10` ([8.1](../cluster/08-qdevice.md#81-the-box-and-its-os)) |
 
 **Power:** pve1 on the UPS — it's the only machine of the three with no battery of its own, so it's the one that needs the runtime. pve2 (the ZBook) and the QDevice (the Dell Pro) can go on the UPS too, but both are already covered by their own batteries and each one you leave off buys pve1 more of the 5h. No switch to worry about — one less thing on the UPS and one less failure domain.
 

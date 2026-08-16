@@ -13,8 +13,36 @@ This build's QDevice is a **Dell Pro 14 (PC14250)** — Core Ultra 5 225U, 16GB 
 Three things that aren't the OS but decide whether the install works at all:
 
 - **BIOS → SATA/NVMe operation: AHCI/NVMe, not "RAID On".** Dell ships business laptops with Intel RST enabled and the Debian installer then finds no disk whatsoever. Same trap as VMD on the nodes ([0.1](../setup/00-preparation.md#01-bios)), different menu.
-- **Wired Ethernet and a static IP** — Stage 8 needs an address both nodes can always reach. If the chassis has no RJ45, a USB-C/Thunderbolt adapter; don't put quorum on Wi-Fi, where every roam or dropout flaps the third vote and interrupts the WAL stream.
+- **Wired Ethernet and a static IP — `192.168.0.10`** ([0.3](../setup/00-preparation.md#03-network-plan)), configured on the machine and outside the router's DHCP pool. Both nodes must always reach this address, and it gets baked into two places that fail *quietly* when it moves: `corosync.conf` (8.2 below) and 1022's `pg_hba.conf` + UFW as a `/32` ([13.1](../ha/13-wal-stream.md)). A changed address costs you the third vote on **both** nodes at once — the cluster keeps running on 2/2 and looks perfectly healthy until the next time you take a node down ([18.3](../ha/18-failover.md#183-scenario-table)) — and stops the WAL stream, which surfaces only in the next morning's [`backup-verify`](../scripts/README.md). If the chassis has no RJ45, a USB-C/Thunderbolt adapter; don't put quorum on Wi-Fi, where every roam or dropout flaps the third vote and interrupts the WAL stream.
 - **Write a Dell OS Recovery Tool USB before wiping the disk.** It's the only cheap way back to a factory Windows for an RMA or a vendor diagnostic, and it stops existing the moment you partition.
+
+**Setting the address.** Cheapest at install time: at the netinst network step pick **Configure network manually** and enter address `192.168.0.10`, netmask `255.255.255.0`, gateway `192.168.0.1`, DNS `192.168.0.1` (or whatever resolver you use). Nothing to redo afterwards.
+
+If the box is already installed on DHCP, it's one file — a Debian netinst without a desktop runs plain `ifupdown`, no NetworkManager. **Do this at the physical console, not over SSH:** changing the address drops the session mid-edit either way.
+
+```bash
+ip -br link                       # find the wired NIC (enp0s31f6, enx0242…, …)
+nano /etc/network/interfaces      # replace the "iface <nic> inet dhcp" stanza
+```
+```
+auto enp0s31f6
+iface enp0s31f6 inet static
+    address 192.168.0.10/24
+    gateway 192.168.0.1
+    dns-nameservers 192.168.0.1
+```
+```bash
+systemctl restart networking      # or just reboot — it's a laptop doing nothing yet
+ip -br a                          # 192.168.0.10/24 on the wired NIC, nothing on wlan
+ping -c2 192.168.0.1
+```
+
+> `dns-nameservers` is honoured only when the `resolvconf` package is installed — Debian netinst doesn't pull it in by default. Check `cat /etc/resolv.conf` after the restart and write the `nameserver` line by hand if it came back empty. `ifreload -a` doesn't exist here either; that's ifupdown**2**, which ships with Proxmox but not with stock Debian.
+
+Confirm from **both** nodes before going on — 8.2 fails if either can't reach it, and a QDevice reachable from only one node is worse than none:
+```bash
+ping -c2 192.168.0.10
+```
 
 ## 8.2 Install and join
 
@@ -30,7 +58,7 @@ apt install corosync-qdevice
 
 On pve1 ONLY:
 ```bash
-pvecm qdevice setup <qdevice-IP>
+pvecm qdevice setup 192.168.0.10
 ```
 
 Verify:

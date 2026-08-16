@@ -12,7 +12,7 @@ The `postgres` role owns everything on 1022 ([the ownership boundary](../operati
 
 ```yaml
 postgres_wal_stream_enabled: true
-postgres_wal_stream_cidr: "<qdevice-ip>/32"     # same IP as in Stage 8
+postgres_wal_stream_cidr: "192.168.0.10/32"     # the QDevice, same IP as in Stage 8
 ```
 
 and in `vault.yml` (generate something long; it also goes in the password manager — it's now part of the [21.1 inventory](../operations/21-credentials.md#211-inventory--what-exists-and-where-it-lives)):
