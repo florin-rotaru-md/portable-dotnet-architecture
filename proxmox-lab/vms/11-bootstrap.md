@@ -124,7 +124,7 @@ The first run takes a while: PGDG + PostGIS on 1022, the .NET SDK on 1021, Docke
 
 Re-running it later is always safe — that's the point of it being the single owner of in-VM state.
 
-One thing the run did without being asked: the postgres role rendered `/etc/postgresql/18/main/conf.d/10-tuning.conf` from the VM's RAM — 32 GiB → `shared_buffers = 8GB`, `effective_cache_size = 24GB`, `work_mem = 32MB` — plus `max_connections = 128`, sized from the per-app Npgsql pool budget rather than from memory. When 1022 later grows to 64 GiB (the planned upgrade alongside apps three and four), this same re-run *is* the whole tuning procedure: the sizes step up to 16GB / 48GB / 64MB on their own, and only `max_connections` deliberately stays put.
+One thing the run did without being asked: the postgres role rendered `/etc/postgresql/18/main/conf.d/10-tuning.conf` from the VM's RAM — 32 GiB → `shared_buffers = 8GB`, `effective_cache_size = 24GB`, `work_mem = 32MB` — plus `max_connections`, sized from the per-app Npgsql pool budget rather than from memory, and a block of observability settings (`pg_stat_statements`, statements over 1s, lock waits, temp-file spills) with `idle_in_transaction_session_timeout = 5min` as the safety valve. When 1022 later grows to 64 GiB (the planned upgrade alongside apps three and four), this same re-run *is* the whole tuning procedure: the sizes step up to 16GB / 48GB / 64MB on their own, and only `max_connections` deliberately stays put — it answers a different question, and `work_mem` in particular is a ceiling per sort node inside a running query, not an allocation per connection slot.
 
 ## 11.6 Verify before moving on
 

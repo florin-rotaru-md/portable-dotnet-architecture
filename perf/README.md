@@ -26,19 +26,21 @@ Under load you will not see `FATAL: sorry, too many clients already`. You will s
 
 Raising `max_connections` against a pool ceiling changes nothing while looking like action. That is why the drill samples the database rather than trusting the HTTP client: latency alone cannot tell the two apart, and the CSV can.
 
-The good news is that a small pool is usually right. At 5 ms per query and three queries per request, 18 connections carry roughly 1200 req/s. The drill's job is to confirm queries *stay* short under pressure — not to count connections.
+The good news is that a small pool is usually right. At 5 ms per query and three queries per request, 18 connections carry roughly 1200 req/s — which is why a pool of 64 is headroom for a burst, not a throughput setting, and why raising it is never the first thing to try. The drill's job is to confirm queries *stay* short under pressure — not to count connections.
 
 ## The window that actually sizes `max_connections`
 
 Steady state is not where the budget is tight. A blue/green deploy is:
 
 ```
-steady    = instances x (18 + 8 + 2)          two apps ->  56
-draining  = steady x 2                        both slots alive -> 112
-usable    = max_connections - superuser_reserved_connections   128 - 3 -> 125
+steady    = instances x (64 + 16 + 2)         two apps -> 164
+draining  = steady x 2                        both slots alive -> 328
+usable    = max_connections - superuser_reserved_connections   400 - 3 -> 397
 ```
 
-For the length of `drain_seconds` both slots hold their own Npgsql pools, so the budget doubles — and the ~13 remaining slots are shared with `pg_dump`, `psql` and monitoring. **A third application takes the same arithmetic to 168 and over the edge.**
+For the length of `drain_seconds` both slots hold their own Npgsql pools, so the budget doubles — and the ~69 remaining slots are shared with `pg_dump`, `psql` and monitoring. **A third application takes the same arithmetic to 492 and over the edge.**
+
+Two guards that look like they cover an overflow and do not: `superuser_reserved_connections` and `ALTER DATABASE ... CONNECTION LIMIT` are both unenforced for superusers. While the applications connect as `postgres`, one of them can take every slot on the server, starve the other, and lock the operator out of the database it saturated. The line above still sizes the budget correctly — it just does not protect it.
 
 That is the whole reason `deploy-overlap` exists, and why it is the scenario to run before a major change. `steady` cannot observe this window; it projects it arithmetically and warns.
 
@@ -81,17 +83,17 @@ Two entries there are easy to overlook and both invalidate a run if wrong:
 
 ```
   peak client connections   58
-  usable slots              125  (max_connections 128 - 3 reserved)
-[ OK ] peak used 46% of usable slots.
-  blue/green worst case     112  (28 per instance x 2 instances x 2 slots during drain)
-[WARN] a deploy under load reaches 112/125 slots. It fits, barely — one more application does not.
-[WARN] 'waa_ro_app' sat at its pool ceiling (18) for 47/180 samples — requests were queueing for a
+  usable slots              397  (max_connections 400 - 3 reserved)
+[ OK ] peak used 14% of usable slots.
+  blue/green worst case     328  (82 per instance x 2 instances x 2 slots during drain)
+[ OK ] a deploy under load fits: 328/397 slots.
+[WARN] 'waa_ro_app' sat at its pool ceiling (64) for 47/180 samples — requests were queueing for a
        connection. Postgres was not the limit; the fix is a faster query or a larger pool.
 ```
 
 Each run writes to `runs/<scenario>-<timestamp>/`: `pg-sample.csv` (tidy, one row per database/state/second), `k6-summary.json`, `k6.log`, and `deploy.log` for overlap runs. Keep the ones from before and after a major upgrade — the pair is the evidence, either one alone is an anecdote.
 
-When a run warns about a pool ceiling, `pg_stat_statements` (preloaded on the drill box, not in production) names the query that held it:
+When a run warns about a pool ceiling, `pg_stat_statements` names the query that held it. It is preloaded on the drill box and, since the `postgres` role started setting `shared_preload_libraries`, on the real host too — so the drill and the incident are read with the same query:
 
 ```sql
 SELECT calls, round(mean_exec_time::numeric, 2) AS avg_ms,
@@ -101,13 +103,14 @@ FROM pg_stat_statements ORDER BY total_exec_time DESC LIMIT 20;
 
 ## Connection-string settings worth fixing first
 
-Three defaults bite under load, and a drill will surface all three the hard way:
+Four defaults bite under load, and a drill will surface all four the hard way. The inventory examples now set all of them; a connection string built anywhere else still has to:
 
 | Setting | Default | Why it matters under load |
 |---|---|---|
 | `Maximum Pool Size` | **100** | Omitted from a connection string, one app instance can claim 300 slots across three databases — over twice its share. Every template and every environment must set it explicitly. |
 | `Timeout` | 15s | A saturated pool holds each request for 15 seconds before failing, filling the Kestrel thread pool and turning a slowdown into an outage. `Timeout=5` fails fast and visibly. |
-| `Command Timeout` | 30s | One pathological query holds 1 of 18 connections for half a minute. |
+| `Command Timeout` | 30s | One pathological query holds a connection for half a minute. |
+| `Connection Idle Lifetime` | 300s | The pool stays at its high-water mark for five minutes after a burst. A deploy that lands in that window has both slots holding full pools at once — the worst case above stops being theoretical. `60` returns the slots first. |
 
 ## What this deliberately does not do
 

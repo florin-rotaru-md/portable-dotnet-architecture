@@ -108,8 +108,8 @@
     line:   "include_dir = 'conf.d'"
   notify: restart postgresql
 
-# max_connections and shared_buffers only apply on restart (not reload), which
-# the notified handler already does.
+# max_connections, shared_buffers and shared_preload_libraries only apply on
+# restart (not reload), which the notified handler already does.
 - name: Apply resource tuning
   template:
     src:   tuning.conf.j2
@@ -118,6 +118,46 @@
     group: postgres
     mode:  '0644'
   notify: restart postgresql
+
+# The restart the tuning file just notified has to happen before the next task:
+# CREATE EXTENSION works either way, but the view it creates raises "must be
+# loaded via shared_preload_libraries" until the server has restarted with it,
+# which reads like a broken install to whoever tries it first.
+- name: Apply pending restarts before touching the database
+  meta: flush_handlers
+
+# The library counts for the whole cluster once preloaded; the extension is
+# only the view to read it through. Creating it in the maintenance database is
+# therefore enough for an operator — the rows carry a dbid and cover every
+# database on the server — and it keeps the application databases free of an
+# object no application uses.
+- name: Check whether pg_stat_statements is readable from the maintenance database
+  command:
+    argv:
+      - runuser
+      - -u
+      - postgres
+      - --
+      - psql
+      - -tAc
+      - "SELECT 1 FROM pg_extension WHERE extname='pg_stat_statements'"
+  register: pg_stat_statements_check
+  changed_when: false
+  when: "'pg_stat_statements' in (postgres_shared_preload_libraries | default('pg_stat_statements', true))"
+
+- name: Create the pg_stat_statements view
+  command:
+    argv:
+      - runuser
+      - -u
+      - postgres
+      - --
+      - psql
+      - -c
+      - "CREATE EXTENSION pg_stat_statements"
+  when:
+    - "'pg_stat_statements' in (postgres_shared_preload_libraries | default('pg_stat_statements', true))"
+    - pg_stat_statements_check.stdout | default('') | trim != '1'
 
 - name: Allow k3s nodes to reach Postgres on private network
   ufw:

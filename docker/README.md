@@ -171,7 +171,7 @@ procedure, including the two-channel split between infrastructure and applicatio
 |-------------------------|---------------------------------------------------------|
 | `applications`          | List of app definitions (see below)                     |
 | `postgres_image`        | Full Postgres image (default `postgis/postgis:18-3.6`)  |
-| `postgres_max_connections` | Server connection ceiling (default 128, sized from the per-app pool budgets) |
+| `postgres_max_connections` | Server connection ceiling (example 400, sized from the per-app pool budgets doubled for a blue/green drain) |
 | `backup_retention_days` | Days to keep nightly dumps (default 7)                  |
 | `use_cloudflared`       | `true` to install Cloudflare Tunnel                     |
 
@@ -192,7 +192,7 @@ applications:
     drain_seconds: 32
     appsettings_override:               # → appsettings.override.json (see below)
       ConnectionStrings:
-        App: "Host=postgres;Port=5432;Database=myapp_db;Username=appuser;Password={{ postgres_password }};Pooling=true;Keepalive=60;Maximum Pool Size=18"
+        App: "Host=postgres;Port=5432;Database=myapp_db;Username=appuser;Password={{ postgres_password }};Pooling=true;Keepalive=60;Maximum Pool Size=64;Timeout=5;Command Timeout=30;Connection Idle Lifetime=60"
 ```
 
 > Databases are **not** pre-created by Ansible — .NET EF Core creates them
@@ -210,10 +210,16 @@ Put **only the values that differ per environment** here — connection strings,
 URLs.  Everything else stays in the image's `appsettings.json`.
 
 Npgsql keeps one pool per unique connection string, so give every string an explicit
-`Maximum Pool Size` — budget ~18–28 connections per app (hot path 18, auth 8, key
-ring 2) so several apps can share one Postgres without exhausting `max_connections`.
-`Keepalive=60` lets each pool detect and evict connections killed by a Postgres
-restart (container recreate, minor image update) before requests trip over them.
+`Maximum Pool Size` — the example budgets 64 for the hot path, 16 for auth and 2 for
+the key ring, and `postgres_max_connections` is sized from that total doubled, because
+a blue/green drain has both slots holding their own pools. Treat the pool as a ceiling
+rather than a target: past what the database can execute at once, a larger pool moves
+the queue out of the application and into Postgres, where every query slows down
+instead of some of them waiting. `Keepalive=60` lets each pool detect and evict
+connections killed by a Postgres restart (container recreate, minor image update)
+before requests trip over them; `Timeout=5`, `Command Timeout=30` and
+`Connection Idle Lifetime=60` replace three defaults that bite under load — see
+[`perf/README.md`](../perf/README.md#connection-string-settings-worth-fixing-first).
 
 Reference vault variables for secrets:
 
@@ -225,9 +231,9 @@ smtp_password:     "smtp-secret"
 # group_vars/all/main.yml  (inside application entry)
 appsettings_override:
   ConnectionStrings:
-    Users:          "Host=postgres;Port=5432;Database=waa_users;Username=appuser;Password={{ postgres_password }};Pooling=true;Keepalive=60;Maximum Pool Size=8"
-    DataProtection: "Host=postgres;Port=5432;Database=waa_dp;Username=appuser;Password={{ postgres_password }};Pooling=true;Keepalive=60;Maximum Pool Size=2"
-    App:            "Host=postgres;Port=5432;Database=waa;Username=appuser;Password={{ postgres_password }};Pooling=true;Keepalive=60;Maximum Pool Size=18"
+    Users:          "Host=postgres;Port=5432;Database=waa_users;Username=appuser;Password={{ postgres_password }};Pooling=true;Keepalive=60;Maximum Pool Size=16;Timeout=5;Command Timeout=30;Connection Idle Lifetime=60"
+    DataProtection: "Host=postgres;Port=5432;Database=waa_dp;Username=appuser;Password={{ postgres_password }};Pooling=true;Keepalive=60;Maximum Pool Size=2;Timeout=5;Command Timeout=30;Connection Idle Lifetime=60"
+    App:            "Host=postgres;Port=5432;Database=waa;Username=appuser;Password={{ postgres_password }};Pooling=true;Keepalive=60;Maximum Pool Size=64;Timeout=5;Command Timeout=30;Connection Idle Lifetime=60"
   FileStorage:
     BaseDirectory: "/data/files"
   Email:

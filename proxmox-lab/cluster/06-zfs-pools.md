@@ -29,7 +29,15 @@ Then from the UI, on each node: **Disks → ZFS → Create: ZFS**
 - Pool 1: Name `apps`, disk 2, RAID Level **Single Disk**, compression on, ✔ Add Storage
 - Pool 2: Name `db`, disk 3, same settings
 
-Verify: **Datacenter → Storage** — `apps` and `db` visible on both nodes.
+Verify on each node: `zpool list` — `apps` and `db` ONLINE.
+
+⚠️ **Don't trust Datacenter → Storage here.** *Add Storage* does two things: it creates the pool *and* registers a storage entry pinned to the node you ran it on (`nodes pve1`). The nodes are still independent at this stage, so each has its own `/etc/pve/storage.cfg` and both screens look right — but at the [Stage 7](07-cluster.md) join pve2 discards its copy and adopts pve1's, leaving both pools declared pve1-only. The ZFS pools still exist on pve2 (Disks → ZFS shows them, it reads ZFS directly); the *storage* doesn't. Nothing complains until [Stage 12](../ha/12-replication.md), which fails with `storage 'apps' is not available on node 'pve2'`.
+
+Drop the pinning now, on pve1 — deleting the restriction needs no node names, so it works before the cluster exists and survives a node replacement ([Stage 19](../operations/19-node-replacement.md)):
+```bash
+pvesm set apps --delete nodes
+pvesm set db   --delete nodes
+```
 
 ## 6.1 Thin provisioning — set it before any VM disk exists
 
@@ -49,6 +57,10 @@ Two consequences worth understanding, because both bite silently:
 - **`discard=on` only works on thin volumes.** The VM disks in Stage 9 pass TRIM through so deleted guest blocks return to the pool — on a thick zvol the reservation holds that space anyway, and the setting buys you nothing.
 - **`zpool list` reports *allocated* space, not reserved.** A thick pool can be effectively full — Proxmox refusing to create the next disk — while `zpool list` still shows single-digit usage. [`cluster-health`](../scripts/README.md) reads exactly that field, so thin provisioning is what makes its capacity check mean what it appears to mean.
 
-> **Re-check after the cluster is formed.** `/etc/pve/storage.cfg` is cluster-wide: when pve2 joins in [Stage 7](07-cluster.md) it adopts pve1's copy and discards its own. Set this on pve1, then confirm it survived the join — before any VM disk is created in Stage 9.
+> **Re-check after the cluster is formed.** `/etc/pve/storage.cfg` is cluster-wide: when pve2 joins in [Stage 7](07-cluster.md) it adopts pve1's copy and discards its own. Set both this and the node un-pinning above on pve1, then confirm they survived the join — before any VM disk is created in Stage 9:
+> ```bash
+> grep -A8 -e 'zfspool: apps' -e 'zfspool: db' /etc/pve/storage.cfg   # "sparse 1" under each, and no "nodes" line
+> pvesh get /nodes/pve2/storage                                       # apps and db listed and active
+> ```
 
 **This is not overcommit.** The declared sizes fit both pools even if every guest filled its disk to the last byte: `apps` carries the template plus 1020, 1021 and 1023 — 512GB of ~1.8TB usable — and `db` carries 1022's 640GB alone. Thin provisioning here reclaims space that was never written; it isn't a bet that the VMs stay small. The per-VM sizes are set in [Stage 10](../vms/10-vms.md#grow-the-disk--per-vm).

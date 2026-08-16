@@ -6,6 +6,7 @@
 - **A node stopped seeing its NVMe drives, or won't boot, right after a BIOS update** → the flash reset the settings to defaults and VMD/RST came back on. Redo Stage 0.1 in full — VT-x/VT-d and "restore on AC" are gone too, and the last one fails silently until the next power cut (16.3, "After every flash").
 - **A node is unreachable after a BIOS update, both corosync rings down** → the NICs were renamed, so `/etc/network/interfaces` now configures nothing. Physical console, then the same fix as a disk transplant: new names in, `ifreload -a` (19.3 step 5 / 16.3).
 - **Replication fails** → does a pool with the same name exist on the target? Does it have space? (`zpool list`)
+- **Replication says `storage 'apps' is not available on node 'pve2'`, but the pool is right there in Disks → ZFS** → the pool exists, the *storage definition* is pinned to pve1 — Stage 6's *Add Storage* checkbox writes `nodes <that node>`, and the join discarded pve2's own copy of `storage.cfg`. `pvesm set apps --delete nodes` (same for `db`), then re-run the job (Stage 6).
 - **Migration is slow** → Migration Settings pointing at the wrong network (Stage 7).
 - **"cluster not ready - no quorum"** → QDevice down/unreachable; emergency on the surviving node: `pvecm expected 1` (temporary!).
 - **VM won't live-migrate** → ISO mounted in the CD drive (remove it) or non-migratable local resources attached.

@@ -85,7 +85,7 @@ Follow the guide from the top on the new machine:
 - **Stage 2** repos + upgrade, and **2.5** — *restore* this node's key pair from the password manager ([0.5](../setup/00-preparation.md#05-keys--generate-all-of-them-now)) rather than generating a new one. The old public half is already in `authorized_keys` on every existing VM; a fresh pair would open none of them until Ansible re-seeded it
 - **Stage 3** only if the replacement is a laptop
 - **Stage 5** both interfaces: `vmbr0` on 192.168.0.12, the 10G interface on 10.10.10.2
-- **Stage 6** ZFS pools — **`apps` and `db`, spelled exactly the same.** This is the single most important detail in the whole procedure; replication matches on pool name
+- **Stage 6** ZFS pools — **`apps` and `db`, spelled exactly the same.** This is the single most important detail in the whole procedure; replication matches on pool name. The node is still standalone here, so *Add Storage* writes a local storage entry that the join in step 6 discards — harmless, as long as the cluster-wide `apps`/`db` entries carry no node restriction ([Stage 6](../cluster/06-zfs-pools.md))
 
 Check CPU compatibility before going further:
 ```bash
@@ -157,6 +157,7 @@ The cluster identity lives on the OS disk, so the node rejoins as itself — no 
 pvecm status                  # 2 nodes + QDevice = 3 votes, Quorate: Yes
 corosync-cfgtool -s           # LINK 0 and LINK 1 both OK
 zpool status                  # apps and db ONLINE on both nodes, no errors
+pvesh get /nodes/pve2/storage # apps and db listed and active — the pool existing is not enough
 pvesr status                  # all jobs OK, recent timestamps
 ha-manager status             # services started
 ethtool <10g-if> | grep -i speed        # 10000Mb/s

@@ -15,10 +15,15 @@ postgres_user:        appuser
 postgres_auto_minor_upgrades: true
 
 # ── Postgres tuning (conf.d/10-tuning.conf) ───────────────────────────────────
-# max_connections is policy, not RAM: sized from the per-app Npgsql pool budget
-# (Maximum Pool Size caps in the connection strings, ~18-28 per app, ~4 apps)
-# plus headroom for psql/monitoring/backup. A RAM upgrade does not move it.
-postgres_max_connections: 128
+# max_connections is policy, not RAM: it follows the Maximum Pool Size caps in
+# the connection strings, doubled for the length of a blue/green drain (both
+# slots hold their own pools), plus headroom for psql/monitoring/backup:
+#
+#   82 per instance x 2 applications x 2 slots = 328, inside 400 - 3 reserved.
+#
+# A RAM upgrade does not move it; a third application does. perf/load-drill.sh
+# recomputes this and fails the run when it stops fitting.
+postgres_max_connections: 400
 
 # Everything else derives from the VM's RAM on every playbook run
 # (shared_buffers 25%, effective_cache_size 75%, work_mem and

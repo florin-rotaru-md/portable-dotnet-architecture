@@ -93,7 +93,7 @@ The whole build, in execution order, with the two deliberate "come back later" p
 - [ ] **3** Laptop config — pve2 here; the QDevice gets the same 3.1/3.2 at Stage 8
 - [ ] **4** UPS monitoring (NUT) — pve1 only
 - [ ] **5** Network — `vmbr0` + 10G link, both nodes; verify one default route
-- [ ] **6** ZFS pools `apps` + `db` — both nodes, identical names; **thin provision (6.1)** before any VM disk exists
+- [ ] **6** ZFS pools `apps` + `db` — both nodes, identical names; **un-pin the storages from their node** and **thin provision (6.1)**, both before any VM disk exists
 - [ ] **7** Cluster — two corosync rings, migration network
 - [ ] **8** QDevice — Debian on the third box (8.1), lid/sleep + battery (8.3), third vote
 - [ ] **9** Ubuntu template from the cloud image — *(9.5's template backup needs the USB drive; postponed to the 17 line below)*

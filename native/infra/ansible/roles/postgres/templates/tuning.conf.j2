@@ -5,9 +5,11 @@
 # grow the VM, re-run bootstrap — every value below follows on its own.
 {% set ram_mb = ansible_facts['memtotal_mb'] | int %}
 
-# Connection slots are policy, not RAM: sized from the per-app Npgsql pool
-# budget (Maximum Pool Size 18+8+2 per app, several apps sharing this server)
-# plus headroom for psql/monitoring/backup — a RAM upgrade does not move it.
+# Connection slots are policy, not RAM: sum the Maximum Pool Size of every
+# connection string an application instance opens, multiply by the number of
+# applications, double it for the blue/green drain (both slots hold their own
+# pools for drain_seconds), then leave headroom for psql/monitoring/backup.
+# A RAM upgrade does not move this number; adding an application does.
 max_connections = {{ postgres_max_connections | default(128) }}
 
 # 25% of RAM, the dedicated-host starting point. Postgres reads also flow
@@ -38,3 +40,39 @@ effective_io_concurrency = {{ postgres_effective_io_concurrency | default('200',
 
 # Compress full-page images: less WAL written, archived, and streamed.
 wal_compression = {{ postgres_wal_compression | default('lz4', true) }}
+
+# ── Observability ─────────────────────────────────────────────────────────────
+# What turns "the database was slow" into "this statement was slow, this often".
+# It costs a fixed hash table allocated at startup plus a few instructions per
+# execution — cheap next to the alternative, which is guessing. Preloaded, so
+# it needs a restart, and the reading view needs CREATE EXTENSION once: the
+# role does that in the maintenance database, and one is enough because the
+# counters are cluster-wide and every row carries its dbid.
+shared_preload_libraries = '{{ postgres_shared_preload_libraries | default('pg_stat_statements', true) }}'
+pg_stat_statements.max = {{ postgres_pg_stat_statements_max | default(5000) }}
+pg_stat_statements.track = top
+
+# Slow statements only. 0 logs every statement, including the thousands the
+# application already accounts for, and then the log volume is the incident.
+log_min_duration_statement = {{ postgres_log_min_duration_statement | default('1000', true) }}
+
+# A wait longer than deadlock_timeout (1s) is contention, and it is the one
+# event that cannot be reconstructed afterwards from anything else.
+log_lock_waits = on
+
+# A query that spilled to disk is work_mem being too small for that query,
+# named. This is what says whether the memory tier needs to move — better
+# evidence than the RAM number the tier is derived from.
+log_temp_files = {{ postgres_log_temp_files | default('8MB', true) }}
+
+# ── Safety valves ─────────────────────────────────────────────────────────────
+# A session that opened a transaction and then stopped working holds its
+# connection slot and blocks vacuum from cleaning anything newer than it. This
+# kills only sessions idle *inside* a transaction, so a migration that is
+# actually executing a long statement is untouched.
+idle_in_transaction_session_timeout = {{ postgres_idle_in_transaction_session_timeout | default('5min', true) }}
+
+# Deliberately absent: idle_session_timeout. Closing idle connections behind a
+# client-side pool does not free resources, it hands the application dead
+# handles — Npgsql's Connection Idle Lifetime is the setting that belongs on
+# that side of the wire, and the connection strings set it.

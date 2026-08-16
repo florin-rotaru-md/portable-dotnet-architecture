@@ -76,7 +76,13 @@ external_pid_file = '/var/run/postgresql/18-main.pid'                   # write 
                                         # defaults to 'localhost'; use '*' for all
                                         # (change requires restart)
 port = 5432                             # (change requires restart)
-max_connections = 128                   # (change requires restart)
+max_connections = 400                   # (change requires restart)
+                                        # Sized from the per-app Npgsql pool
+                                        # budget doubled for a blue/green
+                                        # drain — the Ansible role owns this
+                                        # in conf.d/10-tuning.conf, which is
+                                        # included at the end of this file and
+                                        # therefore wins over the value here.
 #reserved_connections = 0               # (change requires restart)
 #superuser_reserved_connections = 3     # (change requires restart)
 unix_socket_directories = '/var/run/postgresql' # comma-separated list of directories

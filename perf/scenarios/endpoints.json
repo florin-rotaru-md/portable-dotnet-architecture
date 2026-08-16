@@ -73,8 +73,8 @@
 
   "pools": {
     "_readme": "Per-connection-string Maximum Pool Size, mirroring the app's ConnectionStrings. The drill uses these to tell 'the pool is the ceiling' apart from 'Postgres is the ceiling' — the two failures look identical from the outside and have opposite fixes.",
-    "app": { "database": "waa_ro_app", "maxPoolSize": 18 },
-    "users": { "database": "waa_ro_users", "maxPoolSize": 8 },
+    "app": { "database": "waa_ro_app", "maxPoolSize": 64 },
+    "users": { "database": "waa_ro_users", "maxPoolSize": 16 },
     "dataProtection": { "database": "waa_ro_dp", "maxPoolSize": 2 }
   },
 

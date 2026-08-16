@@ -208,7 +208,7 @@ applications:
     project_path: "src/MyApp/MyApp.csproj"
     appsettings_override:
       ConnectionStrings:
-        Main: "Host=127.0.0.1;Port=5432;Database=myapp_db;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true;Keepalive=60;Maximum Pool Size=18"
+        Main: "Host=127.0.0.1;Port=5432;Database=myapp_db;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true;Keepalive=60;Maximum Pool Size=64;Timeout=5;Command Timeout=30;Connection Idle Lifetime=60"
 
   - name: anotherapp
     assembly: AnotherApp
@@ -219,18 +219,21 @@ applications:
     project_path: "src/AnotherApp/AnotherApp.csproj"
     appsettings_override:
       ConnectionStrings:
-        Main: "Host=127.0.0.1;Port=5432;Database=anotherapp_db;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true;Keepalive=60;Maximum Pool Size=18"
+        Main: "Host=127.0.0.1;Port=5432;Database=anotherapp_db;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true;Keepalive=60;Maximum Pool Size=16;Timeout=5;Command Timeout=30;Connection Idle Lifetime=60"
 ```
 
 > Npgsql keeps one pool per unique connection string. `Maximum Pool Size` caps each
-> pool — budget ~18–28 connections per app so several apps share one Postgres
-> without exhausting `max_connections`. Server-side, the postgres role matches this
-> with `postgres_max_connections: 128` and renders `conf.d/10-tuning.conf` from the
-> host's RAM (shared_buffers 25%, effective_cache_size 75%, tiered work_mem) — a RAM
-> upgrade plus a playbook re-run re-tunes everything; see the tuning block in
-> `group_vars/all/main.yml`. `Keepalive=60` lets each pool detect and
+> pool, and the window that sizes the server is a deploy, not rush hour: for the
+> length of `drain_seconds` both slots hold their own pools, so the budget doubles.
+> Server-side, the postgres role matches this with `postgres_max_connections` and
+> renders `conf.d/10-tuning.conf` from the host's RAM (shared_buffers 25%,
+> effective_cache_size 75%, tiered work_mem) — a RAM upgrade plus a playbook re-run
+> re-tunes everything, and deliberately leaves the connection ceiling alone; see the
+> tuning block in `group_vars/all/main.yml`. `Keepalive=60` lets each pool detect and
 > evict connections killed by a Postgres restart (auto minor upgrades, failover)
-> before requests trip over them.
+> before requests trip over them; `Timeout=5`, `Command Timeout=30` and
+> `Connection Idle Lifetime=60` replace three defaults that bite under load — see
+> [`perf/README.md`](../perf/README.md#connection-string-settings-worth-fixing-first).
 
 **3. First bootstrap** — the `devops` user doesn't exist yet, so connect as the initial root/admin user:
 

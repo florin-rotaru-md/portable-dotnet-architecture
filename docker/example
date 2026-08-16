@@ -135,10 +135,15 @@ postgres_user:      postgres
 backup_retention_days: 7
 
 # ── Postgres tuning (compose command -c flags) ────────────────────────────────
-# max_connections is policy, not RAM: sized from the per-app Npgsql pool budget
-# (Maximum Pool Size caps in the connection strings, ~18-28 per app, ~4 apps)
-# plus headroom for psql/monitoring/backup. A RAM upgrade does not move it.
-postgres_max_connections: 128
+# max_connections is policy, not RAM: it follows the Maximum Pool Size caps in
+# the connection strings, doubled for the length of a blue/green drain (both
+# slots hold their own pools), plus headroom for psql/monitoring/backup:
+#
+#   82 per instance x 2 applications x 2 slots = 328, inside 400 - 3 reserved.
+#
+# A RAM upgrade does not move it; a third application does. perf/load-drill.sh
+# recomputes this and fails the run when it stops fitting.
+postgres_max_connections: 400
 
 # Everything else derives from the docker host's RAM on every playbook run
 # (shared_buffers 25%, effective_cache_size 75%, work_mem and
@@ -211,16 +216,24 @@ applications:
     # Put connection strings, secrets, and env-specific URLs here.
     # Secrets (passwords, API keys) should reference vault.yml variables.
     # Npgsql keeps one pool per unique connection string; Maximum Pool Size
-    # caps each pool. Per-app budget: 18+8+2 = 28 connections worst case, so
-    # ~4 apps sharing one Postgres stay inside max_connections = 128.
+    # caps each pool. Per-app budget: 64+16+2 = 82 connections worst case, and
+    # a blue/green drain doubles it — postgres_max_connections above carries
+    # the arithmetic. The pool is a ceiling, not a target: Npgsql opens
+    # connections on demand, and past what the database can execute at once a
+    # larger pool only moves the queue from the application into Postgres,
+    # where every query slows down instead of some of them waiting.
     # Keepalive=60 lets the pool detect and evict connections killed by a
     # Postgres restart (container recreate, minor image update) before
-    # requests trip over them.
+    # requests trip over them. Timeout=5 fails a request that cannot get a
+    # connection rather than pinning a Kestrel thread for the default 15s;
+    # Command Timeout=30 bounds one bad query; Connection Idle Lifetime=60
+    # hands slots back four minutes sooner than the default, which is what
+    # keeps the drain window's worst case theoretical.
     appsettings_override:
       ConnectionStrings:
-        App:            "Host={{ postgres_host }};Port=5432;Database=waa_ro_app;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true;Keepalive=60;Maximum Pool Size=18"
-        Users:          "Host={{ postgres_host }};Port=5432;Database=waa_ro_users;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true;Keepalive=60;Maximum Pool Size=8"
-        DataProtection: "Host={{ postgres_host }};Port=5432;Database=waa_ro_dp;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true;Keepalive=60;Maximum Pool Size=2"
+        App:            "Host={{ postgres_host }};Port=5432;Database=waa_ro_app;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true;Keepalive=60;Maximum Pool Size=64;Timeout=5;Command Timeout=30;Connection Idle Lifetime=60"
+        Users:          "Host={{ postgres_host }};Port=5432;Database=waa_ro_users;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true;Keepalive=60;Maximum Pool Size=16;Timeout=5;Command Timeout=30;Connection Idle Lifetime=60"
+        DataProtection: "Host={{ postgres_host }};Port=5432;Database=waa_ro_dp;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true;Keepalive=60;Maximum Pool Size=2;Timeout=5;Command Timeout=30;Connection Idle Lifetime=60"
       # FileStorage:
       #   BaseDirectory: "/data/files"
       # UiClient:

@@ -58,13 +58,21 @@ applications:
     # headless_browser: true
     # repo_token: "{{ app_repo_token }}"
     # Npgsql keeps one pool per unique connection string; cap each with
-    # Maximum Pool Size (budget ~18-28 connections per app) so several apps
-    # can share one Postgres inside max_connections = 128. Keepalive=60 lets
-    # the pool detect and evict connections killed by a Postgres restart
+    # Maximum Pool Size, and size postgres_max_connections from the total —
+    # doubled, because a blue/green drain has both slots holding their own
+    # pools. The pool is a ceiling, not a target: Npgsql opens connections on
+    # demand, and past what the database can execute at once a larger pool
+    # only moves the queue from the application into Postgres. Keepalive=60
+    # lets the pool detect and evict connections killed by a Postgres restart
     # (auto minor upgrades, HA failover) before requests trip over them.
+    # Timeout=5 fails a request that cannot get a connection rather than
+    # pinning a Kestrel thread for the default 15s; Command Timeout=30 bounds
+    # one bad query; Connection Idle Lifetime=60 hands slots back four minutes
+    # sooner than the default, which is what keeps the drain window's worst
+    # case theoretical.
     # appsettings_override:
     #   ConnectionStrings:
-    #     Main: "Host={{ postgres_host }};Port=5432;Database=myapp_db;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true;Keepalive=60;Maximum Pool Size=18"
+    #     Main: "Host={{ postgres_host }};Port=5432;Database=myapp_db;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true;Keepalive=60;Maximum Pool Size=64;Timeout=5;Command Timeout=30;Connection Idle Lifetime=60"
     # env:
     #   SomeSetting__Nested__Value: "example"
 
@@ -93,10 +101,15 @@ backup_retention_days: 7
 postgres_auto_minor_upgrades: true
 
 # ── Postgres tuning (conf.d/10-tuning.conf) ───────────────────────────────────
-# max_connections is policy, not RAM: sized from the per-app Npgsql pool budget
-# (Maximum Pool Size caps in the connection strings, ~18-28 per app, ~4 apps)
-# plus headroom for psql/monitoring/backup. A RAM upgrade does not move it.
-postgres_max_connections: 128
+# max_connections is policy, not RAM: it follows the Maximum Pool Size caps in
+# the connection strings, doubled for the length of a blue/green drain (both
+# slots hold their own pools), plus headroom for psql/monitoring/backup:
+#
+#   82 per instance x 2 applications x 2 slots = 328, inside 400 - 3 reserved.
+#
+# A RAM upgrade does not move it; a third application does. perf/load-drill.sh
+# recomputes this and fails the run when it stops fitting.
+postgres_max_connections: 400
 
 # Everything else derives from the host's RAM on every playbook run
 # (shared_buffers 25%, effective_cache_size 75%, work_mem and
