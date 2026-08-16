@@ -142,7 +142,7 @@ This build installs on ext4/LVM ([Stage 1](../setup/01-installation.md)), so the
 
 - **pve1** — Lenovo ships a bootable BIOS image; write it with Rufus in DD mode exactly like the install stick in [0.2](../setup/00-preparation.md#02-usb-stick), boot it, flash, remove it.
 - **pve2** — HP's SoftPaq, applied from the UEFI firmware-update screen. It refuses to run without AC connected *and* the battery above a threshold, which on a node that lives plugged in means charging it first.
-- **QDevice** — a Dell Pro, so it's on LVFS and route A is the normal answer ([8.4](../cluster/08-qdevice.md#84-firmware-baseline)). The fallback is Dell's own BIOS executable copied to a FAT32 stick and launched from the F12 one-time-boot menu's *BIOS Flash Update* entry — no Windows needed.
+- **QDevice** — a Dell Pro, so it's on LVFS and route A is the normal answer ([8.7](../cluster/08-qdevice.md#87-firmware-baseline)). The fallback is Dell's own BIOS executable copied to a FAT32 stick and launched from the F12 one-time-boot menu's *BIOS Flash Update* entry — no Windows needed.
 
 **C — per component, only when that component is the problem.** `nvme fw-download` + `nvme fw-commit` for an SSD (with the node evacuated), Intel's `nvmupdate64e` for the X550 — that one needs a full **power cycle** or the new NVM doesn't take. The TB4 10G adapter usually has a Windows-only updater; treat it as a device you replace rather than one you maintain.
 

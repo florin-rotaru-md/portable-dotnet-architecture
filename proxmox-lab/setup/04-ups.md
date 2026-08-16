@@ -65,7 +65,7 @@ With this stage done, a power outage needs zero human action at any point:
 | Power fails | pve1 keeps running on the UPS; pve2 and the QDevice on their own batteries; router failover covers internet | Stage 0.4 |
 | pve2's battery hits 10% | `battery-check` → clean shutdown → VMs live-migrate to pve1 | Stage 3.2 + 15.2 |
 | UPS battery goes low (~5h) | NUT → clean pve1 shutdown, VMs cleanly stopped (pve2 is already off) | this stage |
-| QDevice's battery hits 10% | `battery-check` → clean shutdown. It outlives both nodes, so the last thing still up is the vote nobody needs any more | Stage 3.2, via [8.3](../cluster/08-qdevice.md#83-its-a-laptop--stage-3-applies-here-too) |
+| QDevice's battery hits 10% | `battery-check` → clean shutdown. It outlives both nodes, so the last thing still up is the vote nobody needs any more | Stage 3.2, via [8.6](../cluster/08-qdevice.md#86-its-a-laptop--stage-3-applies-here-too) |
 | Power returns | pve1 powers on (BIOS *restore on AC*, [Stage 0.1](00-preparation.md#01-bios)), pve2 powers on (*Wake on AC*), QDevice boots; HA starts 1021 + 1022, `onboot` starts 1023 | HA desired state = `started`; [Stage 10](../vms/10-vms.md#start-at-boot--what-comes-back-after-a-node-reboot) |
 | Afterward | 1020 stays off until you start it — by design ([15.1](../ha/15-ha.md#151-which-vms-get-ha)); run the health check script and move on | |
 

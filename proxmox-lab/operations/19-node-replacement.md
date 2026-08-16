@@ -109,7 +109,7 @@ corosync-cfgtool -s           # both rings OK
 
 ### 7. Recreate replication
 
-VM → **Replication → Add** → target: the new node → the schedules from Stage 12 (`*/1` for 1022, `*/5` for 1021, `*/15` for 1020, `*/30` for 1023).
+VM → **Replication → Add** → target: the new node → the schedules from [Stage 12](../ha/12-replication.md) (`*/1` for 1022, `*:0` for 1021 and 1023, `sun 05:00` for 1020).
 
 The first run is a **full transfer**, not a delta — every VM disk crosses the wire. Over the 10G direct link expect roughly 10-20 minutes for a few hundred GB; the Postgres disk dominates. VMs keep running throughout.
 

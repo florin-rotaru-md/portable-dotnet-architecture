@@ -2,7 +2,7 @@
 
 *Part of the [Proxmox lab guide](../README.md).*
 
-Two of the three machines in this build are laptops: pve2, and the QDevice ([8.1](../cluster/08-qdevice.md#81-the-box-and-its-os)). **3.1 and 3.2 apply to both** — run them here for pve2, and again on the QDevice once it has Debian, as [8.3](../cluster/08-qdevice.md#83-its-a-laptop--stage-3-applies-here-too) says. **3.3 is pve2 only:** it tunes a hypervisor whose load swings with the VMs on it; the QDevice is idle by design and has nothing for the governor script to react to.
+Two of the three machines in this build are laptops: pve2, and the QDevice ([8.1](../cluster/08-qdevice.md#81-the-box-and-its-os)). **3.1 and 3.2 apply to both** — run them here for pve2, and again on the QDevice once it has Debian, as [8.6](../cluster/08-qdevice.md#86-its-a-laptop--stage-3-applies-here-too) says. **3.3 is pve2 only:** it tunes a hypervisor whose load swings with the VMs on it; the QDevice is idle by design and has nothing for the governor script to react to.
 
 ## 3.1 Ignore the lid + disable sleep
 

@@ -39,7 +39,7 @@ The result, in one paragraph: two nodes joined by a direct 10G cable (corosync L
 |---|---|
 | [Stage 6 — ZFS pools](cluster/06-zfs-pools.md) | Identifying disks, `apps` + `db` pools — same names on both nodes, non-negotiable; thin provisioning, while the pools are still empty |
 | [Stage 7 — Cluster](cluster/07-cluster.md) | Create/join with two corosync rings, migration network settings |
-| [Stage 8 — QDevice](cluster/08-qdevice.md) | The third box: which OS and why (8.1), joining it, the laptop treatment it needs (8.3), firmware. The third vote is mandatory for maintenance with one node down |
+| [Stage 8 — QDevice](cluster/08-qdevice.md) | The third box, end to end: which OS and why (8.1), Debian 13 from download to first boot (8.2), its static address (8.3), key-only SSH from your PC *and* from both nodes (8.4), joining it (8.5), the laptop treatment it needs (8.6), firmware (8.7). The third vote is mandatory for maintenance with one node down |
 
 ### [vms/](vms/) — the guests
 
@@ -95,7 +95,7 @@ The whole build, in execution order, with the two deliberate "come back later" p
 - [ ] **5** Network — `vmbr0` + 10G link, both nodes; verify one default route
 - [ ] **6** ZFS pools `apps` + `db` — both nodes, identical names; **un-pin the storages from their node** and **thin provision (6.1)**, both before any VM disk exists
 - [ ] **7** Cluster — two corosync rings, migration network
-- [ ] **8** QDevice — Debian on the third box, wired + static `192.168.0.10` (8.1), lid/sleep + battery (8.3), third vote
+- [ ] **8** QDevice — Debian 13 install (8.2), wired + static `192.168.0.10` (8.3), key-only SSH incl. **pve1's root key** (8.4), third vote (8.5), lid/sleep + battery (8.6)
 - [ ] **9** Ubuntu template from the cloud image — *(9.5's template backup needs the USB drive; postponed to the 17 line below)*
 - [ ] **10** The four VMs — [`create-vms`](scripts/README.md) (or clone + resize + start-at-boot by hand), confirm each guest *took* its static IP, then control node, SSH keys
 - [ ] **11** First Ansible bootstrap — the VMs get their contents; verify app + db + tunnel + Loki/Grafana
