@@ -57,12 +57,14 @@ Most prompts are locale trivia. These are not:
 | Partitioning | **Guided – use entire disk**, then **All files in one partition** | The WAL archive lives in `/var/lib/wal-archive` ([13.2](../ha/13-wal-stream.md#132-the-receiver-on-the-qdevice)). A separate, politely-sized `/var` is precisely the thing that fills up at 3AM while `df` on `/` still reads 4% |
 | Mirror | your country's | — |
 | popularity-contest | No | — |
-| **Software selection** | **uncheck everything**, then tick only **SSH server** and **standard system utilities** | No desktop is the entire point. A GNOME here brings NetworkManager, an auto-suspend policy and a login screen the third vote does not need |
+| **Software selection** | **uncheck everything**, then tick only **SSH server** and **standard system utilities** | No desktop is the entire point. A GNOME here brings NetworkManager, an auto-suspend policy and a login screen the third vote does not need. Ticking *SSH server* is convenience, not a dependency — [first boot](#the-ssh-server--install-it-by-hand) installs it by hand regardless, because this is the one checkbox whose absence stays invisible until much later |
 | GRUB | to the internal NVMe | Not the USB stick — read the device path, don't accept it by reflex |
 
 > **Setting a root password means your normal user does *not* get sudo.** That's Debian's rule, not an oversight: leave the root password empty and the installer locks root and grants the first user sudo; set one, and it doesn't. This build sets a root password (the console fallback above), so if you want sudo as well, it's one command after first boot: `apt install -y sudo && usermod -aG sudo devops` — then log out and back in for the group to take effect.
 
 ### First boot
+
+All of this happens at the console — there is no SSH into this box yet, and the next step is what creates it.
 
 ```bash
 # the installer may leave the USB in the apt sources; it will ask you to insert media forever
@@ -71,7 +73,25 @@ sed -i '/^deb cdrom:/s/^/#/' /etc/apt/sources.list
 apt update && apt full-upgrade -y
 ```
 
-Then keep it patched without letting it decide when to disappear:
+> If `apt update` can't resolve `deb.debian.org` while `ping 192.168.0.1` works, it's DNS, not the network — you pinged an address, which never touches a resolver. `cat /etc/resolv.conf` should carry a `nameserver` line; see the note in [8.3](#83-the-static-address) for why it can come back empty.
+
+### The SSH server — install it by hand
+
+```bash
+apt install -y openssh-server
+systemctl enable --now ssh
+ss -lntp | grep ':22'         # must print a listener — this is the check that matters
+```
+
+Do this **whether or not** you ticked *SSH server* in the installer. It's `apt install` on an already-present package if you did, and it's the difference between a working box and a mystery if you didn't: a missed checkbox doesn't announce itself, it surfaces an hour later as *ping answers but ssh doesn't* and reads exactly like a network fault.
+
+> `systemctl status ssh` is **not** the check to use here. On trixie sshd is socket-activated, so a perfectly healthy box reports `inactive (dead)` for `ssh.service` while `ssh.socket` holds port 22 and starts the daemon on the first connection. `ss -lntp` sees the listener either way.
+
+At this point `ssh devops@192.168.0.10` works with the password you set in the installer. Root does not, and won't until [8.4](#84-ssh--key-only-from-your-pc-and-from-both-nodes) — that's Debian's `PermitRootLogin prohibit-password` default, not a fault.
+
+### Automatic security updates
+
+Keep it patched without letting it decide when to disappear:
 
 ```bash
 apt install -y unattended-upgrades

@@ -8,6 +8,8 @@
 - **Replication fails** → does a pool with the same name exist on the target? Does it have space? (`zpool list`)
 - **Replication says `storage 'apps' is not available on node 'pve2'`, but the pool is right there in Disks → ZFS** → the pool exists, the *storage definition* is pinned to pve1 — Stage 6's *Add Storage* checkbox writes `nodes <that node>`, and the join discarded pve2's own copy of `storage.cfg`. `pvesm set apps --delete nodes` (same for `db`), then re-run the job (Stage 6).
 - **Migration is slow** → Migration Settings pointing at the wrong network (Stage 7).
+- **The QDevice answers `ping` but refuses SSH** → `openssh-server` isn't installed — the *SSH server* checkbox at Debian's Software selection was missed, and nothing says so until you try. At the console: `ss -lntp | grep ':22'` (empty ⇒ confirmed), then `apt install -y openssh-server && systemctl enable --now ssh` (Stage 8.2). Don't diagnose this with `systemctl status ssh`: trixie socket-activates sshd, so a healthy box reports `inactive (dead)` for the service while `ssh.socket` holds the port.
+- **`ssh root@` the QDevice says `Permission denied (publickey)`** → working as designed, and *not* the same fault as the line above: sshd is fine, Debian just ships `PermitRootLogin prohibit-password`. Go in as the normal user and install root's keys (Stage 8.4) — never by flipping `PermitRootLogin yes`.
 - **"cluster not ready - no quorum"** → QDevice down/unreachable; emergency on the surviving node: `pvecm expected 1` (temporary!).
 - **VM won't live-migrate** → ISO mounted in the CD drive (remove it) or non-migratable local resources attached.
 - **VM crashed after migration** → someone set CPU type `host`; revert to `x86-64-v3`.
