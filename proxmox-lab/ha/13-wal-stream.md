@@ -52,6 +52,7 @@ apt update && apt install -y postgresql-client-18
 # A dedicated user, the archive directory on the NVMe, and the credentials
 useradd --system --home-dir /var/lib/wal-archive --create-home --shell /usr/sbin/nologin walarchive
 install -o walarchive -g walarchive -m 600 /dev/null /var/lib/wal-archive/.pgpass
+# fields are host:port:database:user:password — see the character warning below
 echo '192.168.0.22:5432:replication:walreceiver:<the password from vault.yml>' > /var/lib/wal-archive/.pgpass
 
 cat << 'EOF' > /etc/systemd/system/pg-receivewal.service
@@ -84,6 +85,10 @@ cat << 'EOF' > /etc/cron.d/wal-archive-prune
 EOF
 ```
 
+> **Keep this password alphanumeric.** It passes through two parsers that both treat punctuation as structure, and neither failure is legible. `.pgpass` splits fields on `:`, so a colon or backslash in the password has to be escaped (`\:`, `\\`) or libpq silently sends a truncated string. And the role interpolates it straight into SQL — `PASSWORD '{{ … }}'` in [`roles/postgres/tasks/main.yml`](../../native/infra/ansible/roles/postgres/tasks/main.yml) — so an apostrophe breaks the statement, with `no_log: true` hiding the detail. A long alphanumeric secret sidesteps both and costs nothing in strength.
+>
+> The symptom when they disagree is `password authentication failed for user "walreceiver"` in `journalctl -u pg-receivewal`, looping every 10 seconds. The database side is not the one to fix: the role runs `ALTER ROLE … PASSWORD` on *every* playbook run, so Postgres always holds whatever `vault.yml` says — align `.pgpass` to that, not the reverse.
+
 ## 13.3 Verify — both ends, then end to end
 
 ```bash
@@ -93,13 +98,23 @@ ls -lh /var/lib/wal-archive | tail -3
 
 # 1022: the stream is live and confirmed
 ssh devops@192.168.0.22 "sudo -u postgres psql -xc \
-  \"select application_name, state, replay_lsn is not null as receiving, sync_state from pg_stat_replication\""
+  \"select application_name, state, write_lsn, flush_lsn, sync_state from pg_stat_replication\""
 # state = streaming — and pg_replication_slots.active is now t
 
 # End to end: make a write, watch it land within seconds
 ssh devops@192.168.0.22 "sudo -u postgres psql -c 'checkpoint'"   # forces WAL traffic
 ls -l --time-style=full-iso /var/lib/wal-archive | tail -2         # mtime just moved
 ```
+
+> **`write_lsn`/`flush_lsn`, not `replay_lsn`.** `replay_lsn` is a *standby* concept — the position a replica has applied. `pg_receivewal` applies nothing, it writes and flushes, so it reports those two and leaves `replay_lsn` NULL on a perfectly healthy stream. Judge this by `state = 'streaming'` and by the two positions advancing.
+
+**Zero rows from that query means no walsender is attached at all** — not a column to interpret. The receiver itself says why, on the QDevice:
+
+```bash
+journalctl -u pg-receivewal -n 30 --no-pager
+```
+
+`no pg_hba.conf entry for replication connection from host "…"` is the common one, and it means 13.1's two variables don't match this QDevice: either `postgres_wal_stream_enabled` is still false (so the `pg_hba` block never rendered) or `postgres_wal_stream_cidr` carries an address the box no longer has. Fix them in `group_vars/all/main.yml` and re-run the playbook — note that the `pg_hba` template notifies a **restart**, not a reload, so 1022 blinks for a few seconds.
 
 From here, [`backup-verify`](../scripts/README.md) checks the stream daily: slot active, lag bounded — silence-proof, like every other tier.
 
@@ -111,5 +126,13 @@ The same archive is a **general point-in-time recovery window**: the nightly 03:
 
 - **Receiver down (QDevice off, service dead, network):** nothing breaks. Postgres holds WAL for it, up to 10GB; the receiver reconnects and resumes from the slot's bookmark. Your RPO is back to Stage 12's ~1 minute while it lasts — `backup-verify` flags it the next morning.
 - **Receiver down past the 10GB cap:** the slot is invalidated — the deliberate trade (a broken stream over a full `db` disk). Recover: fix the receiver, then on 1022 drop and recreate the slot (`select pg_drop_replication_slot('wal_archive'); select pg_create_physical_replication_slot('wal_archive')` — or just re-run the playbook after dropping) and restart `pg-receivewal`.
+- **The password is rotated in `vault.yml`:** the stream dies, silently, and the cause is structural rather than accidental. The database side is Ansible-owned — the role runs `ALTER ROLE … PASSWORD` on *every* playbook run — while `.pgpass` on the QDevice is written once by hand in [13.2](#132-the-receiver-on-the-qdevice) and reconciled by nothing, ever. So the run updates Postgres, the receiver keeps presenting the old secret, and `journalctl -u pg-receivewal` loops on `password authentication failed` every 10 seconds while the slot pins WAL toward the 10GB cap. Nothing in the application notices; `backup-verify` is the only thing that will tell you. **Rotate in this order:**
+
+  1. new value into `vault.yml` (keep it alphanumeric — [13.2](#132-the-receiver-on-the-qdevice))
+  2. `ansible-playbook playbooks/bootstrap.yml --limit postgres --diff` — Postgres now holds the new one
+  3. rewrite `/var/lib/wal-archive/.pgpass` on the QDevice with the same value, `chown walarchive:walarchive`, `chmod 600`
+  4. `systemctl restart pg-receivewal`, then confirm `state = streaming` and the slot back to `active = t` ([13.3](#133-verify--both-ends-then-end-to-end))
+
+  The stream is down between steps 2 and 3, which is why they belong in one sitting. Reversing them doesn't help: the database is the authority, and a `.pgpass` written first is simply wrong until the playbook catches up. And the password is not recoverable from Postgres — it is stored as a SCRAM verifier — so if the two ever drift beyond repair, the only path is to set a new one on both ends.
 - **Postgres major upgrade:** install the new `postgresql-client-NN` on the QDevice as part of the Stage 20 rehearsal, not after.
 - **Turning it off:** `postgres_wal_stream_enabled: false`, run the playbook, then drop the slot by hand — a slot nobody reads is the one thing the playbook won't remove for you.

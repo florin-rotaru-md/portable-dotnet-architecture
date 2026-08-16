@@ -1,4 +1,33 @@
 ---
+# Two handlers, because only one file in this role can be picked up without a
+# bounce. pg_hba.conf is re-read on reload; listen_addresses, include_dir and
+# everything in the tuning drop-in (max_connections, shared_buffers,
+# shared_preload_libraries) only take effect at startup.
+#
+# The distinction is not cosmetic: pg_hba changes whenever an access CIDR moves
+# — a new client, an extra node, a receiver's address — and restarting the
+# database for those means an avoidable outage every time a firewall-shaped
+# variable is edited.
+#
+# Not `service: state: reloaded`: on Debian `postgresql.service` is a meta unit
+# whose ExecReload is /bin/true, and PartOf= propagates stop and restart to the
+# per-cluster unit but never reload — so a systemd reload here would report
+# success and change nothing. Asking the server itself is unambiguous, and it is
+# the same runuser/psql idiom the role's tasks already use.
+- name: reload postgresql
+  command:
+    argv:
+      - runuser
+      - -u
+      - postgres
+      - --
+      - psql
+      - -tAc
+      - "SELECT pg_reload_conf()"
+
+# Defined after the reload on purpose: handlers fire in definition order, not
+# notification order, so when a run changes both pg_hba and the tuning file the
+# reload lands first and the restart supersedes it.
 - name: restart postgresql
   service:
     name:  postgresql

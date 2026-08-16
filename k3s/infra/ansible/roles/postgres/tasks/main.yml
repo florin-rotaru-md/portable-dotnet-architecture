@@ -73,6 +73,10 @@
     state: absent
   when: not (postgres_auto_minor_upgrades | default(true))
 
+# Reload, not restart: pg_hba.conf is re-read on SIGHUP. This file changes every
+# time an access CIDR moves, and those edits should not cost an outage. See the
+# handlers file for why the distinction is enforced there rather than with
+# `service: state: reloaded`.
 - name: Configure pg_hba.conf
   template:
     src:   pg_hba.conf.j2
@@ -80,7 +84,7 @@
     owner: postgres
     group: postgres
     mode:  '0640'
-  notify: restart postgresql
+  notify: reload postgresql
 
 - name: Set listen_addresses to cluster private network
   lineinfile:
