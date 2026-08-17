@@ -134,5 +134,17 @@ The same archive is a **general point-in-time recovery window**: the nightly 03:
   4. `systemctl restart pg-receivewal`, then confirm `state = streaming` and the slot back to `active = t` ([13.3](#133-verify--both-ends-then-end-to-end))
 
   The stream is down between steps 2 and 3, which is why they belong in one sitting. Reversing them doesn't help: the database is the authority, and a `.pgpass` written first is simply wrong until the playbook catches up. And the password is not recoverable from Postgres — it is stored as a SCRAM verifier — so if the two ever drift beyond repair, the only path is to set a new one on both ends.
+- **After an unplanned failover, the stream does not resume by itself — and that is the archive's protection.** HA restarts 1022 from a ZFS replica, so the database comes back *behind* its own archive, on the same timeline (crash recovery never bumps it). `pg_receivewal` computes its start position from the newest complete segment on disk, asks for a position the server hasn't reached, and the walsender refuses:
+
+  ```
+  ERROR:  requested starting point 0/31000000 is ahead of the WAL flush position of this server 0/1B050560
+  pg_receivewal: disconnected; waiting 5 seconds to try again
+  ```
+
+  **That refusal is real but conditional, and the condition usually does not hold.** It was observed on this build by planting a *complete* segment with a future name — which forces the receiver to request a position past a segment boundary. A real failover does not look like that. `pg_receivewal` derives its start position from the beginning of the newest segment on disk, and restarts a `.partial` from that segment's start. With a one-minute replication interval at a few MiB of WAL per minute, the rewind is **smaller than one 16 MiB segment**, so the requested position lands *behind* the server's flush position, the walsender accepts, and the `.partial` is rewritten with post-failover WAL under the same name on the same timeline (crash recovery never bumps the timeline). The tail of that `.partial` is precisely the lost window.
+
+  So: assume the archive **can** be clobbered, and that the seconds you failed over through are the first thing destroyed. What actually protects them is not letting the rewound server take writes at all — recover it by rolling forward from the archive and promoting *before* the application starts, which also bumps the timeline so post-recovery segments get new filenames and can no longer collide. Until that guard exists, a rotating copy of the current `.partial` on the QDevice (it only grows, so a copy every couple of minutes bounds the loss) is the cheap insurance.
+
+  **Recovery, in this order:** move the diverged archive aside *first* — it is the input for [scenario G](../backup/17-backup-restore.md#g-replaying-the-last-seconds-after-a-failover-wal-from-the-qdevice), including the `.partial` — then let the receiver start against an empty directory and re-establish the stream. Doing it the other way round throws away the only copy of the window you failed over through.
 - **Postgres major upgrade:** install the new `postgresql-client-NN` on the QDevice as part of the Stage 20 rehearsal, not after.
 - **Turning it off:** `postgres_wal_stream_enabled: false`, run the playbook, then drop the slot by hand — a slot nobody reads is the one thing the playbook won't remove for you.

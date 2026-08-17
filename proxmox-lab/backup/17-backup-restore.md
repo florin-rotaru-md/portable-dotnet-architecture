@@ -219,6 +219,18 @@ qmrestore /mnt/usb-backup/dump/vzdump-qemu-1022-<last-night>.vma.zst 1122 --stor
 # 2. Inside 1122: stop postgres, bring the WAL over, arm recovery
 systemctl stop postgresql
 rsync -a walarchive@192.168.0.10:/var/lib/wal-archive/ /var/lib/postgresql/wal-replay/
+
+# The seconds you came here for are in the segment that was still being written,
+# and pg_receivewal deliberately leaves it named "<segment>.partial" — it logs
+# "not renaming …, segment is not complete" rather than promote it. Postgres only
+# ever asks restore_command for the canonical name, so without this rename the
+# replay stops at the last COMPLETE segment and silently returns less than the
+# replication interval already gave you. A partial segment replays fine: recovery
+# reads record by record and stops cleanly at the last whole one.
+cd /var/lib/postgresql/wal-replay && for f in *.partial; do
+    [ -e "$f" ] && mv "$f" "${f%.partial}"
+done
+
 chown -R postgres:postgres /var/lib/postgresql/wal-replay
 sudo -u postgres tee -a /etc/postgresql/18/main/postgresql.conf << 'EOF'
 restore_command = 'cp /var/lib/postgresql/wal-replay/%f %p'
