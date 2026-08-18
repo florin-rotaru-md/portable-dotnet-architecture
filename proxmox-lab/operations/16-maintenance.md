@@ -4,16 +4,31 @@
 
 ## 16.1 Planned maintenance, same day
 
-1. Live-migrate all VMs off the target node (one by one or Bulk Migrate).
-2. `pvecm status` — quorum OK (the QDevice holds the third vote).
-3. Shut down the empty node.
-4. Work on the hardware; the cluster runs on one node.
-5. Power the node back on — it rejoins automatically, replication resumes.
-6. Rebalance the VMs if you want.
+1. Put the node into **HA maintenance mode**. This migrates its HA guests away for you and — the part a manual migrate cannot give you — takes the node out of the recovery pool, so if the *other* node fails while you are elbow-deep in this one, HA will not pick the half-disassembled machine as its target:
+
+   ```bash
+   ha-manager crm-command node-maintenance enable pve2
+   ha-manager status                 # the pair now runs on the other node
+   ```
+
+2. Migrate the non-HA guests by hand — 1020 and 1023 are not the HA manager's business ([15.1](../ha/15-ha.md#151-which-vms-get-ha)), so maintenance mode does not touch them. Bulk Migrate does both in one go; leaving 1023 down for a short window is also a legitimate choice.
+3. `pvecm status` — quorum OK (the QDevice holds the third vote).
+4. Shut down the empty node.
+5. Work on the hardware; the cluster runs on one node.
+6. Power the node back on — it rejoins automatically, replication resumes.
+7. Leave maintenance mode — but only once the node is fit to *receive* workload again:
+
+   ```bash
+   ha-manager crm-command node-maintenance disable pve2
+   ```
+
+⚠️ **Disabling maintenance mode moves the HA guests back on its own.** The stack recorded where each one was when you enabled it, and returns them there. That is exactly what you want after an afternoon of work, and exactly what you don't want after a long one: [16.2](#162-returning-a-node-after-a-long-outage-days-to-weeks) exists because a returning node needs its packages aligned and its replication caught up *before* it takes workload, and this command asks neither question — it just moves them. For anything beyond same-day work, don't use maintenance mode as the return path: leave the node out of it, follow 16.2, migrate by hand.
+
+> That auto-return is the whole difference between the two routes. For a short window you can skip maintenance mode entirely — `shutdown_policy=migrate` ([15.2](../ha/15-ha.md#152-shutdown-policy--important)) already live-migrates the HA guests when you shut the node down, and brings nothing back afterwards ([15.5](../ha/15-ha.md#155-rules--and-the-failback-flag-that-is-on-by-default): no rules, no failback). Maintenance mode earns its place when the work doesn't start with a shutdown: a firmware sweep, a long diagnostic, anything where the node stays up and untrustworthy for a while and you want HA to stop considering it.
 
 ## 16.2 Returning a node after a long outage (days to weeks)
 
-Step 5 above assumes the node was gone for an hour. If it was gone for two weeks — a dead PSU waiting on a part, a laptop you took on a trip, an RMA — the cluster mechanics are identical but three things have drifted underneath you. Nothing here is dangerous *if* you take it in order; the failure mode is doing it in the wrong order and discovering the problem mid-migration.
+Step 6 above assumes the node was gone for an hour. If it was gone for two weeks — a dead PSU waiting on a part, a laptop you took on a trip, an RMA — the cluster mechanics are identical but three things have drifted underneath you. Nothing here is dangerous *if* you take it in order; the failure mode is doing it in the wrong order and discovering the problem mid-migration.
 
 **What has *not* changed, and needs no action:**
 
@@ -66,7 +81,7 @@ zpool scrub apps && zpool scrub db
 
 ⚠️ **Do not start the VM on the returning node "just to check that it works."** Its disks hold a two-week-old copy. The VM's config lives under `/etc/pve/nodes/pve1/`, so the cluster won't do this on its own — but a manual `qm start` on the wrong node would bring up Postgres on stale data. Wait for `pvesr status` to report OK, then migrate.
 
-> **HA does not fail back, by design.** [15.1](../ha/15-ha.md#151-which-vms-get-ha) adds 1021 and 1022 as plain HA resources with no groups, so they stay on pve1 until you migrate them yourself. That's the behavior you want — automatic failback toward a node whose replica is two weeks stale is strictly worse than doing it by hand after step 3. If you ever add HA groups with node priorities, set `nofailback=1` for this reason.
+> **HA does not fail back, by design.** [15.1](../ha/15-ha.md#151-which-vms-get-ha) adds 1021 and 1022 as plain HA resources with nothing in Rules, so they stay on pve1 until you migrate them yourself. That's the behavior you want — automatic failback toward a node whose replica is two weeks stale is strictly worse than doing it by hand after step 3. But it holds *only* while that panel stays empty: every resource already carries `failback: 1`, so the first node affinity rule you add turns this paragraph false unless you clear the flag with it ([15.5](../ha/15-ha.md#155-rules--and-the-failback-flag-that-is-on-by-default)).
 
 One thing that went right by accident and shouldn't be relied on: backups kept working through the outage because the USB drive lives on pve1 ([17.2](../backup/17-backup-restore.md#172-backup-storage--the-usb-drive)) and every VM was already there. Had you added the optional second drive on pve2, that job would have been failing silently for two weeks — which is what the notification target in [15.3](../ha/15-ha.md#153-notifications) is for.
 

@@ -26,7 +26,7 @@ apt update && apt full-upgrade -y
 Then the firmware baseline. Two of the three layers in [16.3](../operations/16-maintenance.md#163-firmware--detect-always-flash-rarely) are ordinary apt packages, and this is where they go in: **CPU microcode**, which is where most firmware-level security fixes actually reach you, and **`fwupd`**, which from here on tells you what the *flashed* firmware is running without you having to look it up. Microcode lives in Debian's `non-free-firmware` component, which a Proxmox install doesn't enable:
 
 ```bash
-# adjust the suite to your Proxmox release: trixie on PVE 9, bookworm on PVE 8
+# trixie — the Debian suite PVE 9 is built on; keep it in step with the nodes' release
 echo 'deb http://deb.debian.org/debian trixie main contrib non-free-firmware' \
     > /etc/apt/sources.list.d/non-free-firmware.list
 apt update && apt install -y intel-microcode fwupd

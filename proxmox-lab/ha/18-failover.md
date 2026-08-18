@@ -19,7 +19,7 @@ All three must be healthy. Replication without quorum = no automatic action. Quo
 pve2 dies suddenly (power cut, hardware fault, kernel panic):
 
 1. **Detection (seconds).** corosync sees pve2 stop responding. pve1 + QDevice hold 2 of 3 votes → the cluster stays quorate and has the authority to act.
-2. **Fencing (~60-120s).** Before restarting anything, the cluster must be *certain* pve2 is dead rather than merely network-isolated — otherwise two copies of Postgres write in parallel (split-brain, the worst possible outcome). Proxmox solves this with **self-fencing**: a node that loses quorum resets itself via hardware watchdog within ~60 seconds. The wait isn't hesitation — it's the guarantee.
+2. **Fencing (~60-120s).** Before restarting anything, the cluster must be *certain* pve2 is dead rather than merely network-isolated — otherwise two copies of Postgres write in parallel (split-brain, the worst possible outcome). Proxmox solves this with **self-fencing**: a node that loses quorum stops keeping its watchdog alive, and the watchdog resets it within ~60 seconds. On this hardware that watchdog is the kernel's `softdog` — [15.4](15-ha.md#154-the-watchdog--what-fencing-actually-rests-on) covers what it does and doesn't cover, and how to confirm it is armed at all. The wait isn't hesitation — it's the guarantee.
 3. **Recovery.** The HA manager on pve1 takes ownership of the HA VMs and boots them from the latest local ZFS replica. Postgres performs crash recovery on startup (exactly as after a power loss) and comes back on its own.
 
 **Result: RTO ~2-3 minutes, RPO = the replication interval.** Symmetric in both directions — there is no "primary" node.
@@ -65,13 +65,18 @@ pvecm expected 1
 
 ## 18.6 Pre-launch test plan
 
-A failover you haven't tested is a hope, not a solution. Run all three before the app goes live, and write down the timings:
+A failover you haven't tested is a hope, not a solution. Run all four before the app goes live, and write down the timings:
 
 1. **Planned live migration.** `ping -t` the app VM, migrate, confirm ≤1 lost packet. Migrate back.
 2. **Clean shutdown with `shutdown_policy=migrate`.** Shut down pve2 from the UI; confirm the VMs migrate on their own rather than restarting. This also validates the battery-script path. Then power pve2 back on and check what returns: whatever non-HA VM lives there comes back by itself ([start-at-boot](../vms/10-vms.md#start-at-boot--what-comes-back-after-a-node-reboot)), while the HA pair stays on pve1 — no failback, by design ([16.2](../operations/16-maintenance.md#162-returning-a-node-after-a-long-outage-days-to-weeks)).
 3. **Hard kill.** Cut power to pve2 (pull the plug, UPS bypassed). Time how long until the app answers again. Then check Postgres: did crash recovery complete cleanly? How much data was lost versus the replication interval? Power pve2 back on and confirm it rejoins and replication reverses on its own.
+4. **Isolation — the only test that exercises fencing.** The hard kill proves *recovery*; it proves nothing about self-fencing, because a node with no power needs no watchdog to stop. This one does. Migrate 1021 and 1022 onto pve2 first — you want the isolated node to be the one holding the workload, and the node you watch from to keep its network — then disconnect **both** corosync links on pve2 at once: the direct 10G cable and the LAN cable. pve2 is now alive, running the VMs, and inquorate: exactly the shape of the situation [15.4](15-ha.md#154-the-watchdog--what-fencing-actually-rests-on) exists for.
 
-Repeat test 3 once after any significant infrastructure change.
+   Expected, in order: pve2's `/etc/pve` goes read-only immediately, pve2 resets itself ~60 s later, and by the time it is back pve1 has already started the HA pair. Watch `ha-manager status` from pve1 and watch pve2 on its own physical console — you have just cut the path you would have used to SSH into it. Time both events into the [drill log](../operations/23-drill-book.md#235-the-drill-log).
+
+   **If pve2 does not reset itself, stop and fix the watchdog before going live.** Every row in [18.3](#183-scenario-table) that resolves through fencing is resting on this. Afterwards reconnect the 10G link first, then the LAN, and confirm `corosync-cfgtool -s` shows both rings OK before moving any workload back.
+
+Repeat test 3 after any significant infrastructure change, and test 4 after anything that touches the network, the kernel or the watchdog configuration.
 
 ## 18.7 Health checks worth running periodically
 
@@ -83,6 +88,7 @@ corosync-cfgtool -s           # both LINK 0 and LINK 1 status = OK
 zpool status                  # no errors, no DEGRADED
 pvesr status                  # replication jobs OK, no stale entries
 ha-manager status             # HA services started, on which node
+systemctl is-active watchdog-mux  # active — fencing has something to fence with (15.4)
 qm list                       # VMs running where you expect
 ```
 

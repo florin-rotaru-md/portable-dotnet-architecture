@@ -48,7 +48,7 @@ pvesr status                  # note the job IDs targeting pve2
 pvesr delete 1021-0 --force   # repeat for each job
 ```
 
-HA config keys off node names too. If you used HA groups restricted to specific nodes, edit them now (Datacenter → HA → Groups). Plain HA resources without groups need no change.
+HA config keys off node names too. If you pinned resources to specific nodes, edit that now — **Datacenter → HA → Rules**, where the departing node has to come out of the node affinity rule's `nodes` list. Plain HA resources with an empty Rules panel, which is what [15.5](../ha/15-ha.md#155-rules--and-the-failback-flag-that-is-on-by-default) leaves you with, need no change.
 
 ### 3. Remove the QDevice — do this before removing the node
 

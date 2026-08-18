@@ -2,7 +2,7 @@
 
 *Part of the [Proxmox lab guide](../README.md).*
 
-The mechanics of every test live with their subject: the three failover tests in
+The mechanics of every test live with their subject: the four failover tests in
 [18.6](../ha/18-failover.md#186-pre-launch-test-plan), the restore drills in
 [17.9](../backup/17-backup-restore.md#179-restore-drills), the R2 proofs in
 [22.2](22-r2-mirror.md#222-proving-it-works), the first migration in
@@ -25,7 +25,7 @@ incident. All four, every time:
 ## 23.2 The pre-launch sequence
 
 Run top to bottom — the order is easiest-to-undo first, and each drill assumes the previous one
-passed. An afternoon covers 1–5; 6–8 fit in another. Time everything and write it into the
+passed. An afternoon covers 1–6; 7–9 fit in another. Time everything and write it into the
 [drill log](#235-the-drill-log).
 
 | # | Drill | Mechanics | Pass looks like |
@@ -34,13 +34,15 @@ passed. An afternoon covers 1–5; 6–8 fit in another. Time everything and wri
 | 2 | Live migration **under load** — keep `load-drill.sh steady` running against the app while you migrate 1021, then 1022 | [Stage 14](../ha/14-live-migration.md) + [`perf/`](../../perf/README.md) | drill exits 0; no error spike or connection-pool exhaustion during the cutover |
 | 3 | Clean shutdown of pve2, then power back on | [18.6 #2](../ha/18-failover.md#186-pre-launch-test-plan) | VMs **migrate**, not restart (zero downtime); after power-on, 1023 returns by itself, the HA pair stays put — no failback |
 | 4 | Hard kill of pve2 (pull the plug) | [18.6 #3](../ha/18-failover.md#186-pre-launch-test-plan) | app answers again in ~2–3 min (measure it); Postgres crash recovery completes on its own; [app checklist](#234-the-app-checklist) passes; after pve2 returns, replication reverses without help |
-| 5 | WAL replay of the window drill 4 lost | [17.7 G](../backup/17-backup-restore.md#g-replaying-the-last-seconds-after-a-failover-wal-from-the-qdevice) | the spare VM's Postgres reaches seconds before the plug was pulled |
-| 6 | Restore drill, scenario A | [`restore-drill`](../scripts/README.md) / [17.9](../backup/17-backup-restore.md#179-restore-drills) | boots on a spare ID, guest agent reports, RTO logged |
-| 7 | Offsite restore, scenario E | [17.7 E](../backup/17-backup-restore.md#e-restore-from-offsite) | an archive pulled from Digi Storage restores — which proves the **crypt passwords**, the only proof that matters before you depend on them |
-| 8 | R2 media proof | [22.2](22-r2-mirror.md#222-proving-it-works) | one mirrored image opens from the USB copy **and** one from `digi-crypt:` |
-| 9 | *Optional:* forced-quorum rehearsal — stop the QDevice, hard-kill pve2, recover the survivor with `pvecm expected 1`, then restore all three votes | [18.5](../ha/18-failover.md#185-emergency-forcing-quorum) | you have typed the scariest command once on a cluster that held nothing, so the first real use is not also the first ever |
+| 5 | **Isolation of pve2** — migrate the HA pair onto it, then pull both corosync links at once. The only drill that tests *fencing* rather than recovery | [18.6 #4](../ha/18-failover.md#186-pre-launch-test-plan) / [15.4](../ha/15-ha.md#154-the-watchdog--what-fencing-actually-rests-on) | pve2 resets **itself** ~60 s after going inquorate; pve1 has the pair started before it finishes rebooting; both rings OK again after reconnecting. A pve2 that just sits there = fencing is broken, stop and fix it |
+| 6 | WAL replay of the window drill 4 lost | [17.7 G](../backup/17-backup-restore.md#g-replaying-the-last-seconds-after-a-failover-wal-from-the-qdevice) | the spare VM's Postgres reaches seconds before the plug was pulled |
+| 7 | Restore drill, scenario A | [`restore-drill`](../scripts/README.md) / [17.9](../backup/17-backup-restore.md#179-restore-drills) | boots on a spare ID, guest agent reports, RTO logged |
+| 8 | Offsite restore, scenario E | [17.7 E](../backup/17-backup-restore.md#e-restore-from-offsite) | an archive pulled from Digi Storage restores — which proves the **crypt passwords**, the only proof that matters before you depend on them |
+| 9 | R2 media proof | [22.2](22-r2-mirror.md#222-proving-it-works) | one mirrored image opens from the USB copy **and** one from `digi-crypt:` |
+| 10 | *Optional:* forced-quorum rehearsal — stop the QDevice, hard-kill pve2, recover the survivor with `pvecm expected 1`, then restore all three votes | [18.5](../ha/18-failover.md#185-emergency-forcing-quorum) | you have typed the scariest command once on a cluster that held nothing, so the first real use is not also the first ever |
 
-Drill 4 is the one to repeat after any significant infrastructure change
+Drill 4 is the one to repeat after any significant infrastructure change, and drill 5 after
+anything that touches the network, the kernel or the watchdog
 ([18.6](../ha/18-failover.md#186-pre-launch-test-plan)); the rest recur on the calendar below.
 
 ## 23.3 The calendar
@@ -67,7 +69,7 @@ silently.)
 
 ## 23.4 The app checklist
 
-After any drill that restarted, moved or restored the app or the database — drills 3, 4, 6, 7 —
+After any drill that restarted, moved or restored the app or the database — drills 3, 4, 5, 7, 8 —
 the VM booting is half the story. The other half, in order:
 
 1. **Ready endpoint** — from inside 1021: `curl -fsS http://127.0.0.1/.well-known/ready`, then

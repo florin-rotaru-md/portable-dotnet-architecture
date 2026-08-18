@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # cluster-health.sh — the 18.7 health checks as one command, plus the ones that
-# are easy to forget: pool capacity, pinned snapshots, version skew between the
-# nodes, firmware, NVMe wear, power state. Run it on either node; a few checks
-# are node-aware (UPS on pve1, battery on pve2).
+# are easy to forget: pool capacity, pinned snapshots, the fencing watchdog,
+# version skew between the nodes, firmware, NVMe wear, power state. Run it on
+# either node; a few checks are node-aware (UPS on pve1, battery on pve2).
 #
 # Output: one line per check, [ OK ] / [WARN] / [FAIL].
 # Exit:   0 = all OK, 1 = warnings, 2 = at least one failure.
@@ -96,6 +96,18 @@ if [ -n "$HA_BAD" ]; then
     warn "ha: not all services started: $(echo "$HA_BAD" | tr '\n' ' ')"
 else
     ok "ha: all services started"
+fi
+
+# ── Watchdog (fencing) ────────────────────────────────────────────────────────
+# Self-fencing is what makes automatic recovery safe rather than reckless (18.2),
+# and it is the one piece of the HA stack that fails completely silently: nothing
+# in the UI, and nothing else in this script, reports a watchdog that never got
+# armed. You would find out during the incident. 15.4 has the detail.
+if systemctl is-active --quiet watchdog-mux; then
+    WD_MOD=$(lsmod | awk '/^(softdog|iTCO_wdt|wdat_wdt|sp5100_tco)[[:space:]]/ {print $1}' | head -1)
+    ok "watchdog: watchdog-mux running${WD_MOD:+ ($WD_MOD)}"
+else
+    fail "watchdog: watchdog-mux NOT running — a node that loses quorum will not fence itself (15.4)"
 fi
 
 # ── Start at boot ─────────────────────────────────────────────────────────────
