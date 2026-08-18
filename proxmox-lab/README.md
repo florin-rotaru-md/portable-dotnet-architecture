@@ -57,7 +57,7 @@ The result, in one paragraph: two nodes joined by a direct 10G cable (corosync L
 | [Stage 12 — Replication](ha/12-replication.md) | Per-VM schedules — the interval *is* your data-loss window |
 | [Stage 13 — WAL stream](ha/13-wal-stream.md) | Postgres WAL → QDevice, continuously: the failover minute becomes recoverable seconds, plus a 7-day any-second PITR window |
 | [Stage 14 — First live migration](ha/14-live-migration.md) | The ping test |
-| [Stage 15 — HA](ha/15-ha.md) | Which VMs get HA and what actually goes in the Add dialog, `shutdown_policy=migrate`, the notification path proved on both of its halves, **the watchdog everything else rests on (15.4)**, and why the Rules panel stays empty — including the `failback` flag that is on by default and only waits for a rule to act on |
+| [Stage 15 — HA](ha/15-ha.md) | Which VMs get HA and what actually goes in the Add dialog, `shutdown_policy=migrate`, the notification path proved on both of its halves, **the watchdog everything else rests on (15.4)**, and why the Rules panel stays empty while `failback` and `auto-rebalance` — both ticked for you — get unticked |
 | [Stage 18 — Failover mechanics](ha/18-failover.md) | How detection/fencing/recovery actually work, the full scenario table with RTO/RPO, forcing quorum, the pre-launch test plan, periodic health checks |
 
 ### [backup/](backup/) — the tiers
@@ -102,7 +102,7 @@ The whole build, in execution order, with the two deliberate "come back later" p
 - [ ] **12** Replication schedules per VM
 - [ ] **13** WAL stream to the QDevice — both ends, verified end to end
 - [ ] **14** First live migration — the ping test, both directions
-- [ ] **15** HA for 1021/1022 only — 1020 and 1023 deliberately stay out, `shutdown_policy=migrate`, HA Rules left empty (15.5), **watchdog confirmed armed on both nodes (15.4)**, notifications proved from both nodes (15.3)
+- [ ] **15** HA for 1021/1022 only — 1020 and 1023 deliberately stay out, `shutdown_policy=migrate`, HA Rules left empty and **Failback + Auto-Rebalance unticked on both resources (15.5)**, **watchdog confirmed armed on both nodes (15.4)**, notifications proved from both nodes (15.3)
 - [ ] **17** Backups — USB drive, nightly job, offsite rclone + crypt, the R2 media mirror (17.10); **now take the template backup from 9.5**
 - [ ] **23** Pre-launch drills — the [drill book](operations/23-drill-book.md) sequence top to bottom (18.6's four failover tests, including the isolation drill that is the only proof fencing works, 17.9's first restore drill, the offsite + R2 proofs), timed and logged
 - [ ] Go live 🎉

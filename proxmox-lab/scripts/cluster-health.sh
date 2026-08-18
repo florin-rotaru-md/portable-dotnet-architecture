@@ -98,6 +98,23 @@ else
     ok "ha: all services started"
 fi
 
+# Placement flags. `failback` and `auto-rebalance` both default to 1 and come
+# back on silently every time a resource is re-added (17.7 step 2, 19.2 step 8).
+# On, they let the cluster move a guest by itself the moment a node affinity
+# rule or CRS rebalancing is switched on — and on this build a guest that drifts
+# to pve2 stops being backed up (15.5). Cluster-wide config: either node sees it.
+HA_CONF=$(ha-manager config 2>/dev/null)
+HA_COUNT=$(echo "$HA_CONF" | grep -c '^vm:')
+if [ "${HA_COUNT:-0}" -gt 0 ]; then
+    FB=$(echo "$HA_CONF" | grep -c 'failback 0')
+    AR=$(echo "$HA_CONF" | grep -c 'auto-rebalance 0')
+    if [ "$FB" -lt "$HA_COUNT" ] || [ "$AR" -lt "$HA_COUNT" ]; then
+        warn "ha: placement flags not cleared on every resource (failback $FB/$HA_COUNT, auto-rebalance $AR/$HA_COUNT) — ha-manager config, then 15.5"
+    else
+        ok "ha: placement flags cleared on all $HA_COUNT resources"
+    fi
+fi
+
 # ── Watchdog (fencing) ────────────────────────────────────────────────────────
 # Self-fencing is what makes automatic recovery safe rather than reckless (18.2),
 # and it is the one piece of the HA stack that fails completely silently: nothing

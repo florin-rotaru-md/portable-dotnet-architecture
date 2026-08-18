@@ -259,7 +259,8 @@ pvesr delete <jobid>
 # then re-add from the UI: VM → Replication → Add
 
 # 2. HA — re-add if you removed it in step B.1
-ha-manager add vm:1021 --state started
+#    both flags default to 1; pass them or the guest comes back movable (15.5)
+ha-manager add vm:1021 --state started --failback 0 --auto-rebalance 0
 ha-manager status
 
 # 3. Guest agent reporting (confirms the VM booted properly)

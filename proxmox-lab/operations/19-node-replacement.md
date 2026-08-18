@@ -48,7 +48,7 @@ pvesr status                  # note the job IDs targeting pve2
 pvesr delete 1021-0 --force   # repeat for each job
 ```
 
-HA config keys off node names too. If you pinned resources to specific nodes, edit that now — **Datacenter → HA → Rules**, where the departing node has to come out of the node affinity rule's `nodes` list. Plain HA resources with an empty Rules panel, which is what [15.5](../ha/15-ha.md#155-rules--and-the-failback-flag-that-is-on-by-default) leaves you with, need no change.
+HA config keys off node names too. If you pinned resources to specific nodes, edit that now — **Datacenter → HA → Rules**, where the departing node has to come out of the node affinity rule's `nodes` list. Plain HA resources with an empty Rules panel, which is what [15.5](../ha/15-ha.md#155-rules-and-the-two-flags-that-default-to-on) leaves you with, need no change.
 
 ### 3. Remove the QDevice — do this before removing the node
 
@@ -120,8 +120,9 @@ pvesr status                  # watch until all jobs report OK
 ### 8. Re-add HA and rebalance
 
 ```bash
-ha-manager add vm:1021 --state started
-ha-manager add vm:1022 --state started
+# both flags default to 1 — pass them, or the rebuilt pair comes back movable (15.5)
+ha-manager add vm:1021 --state started --failback 0 --auto-rebalance 0
+ha-manager add vm:1022 --state started --failback 0 --auto-rebalance 0
 ha-manager status
 ```
 

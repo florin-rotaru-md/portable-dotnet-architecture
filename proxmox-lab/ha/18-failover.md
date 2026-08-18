@@ -88,6 +88,7 @@ corosync-cfgtool -s           # both LINK 0 and LINK 1 status = OK
 zpool status                  # no errors, no DEGRADED
 pvesr status                  # replication jobs OK, no stale entries
 ha-manager status             # HA services started, on which node
+ha-manager config             # failback 0 + auto-rebalance 0 still on both (15.5)
 systemctl is-active watchdog-mux  # active — fencing has something to fence with (15.4)
 qm list                       # VMs running where you expect
 ```
