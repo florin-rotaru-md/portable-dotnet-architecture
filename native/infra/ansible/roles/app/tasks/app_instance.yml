@@ -235,6 +235,9 @@
     app_assembly: "{{ current_app.runtime_assembly | default(((current_app.project_path | default('') | basename | regex_replace('\\.csproj$', '')) if (current_app.project_path | default('') | length > 0) else current_app.assembly)) }}"
     app_port_blue: "{{ current_app.port_blue }}"
     app_port_green: "{{ current_app.port_green }}"
+    # The same directory the log dir task creates and the units grant write access to. deploy.sh
+    # reads the app's rolling log from here when a slot fails to come up.
+    app_log_dir: "{{ app_log_root }}/{{ current_app.log_dir_name | default(current_app.name) }}"
     drain_seconds: "{{ current_app.drain_seconds }}"
     app_health_path: "{{ current_app.health_path | default(health_path | default('/.well-known/ready')) }}"
     app_health_max_attempts: "{{ current_app.health_max_attempts | default(health_max_attempts | default(16)) }}"

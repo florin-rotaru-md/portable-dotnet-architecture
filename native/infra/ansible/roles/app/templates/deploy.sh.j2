@@ -19,6 +19,9 @@ APP_ROOT="$APPS_ROOT/$APP_NAME"
 SCRIPTS_DIR="$APP_ROOT/scripts"
 RUNTIME_DIR="$APP_ROOT/runtime"
 BUILD_DIR="$APP_ROOT/build"
+# Where the application rolls its own log. Not the journal: the journal has the process's stderr,
+# this has the exception.
+LOG_DIR="{{ app_log_dir }}"
 DRAIN_SECONDS="{{ drain_seconds }}"
 PORT_BLUE="{{ app_port_blue }}"
 PORT_GREEN="{{ app_port_green }}"
@@ -95,6 +98,66 @@ print_service_diagnostics() {
   sudo journalctl -u "$svc" -n 200 --no-pager >&2 || true
 }
 
+# The journal carries only what the process wrote to stderr — for a .NET host that is one line,
+# and systemd ellipsizes it. Everything that says *why* (the exception with its stack, or the list
+# of configuration sections a startup preflight found missing) is in the application's own rolling
+# log, in a directory this script otherwise never looks at. An operator standing at a failed deploy
+# had to know that file existed, know its name carries the slot and the date, and know the entries
+# are CLEF — three facts that are not in the failure message. So the deploy prints it.
+print_app_log_failure() {
+  local slot="$1"
+  local file
+  file=$(ls -t "$LOG_DIR"/app-"$slot"-*.log 2>/dev/null | head -n 1) || true
+
+  if [ -z "$file" ]; then
+    echo "No application log for slot ${slot} under ${LOG_DIR}." >&2
+    return 0
+  fi
+
+  local line
+  line=$(grep -a '"@l":"Fatal"' "$file" | tail -n 1 || true)
+
+  if [ -z "$line" ]; then
+    echo "No Fatal entry in ${file}; last 20 lines:" >&2
+    tail -n 20 "$file" >&2
+    return 0
+  fi
+
+  echo "Last fatal entry in ${file}:" >&2
+  if command -v python3 >/dev/null 2>&1; then
+    printf '%s\n' "$line" | python3 -c '
+import json, sys
+entry = json.load(sys.stdin)
+print("  " + (entry.get("@m") or entry.get("@mt") or ""))
+for key, value in entry.items():
+    if key not in ("@t", "@l", "@m", "@mt", "@x", "@i"):
+        print(f"  {key} = {value}")
+if entry.get("@x"):
+    print(entry["@x"])
+' >&2 || printf '%s\n' "$line" >&2
+  else
+    printf '%s\n' "$line" >&2
+  fi
+}
+
+# nginx is still pointing at the slot that was serving before this run, so the half-deployed slot
+# is reachable by nobody — and left running it crash-loops on whatever it died of, replaying its
+# whole startup every ~20s. That is not harmless: the replay buries the first failure under
+# seventy copies of itself, and each attempt opens the database pools again. Stopping it keeps
+# the evidence readable and the connection budget intact; the files stay, so a re-run picks up
+# where this one stopped.
+stop_target_slot() {
+  echo "Stopping ${TARGET_SERVICE} — nginx still serves ${CURRENT_SLOT}, so the idle slot must not crash-loop." >&2
+  sudo systemctl stop "$TARGET_SERVICE" >/dev/null 2>&1 || true
+}
+
+fail_target_slot() {
+  print_service_diagnostics "$TARGET_SERVICE"
+  print_app_log_failure "$TARGET_SLOT"
+  stop_target_slot
+  exit 1
+}
+
 echo "──────────────────────────────────────"
 echo "App:          $APP_NAME"
 echo "Current slot: $CURRENT_SLOT  →  target: $TARGET_SLOT"
@@ -161,21 +224,43 @@ for config_file in appsettings.override.json config-bundle.json; do
   fi
 done
 
+# The loop above skips a file it cannot find, silently, which is right — not every app has an
+# override and none of this is required for one that does not. What is not right is finding out
+# about it from the application's boot: the process falls back to whatever appsettings.json
+# committed (localhost connection strings, placeholder secrets), and the failure surfaces minutes
+# later as a health check that never turns green. So the deploy says which of the two it copied
+# and which it did not, before the service is asked to start.
+for config_file in appsettings.override.json config-bundle.json; do
+  if [ ! -f "$APP_ROOT/config/$config_file" ]; then
+    echo "Note: $APP_ROOT/config/$config_file does not exist — the slot starts without it." >&2
+  elif [ "$(tr -d '[:space:]' < "$APP_ROOT/config/$config_file")" = "{}" ]; then
+    echo "Warning: $APP_ROOT/config/$config_file is empty ({})." >&2
+    echo "         The playbook writes that when the inventory declares nothing for this app," >&2
+    echo "         so an app that needs an override is about to boot without one." >&2
+  fi
+done
+
 # ── Start idle slot ───────────────────────────────────────────────────────────
 echo "Starting $TARGET_SERVICE..."
 sudo systemctl start "$TARGET_SERVICE"
 
+# Armed only now: before the start there is no service of ours to stop, and after the nginx switch
+# the target slot is the one serving. Ctrl-C during the health check counts — that is how a slot
+# was left restarting seventy times.
+trap 'echo; stop_target_slot; exit 130' INT TERM
+
 if ! sudo systemctl is-active --quiet "$TARGET_SERVICE"; then
   echo "Error: ${TARGET_SERVICE} did not become active after start." >&2
-  print_service_diagnostics "$TARGET_SERVICE"
-  exit 1
+  fail_target_slot
 fi
 
 # ── Health check ──────────────────────────────────────────────────────────────
 if ! "$SCRIPTS_DIR/health-check.sh" "http://127.0.0.1:${TARGET_PORT}" "$HEALTH_MAX_ATTEMPTS" "$HEALTH_INTERVAL_SECONDS" "$HEALTH_PATH"; then
-  print_service_diagnostics "$TARGET_SERVICE"
-  exit 1
+  echo "Error: ${TARGET_SERVICE} never answered ${HEALTH_PATH} on port ${TARGET_PORT}." >&2
+  fail_target_slot
 fi
+
+trap - INT TERM
 
 # ── Switch Nginx ──────────────────────────────────────────────────────────────
 "$SCRIPTS_DIR/switch-nginx.sh" "$TARGET_SLOT"
