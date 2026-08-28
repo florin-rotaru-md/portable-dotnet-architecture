@@ -22,3 +22,5 @@ corosync-cfgtool -s     # LINK ID 0 and LINK ID 1 both "status = OK"
 **Migration Settings:** Datacenter → Options → Migration Settings → Network = `10.10.10.0/24`.
 
 Set a bandwidth limit of ~800 MB/s there. The link is dedicated, so you don't need to protect VM traffic — but leaving headroom keeps corosync's primary ring free of jitter during a large replication.
+
+> This one setting is also what stops migration and replication dead if the 10G link ever fails — corosync falls back to Link 1 by itself, these two don't, because they're pinned to `10.10.10.0/24` right here. The runbook for that day, including the optional single-network variant, is in [troubleshooting](../troubleshooting.md#runbook--the-10g-link-is-down).
