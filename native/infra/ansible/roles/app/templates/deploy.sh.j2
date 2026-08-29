@@ -265,10 +265,22 @@ trap - INT TERM
 # ── Switch Nginx ──────────────────────────────────────────────────────────────
 "$SCRIPTS_DIR/switch-nginx.sh" "$TARGET_SLOT"
 
+# ── Own the boot state ────────────────────────────────────────────────────────
+# Exactly one slot per app may be enabled, and it is the one nginx now serves.
+#
+# Both used to be enabled, so a reboot of the host started BOTH slots of BOTH apps — on two
+# different builds, draining the same queues and doubling the connection footprint against a pool
+# the blue/green overlap already strains. Nothing failed; it just quietly ran twice.
+#
+# Enable after the switch, disable after the stop: at no point is the serving slot the disabled one,
+# so a reboot in the middle of a deploy brings back something that works.
+sudo systemctl enable "$TARGET_SERVICE" >/dev/null 2>&1 || true
+
 # ── Drain & stop old slot ─────────────────────────────────────────────────────
 echo "Draining old slot (${DRAIN_SECONDS}s)..."
 sleep "$DRAIN_SECONDS"
 sudo systemctl stop "$OLD_SERVICE"
+sudo systemctl disable "$OLD_SERVICE" >/dev/null 2>&1 || true
 
 # ── Log ───────────────────────────────────────────────────────────────────────
 printf '%s | deploy | branch=%s | slot=%s\n' \

@@ -55,6 +55,45 @@ install -o walarchive -g walarchive -m 600 /dev/null /var/lib/wal-archive/.pgpas
 # fields are host:port:database:user:password — see the character warning below
 echo '192.168.0.22:5432:replication:walreceiver:<the password from vault.yml>' > /var/lib/wal-archive/.pgpass
 
+# The divergence guard (13.5). It runs before every start of the receiver — including the automatic
+# restarts — and is the only thing standing between a failover and the archive overwriting the very
+# seconds that failover lost.
+cat << 'EOF' > /usr/local/sbin/wal-archive-guard
+#!/bin/bash
+# Refuse to stream into an archive that is AHEAD of the server.
+#
+# After an unplanned failover 1022 comes back from a ZFS replica, behind its own archive, on the same
+# timeline (crash recovery never bumps it). pg_receivewal then restarts the newest .partial from that
+# segment's start and the walsender accepts — rewriting exactly the window the failover lost. So:
+# compare first, and if the archive is ahead, move it aside and stream into an empty directory. The
+# moved copy is the input for scenario G; losing it is the one outcome this stage exists to prevent.
+set -u
+ARCHIVE=/var/lib/wal-archive
+HOST=192.168.0.22
+export PGPASSFILE="$ARCHIVE/.pgpass"
+
+newest="$(ls -1 "$ARCHIVE" 2>/dev/null \
+  | sed -n 's/^\([0-9A-F]\{24\}\)\(\.partial\)\?$/\1/p' | sort | tail -1)"
+[ -z "$newest" ] && exit 0          # empty archive — nothing to protect
+
+server="$(psql -qtAX -h "$HOST" -U walreceiver -d postgres \
+  -c 'select pg_walfile_name(pg_current_wal_lsn())' 2>/dev/null | tr -d '[:space:]')"
+[ -z "$server" ] && exit 0          # server unreachable — never destructive on no answer
+
+# WAL filenames are timeline+position in hex, so lexical order IS WAL order. Archive strictly
+# greater than the server means the server went backwards (or onto another timeline): divergence.
+if [[ "$newest" > "$server" ]]; then
+  aside="$ARCHIVE.diverged-$(date +%Y%m%dT%H%M%S)"
+  mv "$ARCHIVE" "$aside"
+  install -d -o walarchive -g walarchive -m 700 "$ARCHIVE"
+  cp -p "$aside/.pgpass" "$ARCHIVE/.pgpass" 2>/dev/null || true
+  echo "wal-archive-guard: archive ($newest) is ahead of the server ($server) — 1022 was rewound." >&2
+  echo "wal-archive-guard: moved to $aside; it holds the window scenario G replays. Streaming fresh." >&2
+fi
+exit 0
+EOF
+chmod 0755 /usr/local/sbin/wal-archive-guard
+
 cat << 'EOF' > /etc/systemd/system/pg-receivewal.service
 [Unit]
 Description=Stream Postgres WAL from 1022 (RPO in seconds — lab guide 11)
@@ -63,6 +102,9 @@ Wants=network-online.target
 
 [Service]
 User=walarchive
+# `+` runs it as root: it has to be able to rename a directory under /var/lib, which walarchive
+# cannot. Everything it creates is handed back to walarchive.
+ExecStartPre=+/usr/local/sbin/wal-archive-guard
 # --synchronous: flush each write and report back, so "received" means "on this disk"
 ExecStart=/usr/lib/postgresql/18/bin/pg_receivewal \
     --directory=/var/lib/wal-archive \
@@ -143,7 +185,13 @@ The same archive is a **general point-in-time recovery window**: the nightly 03:
 
   **That refusal is real but conditional, and the condition usually does not hold.** It was observed on this build by planting a *complete* segment with a future name — which forces the receiver to request a position past a segment boundary. A real failover does not look like that. `pg_receivewal` derives its start position from the beginning of the newest segment on disk, and restarts a `.partial` from that segment's start. With a one-minute replication interval at a few MiB of WAL per minute, the rewind is **smaller than one 16 MiB segment**, so the requested position lands *behind* the server's flush position, the walsender accepts, and the `.partial` is rewritten with post-failover WAL under the same name on the same timeline (crash recovery never bumps the timeline). The tail of that `.partial` is precisely the lost window.
 
-  So: assume the archive **can** be clobbered, and that the seconds you failed over through are the first thing destroyed. What actually protects them is not letting the rewound server take writes at all — recover it by rolling forward from the archive and promoting *before* the application starts, which also bumps the timeline so post-recovery segments get new filenames and can no longer collide. Until that guard exists, a rotating copy of the current `.partial` on the QDevice (it only grows, so a copy every couple of minutes bounds the loss) is the cheap insurance.
+  So: assume the archive **can** be clobbered, and that the seconds you failed over through are the first thing destroyed.
+
+  **`wal-archive-guard` is what now prevents it** ([13.2](#132-the-receiver-on-the-qdevice)). It runs as `ExecStartPre` on every start of the receiver, including the automatic restarts, and does one comparison: the newest segment name in the archive against `pg_walfile_name(pg_current_wal_lsn())` on 1022. WAL filenames are timeline plus position in hex, so lexical order is WAL order — an archive strictly greater than the server means the server went backwards. When it does, the guard renames the archive to `/var/lib/wal-archive.diverged-<timestamp>` and lets the receiver stream into a fresh directory. Nothing is deleted, the stream comes back on its own, and the window scenario G needs is sitting in the renamed directory instead of being overwritten by the reconnect.
+
+  Two properties it was written to have: **it is never destructive on no answer** — an unreachable server exits 0 and the receiver simply retries, because "cannot ask" must not look like "diverged" — and it moves rather than deletes, so a false positive costs disk, not data. Its verdict lands in `journalctl -u pg-receivewal`.
+
+  It is not a substitute for the real fix, which is not letting the rewound server take writes at all: recover it by rolling forward from the archive and promoting *before* the application starts, which bumps the timeline so post-recovery segments get new filenames and can no longer collide. The guard buys the time to do that.
 
   **Recovery, in this order:** move the diverged archive aside *first* — it is the input for [scenario G](../backup/17-backup-restore.md#g-replaying-the-last-seconds-after-a-failover-wal-from-the-qdevice), including the `.partial` — then let the receiver start against an empty directory and re-establish the stream. Doing it the other way round throws away the only copy of the window you failed over through.
 - **Postgres major upgrade:** install the new `postgresql-client-NN` on the QDevice as part of the Stage 20 rehearsal, not after.

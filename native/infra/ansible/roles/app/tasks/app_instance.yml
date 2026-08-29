@@ -271,10 +271,16 @@
     slot_port: "{{ current_app.port_green }}"
   notify: reload systemd
 
-- name: Enable (but do not start) slot services
+# Enablement is deliberately NOT declared here. Which slot may start at boot is a property of which
+# one is live, and only deploy.sh knows that — it enables the slot it switches nginx to and disables
+# the one it drains. This task used to set `enabled: true` on both, so every reboot of the host
+# started two slots of every app, on two different builds, competing for the same queues.
+#
+# Consequence to keep in mind: a freshly provisioned host has neither slot enabled until its first
+# deploy, which is correct — there is nothing published to serve yet.
+- name: Register slot services (enablement is owned by deploy.sh)
   systemd:
     name:    "{{ current_app.name }}-{{ item }}.service"
-    enabled: true
     daemon_reload: true
   loop:
     - blue

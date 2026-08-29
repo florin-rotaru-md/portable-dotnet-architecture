@@ -218,7 +218,13 @@ qmrestore /mnt/usb-backup/dump/vzdump-qemu-1022-<last-night>.vma.zst 1122 --stor
 
 # 2. Inside 1122: stop postgres, bring the WAL over, arm recovery
 systemctl stop postgresql
-rsync -a walarchive@192.168.0.10:/var/lib/wal-archive/ /var/lib/postgresql/wal-replay/
+# WHICH archive: after a failover the window you came for is in the directory the guard moved aside
+# (13.5), not in the live one — the receiver has been streaming into a fresh archive ever since it
+# restarted. Look before you copy:
+#   ssh devops@192.168.0.10 'ls -1d /var/lib/wal-archive*'
+# Take the newest `wal-archive.diverged-<timestamp>`; if there is none, the failover did not clobber
+# anything and `/var/lib/wal-archive` is the right source.
+rsync -a --rsync-path='sudo rsync' devops@192.168.0.10:/var/lib/wal-archive.diverged-<timestamp>/ /var/lib/postgresql/wal-replay/
 
 # The seconds you came here for are in the segment that was still being written,
 # and pg_receivewal deliberately leaves it named "<segment>.partial" — it logs

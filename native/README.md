@@ -387,10 +387,27 @@ poll /.well-known/ready (max 90s)
 cp upstream-<idle>.conf → nginx conf.d
 nginx -t && systemctl reload nginx
   ↓
+systemctl enable  <app>-<idle>.service     # the one now serving may start at boot
+  ↓
 sleep drain_seconds
   ↓
-systemctl stop <app>-<active>.service
+systemctl stop    <app>-<active>.service
+systemctl disable <app>-<active>.service   # the one drained may not
 ```
+
+**Exactly one slot per app is enabled, and `deploy.sh` owns which.** Ansible registers both units and
+deliberately declares no enablement: which slot may start at boot is a property of which one is live,
+and only the deploy knows that. Both used to be enabled, so rebooting the host started *both* slots of
+*every* app — two different builds draining the same queues and holding two pools against a budget the
+blue/green overlap already strains. Nothing failed; it ran twice, quietly.
+
+Two consequences worth knowing:
+
+- A freshly provisioned host has **neither** slot enabled until its first deploy. That is correct —
+  there is nothing published to serve.
+- A host that predates this change still has both enabled. The state converges after one deploy per
+  app; until then, `systemctl is-enabled <app>-{blue,green}` is the check, and disabling the idle one
+  by hand is safe.
 
 ## Directory layout on VPS
 

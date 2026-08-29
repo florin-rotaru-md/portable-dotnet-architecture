@@ -4,6 +4,14 @@ Incremental reference architecture for deploying .NET (and other) services on a 
 Four self-contained setups — pick the one that matches your constraints and grow into the next
 when you need to.
 
+> **What is actually live.** Production runs on **`native/`** (the Ansible that provisions and
+> deploys inside the VMs) on top of **`proxmox-lab/`** (the two-node cluster those VMs run on).
+> `docker/`, `k3s/`, `k3s-proxmox/` and `hyper-v/` are alternatives kept in sync as references —
+> nothing serves traffic from them. `perf/` is a load-testing tool that applies to whichever is
+> running. When a `group_vars` value or a role changes, the example files of the other setups are
+> mirrored by hand, which is why they drift; check `native/example` first, it is the one that is
+> exercised.
+
 ## Setups
 
 | Folder     | When to use                                          | Key tools                              |
