@@ -51,6 +51,11 @@ postgres_backup_minute: "30"
 use_cloudflared: false
 # cloudflare_token comes from vault.yml when use_cloudflared: true
 
+# Connector version. Pinned deliberately: the service runs with --no-autoupdate and
+# nothing upgrades it on its own. Bump this and re-run the playbook; rolling back is
+# the same bump in reverse. Left unset you get whatever the repository offers.
+# cloudflared_version: "2026.8.2"
+
 # ── Ansible service account ────────────────────────────────────────────────────
 ansible_user: devops
 # ansible_ssh_public_key comes from vault.yml — paste your controller's public key there

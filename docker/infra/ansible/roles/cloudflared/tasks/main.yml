@@ -31,11 +31,18 @@
     filename: cloudflared-any
   when: ansible_distribution_release not in ['bookworm', 'focal', 'jammy', 'noble']
 
+# Pinned on purpose when cloudflared_version is set. This is the only public
+# ingress, the service runs with --no-autoupdate, and unattended-upgrades does
+# not cover the Cloudflare origin — so the binary moves when you decide it does.
+# allow_downgrade makes a rollback the same variable bump in reverse.
+# Unset/empty cloudflared_version = whatever the repository currently offers.
 - name: Install cloudflared
   apt:
-    name:         cloudflared
-    state:        present
-    update_cache: true
+    name:            "cloudflared{{ ('=' ~ cloudflared_version) if (cloudflared_version | default('') | string | trim) else '' }}"
+    state:           present
+    update_cache:    true
+    allow_downgrade: true
+  notify: restart cloudflared
 
 - name: Create cloudflared config directory
   file:

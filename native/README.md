@@ -182,6 +182,7 @@ Key variables in `group_vars/all/main.yml`:
 | `appsettings_override`    | Per-app `appsettings.override.json` merge values
 | `app_log_root`            | Root folder for app logs (default `/var/log`)
 | `use_cloudflared`         | `true` to install Cloudflare Tunnel
+| `cloudflared_version`     | Pin the connector, e.g. `"2026.8.2"`; unset = whatever the repo offers at install time
 | `use_loki_grafana`        | `true` to install Dockerized Loki + Grafana
 | `monitoring_target`       | `app` (default) or `monitoring` (`[monitoring]` host group)
 | `monitoring_bind_address` | Bind IP for Loki/Grafana ports (`127.0.0.1` by default)
@@ -441,6 +442,11 @@ Two consequences worth knowing:
 
 Set `use_cloudflared: true` in `group_vars/all/main.yml` and provide `cloudflare_token` in `vault.yml`.
 The tunnel is installed as a systemd service and starts automatically.
+Nothing upgrades it afterwards — the unit runs `--no-autoupdate` and unattended-upgrades does not cover the
+Cloudflare origin — so set `cloudflared_version` and bump it deliberately; the role restarts the service on a
+version change and allows a downgrade, which makes rollback the same bump in reverse. The window itself,
+including why the restart is visible to visitors, is in the lab guide's
+[20.5](../proxmox-lab/operations/20-upgrades.md#205-the-same-pattern-applied-elsewhere).
 With a tunnel active, you can remove ports 80/443 from `ufw_allowed_tcp_ports`.
 
 ## Loki + Grafana (optional, Docker)

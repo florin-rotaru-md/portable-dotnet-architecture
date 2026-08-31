@@ -170,6 +170,15 @@ postgres_max_slot_wal_keep_size: "10GB"
 use_cloudflared: false
 # cloudflare_token comes from vault.yml when use_cloudflared: true
 
+# Connector version. Pinned deliberately: the service runs with --no-autoupdate and
+# unattended-upgrades covers only the PGDG origin, so nothing here moves on its own —
+# which is what you want from the only public ingress. Upgrading is a bump here, then
+# `bootstrap.yml --limit app --tags cloudflared`; rolling back is the same bump in
+# reverse (the role allows a downgrade). `apt-cache madison cloudflared` on the app
+# host lists what the repository currently has. Left unset you get whatever was
+# current on install day, and it stays there for ever.
+# cloudflared_version: "2026.8.2"
+
 # ── Loki + Grafana (optional, Docker) ─────────────────────────────────────────
 use_loki_grafana: false
 # Where to run Loki/Grafana:

@@ -174,6 +174,7 @@ procedure, including the two-channel split between infrastructure and applicatio
 | `postgres_max_connections` | Server connection ceiling (example 400, sized from the per-app pool budgets doubled for a blue/green drain) |
 | `backup_retention_days` | Days to keep nightly dumps (default 7)                  |
 | `use_cloudflared`       | `true` to install Cloudflare Tunnel                     |
+| `cloudflared_version`   | Pin the connector, e.g. `"2026.8.2"`; unset = repo default |
 
 > PostgreSQL 18+ note: upstream `postgis/postgis` changed default `VOLUME`
 > path to `/var/lib/postgresql`. The compose template in this repo already
@@ -363,4 +364,6 @@ gunzip -c /opt/postgres/backups/myapp_db_20240101-020030.sql.gz \
 ## Cloudflare Tunnel (optional)
 
 Set `use_cloudflared: true` and provide `cloudflare_token` in `vault.yml`.
+Nothing upgrades the connector on its own (the unit runs `--no-autoupdate`), so pin `cloudflared_version` and
+bump it deliberately; the role restarts the service on a version change and allows a downgrade.
 With a tunnel active, remove ports 80/443 from `ufw_allowed_tcp_ports` to keep the VPS unexposed.

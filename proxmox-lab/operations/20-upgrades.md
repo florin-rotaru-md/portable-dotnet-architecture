@@ -313,6 +313,8 @@ The shape generalizes: *rehearse on a restored copy → snapshot → change → 
 
 **.NET runtime upgrades** follow the identical pattern one variable over — `dotnet_version` in the same `group_vars` file, then `bootstrap.yml --limit app`. Bump one thing per window.
 
+**The Cloudflare connector** is the same bump — `cloudflared_version`, then `bootstrap.yml --limit app --tags cloudflared` — with one difference worth knowing: unlike Postgres minors, *nothing* moves it on its own. The role installs at a pinned version, the unit runs `--no-autoupdate`, and unattended-upgrades only ever learned about the PGDG origin, so the connector sits at whatever landed on install day until you bump the variable. That is the right default for the only public ingress, but it does mean checking `cloudflared --version` against Cloudflare's releases now and then — connectors are eventually retired at the far end, and this one has no way to tell you. Two operational notes: the restart is *visible* (a single connector means a few seconds unregistered, which visitors see as error 1033 — take a quiet window, or start a second connector with the same token to cover the gap), and rollback is the same variable in reverse, since the role allows the downgrade. Snapshot 1021 first anyway.
+
 **Proxmox host upgrades** are where the two-node design pays off properly — rolling, zero downtime, but **the order matters and it's the reverse of what feels natural**:
 
 1. Evacuate pve2 (Bulk Migrate → pve1), upgrade pve2, reboot.
