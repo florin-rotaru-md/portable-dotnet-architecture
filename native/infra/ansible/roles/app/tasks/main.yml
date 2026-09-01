@@ -1,4 +1,12 @@
 ---
+# libSkiaSharp.so (SkiaSharp.NativeAssets.Linux, declared by Statics since 2026-09-01) links
+# libfontconfig1 at load; without it ImageService throws DllNotFoundException at the first upload.
+- name: Install the native libraries the published apps load
+  apt:
+    name: libfontconfig1
+    state: present
+    update_cache: true
+
 - name: Configure native app instances
   include_tasks: app_instance.yml
   loop: "{{ native_apps }}"

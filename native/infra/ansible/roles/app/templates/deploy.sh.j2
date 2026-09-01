@@ -205,8 +205,13 @@ echo "Publishing to $TARGET_SLOT slot..."
 sudo systemctl is-active --quiet "$TARGET_SERVICE" && sudo systemctl stop "$TARGET_SERVICE" || true
 find "${SLOT_DIR:?}" -mindepth 1 -delete 2>/dev/null || true
 
+# Pin the RID: a framework-dependent publish without one copies every runtime's native assets
+# into the slot (measured 2026-09-01: 363 MB, 255 MB of them Windows libSkiaSharp .pdb files;
+# 60 MB with the RID). The unit still runs `dotnet <App>.dll` (app-slot.service.j2); the
+# linux-x64 apphost the publish also emits is unused.
 dotnet publish "$BUILD_DIR/$PROJECT_PATH" \
   -c Release \
+  -r linux-x64 \
   --self-contained false \
   -o "$SLOT_DIR/"
 
