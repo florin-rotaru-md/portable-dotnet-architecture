@@ -62,9 +62,56 @@ function clientIp(vu) {
     return `${base}.${third}.${fourth}`;
 }
 
-export function headers() {
+// ── Static headers ────────────────────────────────────────────────────────────
+// The client IP above is an identity the drill invents. This is the other kind:
+// a header the host requires before it will answer at all. FiscalServer refuses
+// every route but its two probes and the ANAF callback with a bodiless 401
+// unless 'x-api-key' matches, so without a seam like this the drill cannot
+// touch it — and a run made entirely of 401s would pass every latency
+// threshold while measuring the middleware.
+//
+// Resolved once, in init context, so a missing credential stops the run before
+// it starts rather than at the first request. `${NAME}` reads the environment,
+// which is how a real key is passed without landing in endpoints.json.
+function resolveHeaders(source, where) {
+    const out = {};
+    for (const key of Object.keys(source || {})) {
+        if (key === '_readme') continue;
+        const value = source[key];
+        out[key] = typeof value !== 'string' ? value : value.replace(
+            /\$\{(\w+)\}/g,
+            (_, name) => {
+                const fromEnv = __ENV[name];
+                if (fromEnv === undefined || fromEnv === '') {
+                    throw new Error(
+                        `Header '${key}' in ${where} needs ${name} in the environment and it is ` +
+                        `unset. Export it before the drill (it is a credential — do not put the ` +
+                        `value in endpoints.json), or remove the header.`);
+                }
+                return fromEnv;
+            });
+    }
+    return out;
+}
+
+const staticHeaders = resolveHeaders(config.headers && config.headers.set, 'headers.set');
+const endpointHeaders = {};
+for (const endpoint of traffic) {
+    if (endpoint.headers) {
+        endpointHeaders[endpoint.name] = resolveHeaders(
+            endpoint.headers, `traffic['${endpoint.name}'].headers`);
+    }
+}
+
+export function headers(endpoint) {
     const name = (config.clientIp && config.clientIp.header) || 'CF-Connecting-IP';
     const h = { 'Accept': 'application/json', 'User-Agent': 'k6-load-drill' };
+    Object.assign(h, staticHeaders);
+    if (endpoint && endpointHeaders[endpoint.name]) {
+        Object.assign(h, endpointHeaders[endpoint.name]);
+    }
+    // Last, so a scenario cannot accidentally override the identity the whole
+    // rate-limit spreading depends on.
     h[name] = clientIp(__VU);
     return h;
 }
@@ -90,7 +137,7 @@ export function fireOne() {
     const url = BASE_URL + resolvePath(endpoint.path, Math.random());
 
     const res = http.request(endpoint.method || 'GET', url, endpoint.body || null, {
-        headers: headers(),
+        headers: headers(endpoint),
         tags: { endpoint: endpoint.name },
     });
 

@@ -71,17 +71,73 @@
     ]
   },
 
+  "headers": {
+    "_readme": [
+      "Static headers sent with every request, and the seam for a host that refuses traffic without",
+      "a credential. FiscalServer is the case that needed it: every route but /.well-known/ready,",
+      "/.well-known/live and the ANAF callback answers a bodiless 401 without a valid 'x-api-key',",
+      "so a drill against it without one measures the middleware and nothing else.",
+      "",
+      "A value written as ${NAME} is read from the environment at k6 init and the run refuses to",
+      "start when it is unset — so a real key is passed in, never committed here. An entry in",
+      "'traffic' may carry its own 'headers' object, which is merged over these for that endpoint.",
+      "",
+      "Empty on purpose. No fiscal traffic mix ships with this repository: FiscalServer is inert",
+      "until it is enabled, and which of its routes are worth loading is an operator's choice, not",
+      "a default. Adding one is this object plus entries in 'traffic', and nothing else.",
+      "",
+      "Example: \"set\": { \"x-api-key\": \"${FISCAL_API_KEY}\" }"
+    ],
+    "set": {}
+  },
+
   "pools": {
-    "_readme": "Per-connection-string Maximum Pool Size, mirroring the app's ConnectionStrings. The drill uses these to tell 'the pool is the ceiling' apart from 'Postgres is the ceiling' — the two failures look identical from the outside and have opposite fixes.",
+    "_readme": [
+      "The application UNDER TEST, one entry per connection string, mirroring its Maximum Pool Size",
+      "values. Two things read this: the pre-flight, which takes 'app.database' as the drill's",
+      "PGDATABASE, and the verdict, which watches each database for connections pinned flat at its",
+      "ceiling — that is how 'the pool is the ceiling' is told apart from 'Postgres is the ceiling',",
+      "two failures that look identical from the outside and have opposite fixes.",
+      "",
+      "This is NOT the fleet budget. The whole fleet is 'deployment.deployments' below; these are",
+      "only the databases that exist on the drill box and can therefore be sampled."
+    ],
     "app": { "database": "waa_ro_app", "maxPoolSize": 64 },
     "users": { "database": "waa_ro_users", "maxPoolSize": 16 },
     "dataProtection": { "database": "waa_ro_dp", "maxPoolSize": 2 }
   },
 
   "deployment": {
-    "_readme": "Blue/green doubles the connection budget for the length of a drain — the window this whole drill exists to size. Used by the verdict to compute worst-case headroom.",
-    "instances": 2,
+    "_readme": [
+      "The fleet sharing one Postgres, which is what max_connections is actually sized from. Every",
+      "deployment gets its own pool set, because they are not the same size: Waa carries a users",
+      "database, FiscalServer is headless and carries none.",
+      "",
+      "The verdict adds them up for the steady total, then adds the LARGEST single one back for the",
+      "length of a drain — during those drain_seconds both slots of the deploying application are up",
+      "and each holds its own pools. One deployment drains at a time because that is what a deploy",
+      "is: deploy.yml loops over the applications and deploy.sh blocks through the drain. The",
+      "'everything drains at once' figure is printed too, but it does not decide the verdict.",
+      "",
+      "Keep this in step with the connection strings in the live inventory. It is the same table as",
+      "statics/docs/fiscal/OPERATIONS.md 1.1, which is where the arithmetic is explained."
+    ],
     "drainSeconds": 32,
-    "note": "instances = how many applications share this Postgres (api.waa.ro + api.waa.events)."
+    "deployments": [
+      {
+        "name": "api.waa.ro",
+        "pools": { "app": 64, "users": 16, "dataProtection": 2 }
+      },
+      {
+        "name": "api.waa.events",
+        "pools": { "app": 64, "users": 16, "dataProtection": 2 }
+      },
+      {
+        "name": "fiscal.waa.ro",
+        "pools": { "app": 16, "dataProtection": 2 },
+        "note": "Headless — no users database (ADR-0032 D13). 16 here is the connection-string Maximum Pool Size, not FiscalDbContextExtensions.AppPoolSize, which is a DbContext instance pool and caps no connection; they are deliberately set to the same number."
+      }
+    ],
+    "note": "api.educa.ro is not in this list because it is not deployed. At its proposed 32 + 8 + 2 = 42 it takes steady to 224 and the worst case to 306 of 397 — and the sum of the per-role CONNECTION LIMITs to 448, over the usable 397. Onboarding it means cutting a Waa pool or raising max_connections."
   }
 }

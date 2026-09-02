@@ -17,18 +17,36 @@ fi
 
 mkdir -p "$BACKUP_DIR"
 
-# Globals (roles, passwords, tablespaces) — restore prerequisite.
+# Globals (roles, their passwords and their CONNECTION LIMITs, tablespaces).
+# This is the first half of a restore and it has to be restored FIRST: the
+# per-database dumps below name their owner and their grantees, and a role that
+# does not exist yet is an error, not a silent skip. It is also the only record
+# of the per-application roles — nothing in Ansible creates them, so a rebuilt
+# cluster gets them from here or not at all.
 pg_dumpall -U postgres --globals-only | gzip > "${BACKUP_DIR}/globals_${STAMP}.sql.gz"
 chmod 600 "${BACKUP_DIR}/globals_${STAMP}.sql.gz"
 
 # Per-database custom-format dumps (parallel restore friendly).
+#
+# Ownership and ACLs are deliberately kept. --no-owner --no-acl used to be
+# harmless because every database was owned by the postgres superuser and there
+# was nothing to lose; once a deployment owns its own databases through its own
+# non-superuser role, those two flags turn a restore into a database with no
+# owner and no grants — the application cannot write to what it just restored,
+# and nobody finds out until the drill. Keeping them costs nothing while
+# ownership is still uniform: the dump simply records `postgres` and the
+# restore reproduces it.
+#
+# The restoring identity must be able to hand objects to their owner, which is
+# why the drill and the real thing both run as the postgres superuser over peer
+# auth — a CONNECTION LIMIT on an application role never applies to it.
 DATABASES=$(psql -U postgres -tAc \
   "SELECT datname FROM pg_database WHERE datistemplate = false AND datname NOT IN ('postgres')")
 
 for DB in $DATABASES; do
   DEST="${BACKUP_DIR}/${DB}_${STAMP}.dump"
   echo "[$(date -Iseconds)] Backing up ${DB} -> ${DEST}"
-  pg_dump -U postgres -Fc --no-owner --no-acl "$DB" > "$DEST"
+  pg_dump -U postgres -Fc "$DB" > "$DEST"
   chmod 600 "$DEST"
 done
 
@@ -37,4 +55,4 @@ find "$BACKUP_DIR" -maxdepth 1 -type f \
   \( -name '*.dump' -o -name '*.sql.gz' \) \
   -mtime +"$RETENTION_DAYS" -delete
 
-echo "[$(date -Iseconds)] Backup complete - $(echo "$DATABASES" | wc -w) database(s)"
+echo "[$(date -Iseconds)] Backup complete - globals_${STAMP}.sql.gz + $(echo "$DATABASES" | wc -w) database(s)"

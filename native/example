@@ -132,14 +132,24 @@ postgres_auto_minor_upgrades: true
 
 # ── Postgres tuning (conf.d/10-tuning.conf) ───────────────────────────────────
 # max_connections is policy, not RAM: it follows the Maximum Pool Size caps in
-# the connection strings, doubled for the length of a blue/green drain (both
-# slots hold their own pools), plus headroom for psql/monitoring/backup:
+# the connection strings, and the window that sizes it is a deploy, not rush
+# hour. Add up what every application holds at rest, then add the largest
+# single one back for the length of a drain (both of that app's slots hold
+# their own pools), plus headroom for psql/monitoring/backup:
 #
-#   82 per instance x 2 applications x 2 slots = 328, inside 400 - 3 reserved.
+#   82 + 82 + 18 = 182 steady, + 82 for the largest single drain = 264,
+#   inside 400 - 3 reserved = 397.
 #
-# A RAM upgrade does not move it; a third application does. perf/load-drill.sh
-# recomputes this and fails the run when it stops fitting.
+# Deploys taken one at a time are what make 264 the worst case; per-application
+# roles with a CONNECTION LIMIT are what stop that being an honour system.
+# A RAM upgrade does not move it; another application does. perf/load-drill.sh
+# recomputes this from scenarios/endpoints.json and fails the run when it stops
+# fitting.
 postgres_max_connections: 400
+
+# Slots held back for superusers — Postgres' own default, rendered explicitly
+# so the number every budget above subtracts is asserted rather than inherited.
+# postgres_superuser_reserved_connections: 3
 
 # Everything else derives from the host's RAM on every playbook run
 # (shared_buffers 25%, effective_cache_size 75%, work_mem and
@@ -332,10 +342,23 @@ ansible-playbook playbooks/bootstrap.yml
 # Tail the backup log:
 # ssh devops@192.168.0.21 'tail -f /opt/postgres/backups/cron.log'
 #
-# Monthly restore drill (rotate this through your runbook):
+# Monthly restore drill (rotate this through your runbook).
+#
+# The dumps carry ownership and grants (pg-backup.sh no longer passes
+# --no-owner --no-acl), so the owning role has to exist before the data does.
+# On this cluster it already does; on a rebuilt one, restore
+# globals_<stamp>.sql.gz first — that file is where the per-application roles
+# and their CONNECTION LIMITs live, and nothing in Ansible re-creates them.
+#
+# Create the scratch database with the same owner the real one has, restore
+# into it, then look at who owns the tables: the application role should own
+# the application's tables. Anything an extension created (PostGIS'
+# spatial_ref_sys, for one) stays with postgres, and that is correct.
 # ssh devops@192.168.0.21 '
-#   sudo -u postgres createdb restore_test &&
+#   OWNER=$(sudo -u postgres psql -Atqc "SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname = '\''<db>'\''") &&
+#   sudo -u postgres createdb -O "$OWNER" restore_test &&
 #   sudo -u postgres pg_restore -d restore_test /opt/postgres/backups/<db>_<stamp>.dump &&
+#   sudo -u postgres psql -d restore_test -c "SELECT pg_get_userbyid(relowner) AS owner, count(*) FROM pg_class WHERE relkind = '\''r'\'' AND relnamespace = '\''public'\''::regnamespace GROUP BY 1" &&
 #   sudo -u postgres dropdb restore_test
 # '
 

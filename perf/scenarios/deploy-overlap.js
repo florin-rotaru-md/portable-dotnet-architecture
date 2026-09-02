@@ -1,17 +1,20 @@
 // Scenario 2 — the one that actually sizes max_connections.
 //
 // Steady traffic at a level already known healthy, while a blue/green deploy
-// runs underneath it. For the length of the drain BOTH slots are alive, each
-// holding its own Npgsql pools, so the connection budget doubles:
+// runs underneath it. For the length of the drain BOTH slots of the deploying
+// application are alive, each holding its own Npgsql pools, so that one
+// application's footprint doubles:
 //
-//     steady   = instances x (18 + 8 + 2)
-//     draining = steady x 2                 <-- the peak nobody sizes for
+//     steady   = sum of every deployment's own per-instance total
+//     draining = steady + the largest single deployment   <-- the peak
+//                                                             nobody sizes for
 //
-// With two applications that is 56 steady and 112 during a deploy, against
-// max_connections = 128 less 3 reserved. The headroom nobody notices is ~13
-// slots, shared with pg_dump, psql and monitoring. A third application takes
-// the same arithmetic to 168 and over the edge — which is why this scenario
-// exists and why it is the gate before a major change, not the ramp test.
+// The deployments are not the same size — see deployment.deployments in
+// endpoints.json — and only one of them drains at a time, because deploy.yml
+// loops over the applications and deploy.sh blocks through the drain. The
+// budget the whole harness exists to size is that peak, not the steady state,
+// which is why this scenario is the gate before a major change and the ramp
+// test is not.
 //
 // This script only generates the load and marks the window. load-drill.sh
 // triggers the deploy at DEPLOY_AT seconds and pg-sample.sh records the peak.

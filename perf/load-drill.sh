@@ -269,7 +269,6 @@ VERDICT=0
 
 PEAK=$(awk -F',' '$4=="all" {if ($5+0 > m) m=$5+0} END {print m+0}' "$CSV")
 USABLE=$(( ${MAXCONN:-128} - ${RESERVED:-3} ))
-INSTANCES=$(jq -r '.deployment.instances // 1' "$CONFIG")
 PER_INSTANCE=$(jq -r '[.pools | to_entries[] | select(.value.maxPoolSize) | .value.maxPoolSize] | add // 0' "$CONFIG")
 
 echo "  peak client connections   $PEAK"
@@ -277,15 +276,57 @@ echo "  usable slots              $USABLE  (max_connections ${MAXCONN:-?} - ${RE
 
 PCT=$(( PEAK * 100 / (USABLE > 0 ? USABLE : 1) ))
 if   [ "$PCT" -ge 90 ]; then fail "peak used ${PCT}% of usable slots — no room for pg_dump, psql or an incident."; VERDICT=1
-elif [ "$PCT" -ge 75 ]; then warn "peak used ${PCT}% of usable slots — thin. Budget a third application before adding one."
+elif [ "$PCT" -ge 75 ]; then warn "peak used ${PCT}% of usable slots — thin. Budget the next application before adding one."
 else ok "peak used ${PCT}% of usable slots."
 fi
 
 # The projection the steady scenario cannot observe directly: during a drain
-# both slots are alive and the budget doubles.
-if [ "$SCENARIO" = "steady" ] && [ "$PER_INSTANCE" -gt 0 ]; then
-    WORST=$(( PER_INSTANCE * INSTANCES * 2 ))
-    echo "  blue/green worst case     $WORST  ($PER_INSTANCE per instance x $INSTANCES instances x 2 slots during drain)"
+# both slots of the deploying application are alive, each holding its own pools.
+#
+# The fleet is heterogeneous — deployments do not have the same pool sizes, and
+# they do not deploy together — so the model is a per-deployment one:
+#
+#   steady = sum of every deployment's own per-instance total
+#   worst  = steady + the largest single deployment's total
+#
+# The older `per-instance x instances x 2` said "every application drains at
+# once", which is not a deploy anyone performs: deploy.yml loops one app at a
+# time and deploy.sh blocks through the drain. That reading is still printed
+# below, because an operator is entitled to ask what would happen if it did
+# happen — it just does not decide the verdict.
+STEADY=0
+LARGEST=0
+LARGEST_NAME=""
+FLEET_DESC=""
+FLEET_COUNT=0
+while IFS="$(printf '\t')" read -r d_name d_total; do
+    [ -n "${d_name:-}" ] || continue
+    d_total=${d_total:-0}
+    FLEET_COUNT=$(( FLEET_COUNT + 1 ))
+    STEADY=$(( STEADY + d_total ))
+    if [ -z "$FLEET_DESC" ]; then FLEET_DESC="$d_name $d_total"
+    else FLEET_DESC="$FLEET_DESC + $d_name $d_total"
+    fi
+    if [ "$d_total" -gt "$LARGEST" ]; then LARGEST=$d_total; LARGEST_NAME=$d_name; fi
+done < <(jq -r '
+    .deployment.deployments // [] | .[]
+    | [ (.name // "?"), ([.pools | to_entries[] | .value] | add // 0) ] | @tsv' "$CONFIG")
+
+# Fallback for a config that has not been given a fleet: treat it as `instances`
+# copies of the application under test, which is the old uniform model and the
+# best guess available when nobody has written the fleet down.
+if [ "$FLEET_COUNT" -eq 0 ] && [ "$PER_INSTANCE" -gt 0 ]; then
+    INSTANCES=$(jq -r '.deployment.instances // 1' "$CONFIG")
+    STEADY=$(( PER_INSTANCE * INSTANCES ))
+    LARGEST=$PER_INSTANCE
+    LARGEST_NAME="the application under test"
+    FLEET_DESC="$INSTANCES x $PER_INSTANCE, assumed uniform — deployment.deployments is not set"
+fi
+
+if [ "$SCENARIO" = "steady" ] && [ "$STEADY" -gt 0 ]; then
+    WORST=$(( STEADY + LARGEST ))
+    echo "  fleet steady total        $STEADY  ($FLEET_DESC)"
+    echo "  blue/green worst case     $WORST  ($STEADY steady + $LARGEST for the largest single drain: $LARGEST_NAME)"
     if [ "$WORST" -ge "$USABLE" ]; then
         fail "a deploy under load would exceed the usable slots ($WORST > $USABLE). Run 'deploy-overlap' to see it happen, and cut a pool or raise max_connections before production."
         VERDICT=1
@@ -293,6 +334,16 @@ if [ "$SCENARIO" = "steady" ] && [ "$PER_INSTANCE" -gt 0 ]; then
         warn "a deploy under load reaches ${WORST}/${USABLE} slots. It fits, barely — one more application does not."
     else
         ok "a deploy under load fits: ${WORST}/${USABLE} slots."
+    fi
+
+    # The paranoid reading, reported and not enforced: every deployment drains
+    # at the same time. It is what the per-role CONNECTION LIMITs have to add up
+    # to, so it is worth a line even when the answer is comfortable.
+    ALL_DRAIN=$(( STEADY * 2 ))
+    if [ "$ALL_DRAIN" -ge "$USABLE" ]; then
+        warn "if every deployment drained at once the fleet would want ${ALL_DRAIN}/${USABLE} slots. Serialising deploys is what keeps that hypothetical; per-application roles with a CONNECTION LIMIT are what enforce it."
+    else
+        ok "simultaneous drains also fit: ${ALL_DRAIN}/${USABLE} slots — the budget does not rest on deploys being serialised."
     fi
 fi
 

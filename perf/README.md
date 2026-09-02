@@ -30,19 +30,28 @@ The good news is that a small pool is usually right. At 5 ms per query and three
 
 ## The window that actually sizes `max_connections`
 
-Steady state is not where the budget is tight. A blue/green deploy is:
+Steady state is not where the budget is tight. A blue/green deploy is — and the fleet is not uniform, so the arithmetic is per deployment, not one number times an instance count:
 
-```
-steady    = instances x (64 + 16 + 2)         two apps -> 164
-draining  = steady x 2                        both slots alive -> 328
-usable    = max_connections - superuser_reserved_connections   400 - 3 -> 397
-```
+| deployment | App | Users | DataProtection | per instance |
+|---|---|---|---|---|
+| `api.waa.ro` | 64 | 16 | 2 | 82 |
+| `api.waa.events` | 64 | 16 | 2 | 82 |
+| `fiscal.waa.ro` | 16 | — | 2 | **18** (headless: no users database) |
+| **steady** | | | | **182** |
+| + the largest single drain (one Waa slot) | | | | +82 |
+| **worst case, deploys serialised** | | | | **264** |
+| usable — `max_connections` 400 less 3 `superuser_reserved_connections` | | | | 397 |
+| headroom for `pg_dump`, `psql`, monitoring | | | | 133 |
 
-For the length of `drain_seconds` both slots hold their own Npgsql pools, so the budget doubles — and the ~69 remaining slots are shared with `pg_dump`, `psql` and monitoring. **A third application takes the same arithmetic to 492 and over the edge.**
+For the length of `drain_seconds` both slots of the *deploying* application hold their own Npgsql pools, so that one application's footprint doubles. Only one does: `deploy.yml` loops over the applications and `deploy.sh` blocks through the drain. Adding every deployment's drain together instead — 364 here — is a case nobody performs, and the older `82 x 3 apps x 2 slots = 492` was worse still, because it also charged the smallest deployment at the largest one's size. The drill prints both readings; the serialised one decides the verdict.
 
-Two guards that look like they cover an overflow and do not: `superuser_reserved_connections` and `ALTER DATABASE ... CONNECTION LIMIT` are both unenforced for superusers. While the applications connect as `postgres`, one of them can take every slot on the server, starve the other, and lock the operator out of the database it saturated. The line above still sizes the budget correctly — it just does not protect it.
+The numbers' home is the live inventory, above `postgres_max_connections`; the arithmetic is explained once in the application repository (`statics/docs/fiscal/OPERATIONS.md` §1.1), and [`scenarios/endpoints.json`](scenarios/endpoints.json) is the copy this harness computes from. Keep the three in step — nothing enforces it.
 
-That is the whole reason `deploy-overlap` exists, and why it is the scenario to run before a major change. `steady` cannot observe this window; it projects it arithmetically and warns.
+Serialised deploys stop being an honour system once each deployment connects as its own non-superuser role with a `CONNECTION LIMIT` equal to its drain-doubled footprint — 164 + 164 + 36 = 364, which with the 3 reserved is 367 of 400, so even simultaneous drains fit and no application can take a slot that belongs to another. Until those roles exist every application connects as `postgres`, a superuser, for which both `superuser_reserved_connections` and `ALTER DATABASE ... CONNECTION LIMIT` are unenforced: one application can take every slot on the server, starve the others, and lock the operator out of the database it saturated. The table above sizes the budget either way; the roles are what protect it.
+
+`api.educa.ro` is deliberately absent: it is not deployed. At its proposed 32 + 8 + 2 = 42 it takes steady to 224 and the worst case to 306 of 397 — but the sum of caps to 448, over the usable 397. Onboarding it means cutting a Waa pool or raising `max_connections`. Redo the table then.
+
+That window is the whole reason `deploy-overlap` exists, and why it is the scenario to run before a major change. `steady` cannot observe it; it projects it arithmetically and warns.
 
 ## Two environments
 
@@ -70,14 +79,18 @@ docker compose exec -T postgres pg_restore -U postgres -d waa_ro_app --no-owner 
 
 The nightly logical dump the `postgres` role writes is exactly the right input. **Anonymise it if the drill box is not as protected as production** — a copy of the production database is production data wherever it lives.
 
+`--no-owner` belongs here and only here. The nightly dumps carry ownership and grants, because a restore that drops them hands the application a database it cannot write to; the drill box has none of the production roles, so it takes the data and leaves the ownership behind. A restore that is meant to *replace* production must not pass it — see the drill in [`native/example`](../native/example).
+
 ## Configuring it for your application
 
-The harness knows nothing about any specific app. Everything app-shaped is in [`scenarios/endpoints.json`](scenarios/endpoints.json): the traffic mix and weights, the pool sizes per connection string, the deployment shape, and the fixture queries that spread load across real rows instead of hammering one.
+The harness knows nothing about any specific app. Everything app-shaped is in [`scenarios/endpoints.json`](scenarios/endpoints.json): the traffic mix and weights, the pool sizes per connection string, the fleet the database is shared with, and the fixture queries that spread load across real rows instead of hammering one.
 
-Two entries there are easy to overlook and both invalidate a run if wrong:
+Four entries there are easy to overlook, and three of them invalidate a run if wrong:
 
-- **`pools`** — must mirror the `Maximum Pool Size` values in the app's actual connection strings. This is what the verdict compares against to distinguish a pool ceiling from a server ceiling.
+- **`pools`** — the application *under test*: must mirror the `Maximum Pool Size` values in its actual connection strings. This is what the verdict compares against to distinguish a pool ceiling from a server ceiling, and its `app.database` is the drill's `PGDATABASE`.
+- **`deployment.deployments`** — every application sharing the production Postgres, each with its own pool set. This is the budget half, and it is separate from `pools` because the fleet is not on the drill box. A config that omits it falls back to `deployment.instances` copies of the app under test — the old uniform model, which is a guess.
 - **`clientIp`** — the header the app trusts for client identity. Rate limiting partitions by client IP; the public policy is 64 requests/minute. Without per-VU IPs the entire load collapses into one partition and the drill measures the limiter at about 1 req/s — passing every latency threshold while proving nothing. A single `429` aborts the run and voids the result, on purpose.
+- **`headers.set`** — static headers sent with every request, for a host that will not answer without a credential. FiscalServer is the case: every route but `/.well-known/ready`, `/.well-known/live` and the ANAF callback answers a bodiless `401` without a valid `x-api-key`. A value written `${NAME}` is read from the environment at k6 init and the run refuses to start when it is unset, so the key is exported, never committed. An entry in `traffic` may carry its own `headers` object, merged over these. **It ships empty**: FiscalServer is inert, and which of its routes are worth loading is an operator's choice — the seam is here, the traffic mix is not.
 
 ## Reading the verdict
 
@@ -85,11 +98,15 @@ Two entries there are easy to overlook and both invalidate a run if wrong:
   peak client connections   58
   usable slots              397  (max_connections 400 - 3 reserved)
 [ OK ] peak used 14% of usable slots.
-  blue/green worst case     328  (82 per instance x 2 instances x 2 slots during drain)
-[ OK ] a deploy under load fits: 328/397 slots.
+  fleet steady total        182  (api.waa.ro 82 + api.waa.events 82 + fiscal.waa.ro 18)
+  blue/green worst case     264  (182 steady + 82 for the largest single drain: api.waa.ro)
+[ OK ] a deploy under load fits: 264/397 slots.
+[ OK ] simultaneous drains also fit: 364/397 slots — the budget does not rest on deploys being serialised.
 [WARN] 'waa_ro_app' sat at its pool ceiling (64) for 47/180 samples — requests were queueing for a
        connection. Postgres was not the limit; the fix is a faster query or a larger pool.
 ```
+
+The two projection lines answer different questions. `blue/green worst case` is what a deploy actually costs and is the one that can fail the run. The line under it is the paranoid reading — every deployment draining at the same moment — reported because it is what the per-deployment `CONNECTION LIMIT`s have to add up to, and warned about rather than failed, since nothing schedules deploys that way.
 
 Each run writes to `runs/<scenario>-<timestamp>/`: `pg-sample.csv` (tidy, one row per database/state/second), `k6-summary.json`, `k6.log`, and `deploy.log` for overlap runs. Keep the ones from before and after a major upgrade — the pair is the evidence, either one alone is an anecdote.
 
