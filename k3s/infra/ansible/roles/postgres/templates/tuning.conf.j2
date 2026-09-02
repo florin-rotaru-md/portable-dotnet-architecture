@@ -6,9 +6,26 @@
 {% set ram_mb = ansible_facts['memtotal_mb'] | int %}
 
 # Connection slots are policy, not RAM: sum the Maximum Pool Size of every
-# connection string an application instance opens, multiply by the number of
-# applications, double it for the blue/green drain (both slots hold their own
-# pools for drain_seconds), then leave headroom for psql/monitoring/backup.
+# connection string one application instance opens, add those per-application
+# totals together for every application sharing this cluster, then add the
+# largest single one back for the length of a deploy (the outgoing and incoming
+# instances of that one application both hold their own pools for
+# drain_seconds), and leave headroom for psql/monitoring/backup. Not one
+# per-instance total multiplied by the application count and doubled, which
+# this template used to say: that charges the smallest deployment at the
+# largest one's size and assumes every application drains at the same moment.
+# The all-drain sum is a secondary check, not the verdict.
+#
+# Deploys taken one at a time are what make that the worst case, and it stays
+# an honour system: whatever serialises deploys does, not the database. A
+# per-deployment non-superuser role with its own CONNECTION LIMIT is what would
+# enforce it. Where every deployment connects as postgres, a superuser, both
+# superuser_reserved_connections and ALTER DATABASE ... CONNECTION LIMIT are
+# unenforced, and one application can take every slot on the server, starve the
+# others and lock the operator out of the database it saturated. The usable
+# ceiling this budget subtracts from is max_connections less
+# superuser_reserved_connections, whose default is 3; this template does not
+# write that setting out, so the running value is Postgres' own.
 # A RAM upgrade does not move this number; adding an application does.
 max_connections = {{ postgres_max_connections | default(128) }}
 

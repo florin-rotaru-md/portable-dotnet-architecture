@@ -11,10 +11,22 @@ DATABASES=$(docker exec postgres \
   psql -U postgres -tAc \
   "SELECT datname FROM pg_database WHERE datistemplate = false AND datname NOT IN ('postgres')")
 
+# Ownership and ACLs are deliberately kept. A dump that records the real owner
+# is strictly more faithful than one that discards it, and it costs nothing
+# while every database is owned by the postgres superuser: the dump simply
+# writes `postgres` and the restore reproduces it. --no-owner --no-acl would
+# throw that away for no gain, and would become an active defect the day any
+# database is owned by something else, turning a restore into a database with
+# no owner and no grants that the application cannot write to, discovered at
+# the drill rather than at the restore.
+#
+# --no-owner belongs on the RESTORE side instead, and only when the target
+# deliberately lacks the source's roles — a load-drill or analysis box. A
+# restore meant to replace production must not pass it.
 for DB in $DATABASES; do
   DEST="${BACKUP_DIR}/${DB}_${STAMP}.sql.gz"
   echo "[$(date -Iseconds)] Backing up ${DB} → ${DEST}"
-  docker exec postgres pg_dump -U postgres --no-owner --no-acl "$DB" \
+  docker exec postgres pg_dump -U postgres "$DB" \
     | gzip > "$DEST"
   chmod 600 "$DEST"
 done

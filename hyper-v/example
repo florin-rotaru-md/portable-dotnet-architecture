@@ -182,13 +182,43 @@ postgres_auto_minor_upgrades: true
 
 # ── Postgres tuning (conf.d/10-tuning.conf) ───────────────────────────────────
 # max_connections is policy, not RAM: it follows the Maximum Pool Size caps in
-# the connection strings, doubled for the length of a blue/green drain (both
-# slots hold their own pools), plus headroom for psql/monitoring/backup:
+# the connection strings, and the window that sizes it is a deploy, not rush
+# hour. Add up what every deployment sharing the cluster holds at rest, then
+# add the largest single one back for the length of a drain (both slots of the
+# deploying app hold their own pools), plus headroom for psql/monitoring and
+# backup. Not one per-instance total multiplied by an application count and
+# doubled, which this file used to say: that charges the smallest deployment at
+# the largest one's size and assumes every application drains at once.
 #
-#   82 per instance x 2 applications x 2 slots = 328, inside 400 - 3 reserved.
+# The live estate — which runs on native/ + proxmox-lab/, never from here — now
+# has three deployments on one cluster: api.waa.ro 82, api.waa.events 82 and
+# fiscal.waa.ro 18 (headless, no users database).
 #
-# A RAM upgrade does not move it; a third application does. perf/load-drill.sh
-# recomputes this and fails the run when it stops fitting.
+#   82 + 82 + 18 = 182 steady, + 82 for the largest single drain = 264,
+#   inside 400 - 3 reserved = 397.
+#
+# The all-drain reading, 164 + 164 + 36 = 364, is worth printing as a secondary
+# check and is not the verdict. That table's home is the live inventory, above
+# postgres_max_connections, mirrored in native/example and explained once in
+# statics/docs/fiscal/OPERATIONS.md §1.1; applications[] below is this
+# setup's own and does not have to match it.
+#
+# Deploys taken one at a time are what make 264 the worst case, and that stays
+# an honour system: the deploy playbook serialises them, not the database.
+# Per-deployment non-superuser roles with a CONNECTION LIMIT are what would
+# enforce it, and there are none — every deployment connects as postgres, a
+# superuser, and owns its own databases, chosen for one backup and restore
+# story. For a superuser both superuser_reserved_connections and
+# ALTER DATABASE ... CONNECTION LIMIT are unenforced, so the starvation hole is
+# open for all of them: one application can take every slot on the server,
+# starve the others and lock the operator out of the database it saturated.
+# Subtracting the 3 keeps the budget conservative rather than reserving
+# anything from anybody; the only cap that binds is Maximum Pool Size on each
+# connection string, which is client-side and always enforced.
+#
+# A RAM upgrade does not move it; another deployment does. perf/load-drill.sh
+# recomputes this from scenarios/endpoints.json and fails the run when it stops
+# fitting.
 postgres_max_connections: 400
 
 # Everything else derives from the host's RAM on every playbook run

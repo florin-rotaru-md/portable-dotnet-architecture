@@ -36,13 +36,39 @@ postgres_auto_minor_upgrades: true
 
 # ── Postgres tuning (conf.d/10-tuning.conf) ───────────────────────────────────
 # max_connections is policy, not RAM: it follows the Maximum Pool Size caps in
-# the connection strings, doubled for the length of a blue/green drain (both
-# slots hold their own pools), plus headroom for psql/monitoring/backup:
+# the connection strings, and the window that sizes it is a deploy, not rush
+# hour:
 #
-#   82 per instance x 2 applications x 2 slots = 328, inside 400 - 3 reserved.
+#   steady     = the sum, over every deployment sharing this cluster, of that
+#                deployment's own per-instance pools
+#   worst case = steady + the largest single deployment's pools, because for
+#                the length of a deploy the outgoing and incoming instances of
+#                that one deployment both hold their own (a blue/green drain,
+#                a rolling update — the same window)
 #
-# A RAM upgrade does not move it; a third application does. perf/load-drill.sh
-# recomputes this and fails the run when it stops fitting.
+# read against max_connections less superuser_reserved_connections (Postgres'
+# default is 3), with headroom left for psql/monitoring/backup. Not one
+# per-instance total multiplied by an application count and doubled, which this
+# file used to say: that charges the smallest deployment at the largest one's
+# size and assumes every application drains at the same moment. That all-drain
+# sum is worth computing as a secondary check; it is not the verdict.
+#
+# Deploys taken one at a time are what make the worst case the worst case, and
+# that stays an honour system: whatever serialises deploys does, not the
+# database. A per-deployment non-superuser role with its own CONNECTION LIMIT
+# is what would enforce it. Where every deployment instead connects as
+# postgres, a superuser, both superuser_reserved_connections and
+# ALTER DATABASE ... CONNECTION LIMIT are unenforced and the starvation hole is
+# open: one application can take every slot on the server, starve the others
+# and lock the operator out of the database it saturated. Subtracting the
+# reserve keeps the budget conservative rather than reserving anything from
+# anybody; the only cap that binds is Maximum Pool Size on each connection
+# string, which is client-side and always enforced.
+#
+# A RAM upgrade does not move it; another deployment does. The live estate's
+# own worked table lives in the live inventory and in native/example;
+# perf/load-drill.sh recomputes it from scenarios/endpoints.json and fails the
+# run when it stops fitting.
 postgres_max_connections: 400
 
 # Everything else derives from the host's RAM on every playbook run
@@ -191,9 +217,9 @@ applications:
       RequestLogging:
         BodyMinimumStatusCode: 400
       # Npgsql keeps one pool per unique connection string; Maximum Pool Size
-      # caps each pool, and postgres_max_connections above is sized from the
-      # total — doubled, because a blue/green drain has both slots holding
-      # their own pools. The pool is a ceiling, not a target: Npgsql opens
+      # caps each pool, and postgres_max_connections above carries the
+      # arithmetic that turns these per-deployment totals into a server
+      # ceiling. The pool is a ceiling, not a target: Npgsql opens
       # connections on demand, and past what the database can execute at once
       # a larger pool only moves the queue from the application into Postgres.
       # Keepalive=60 lets the pool detect and evict connections killed by a

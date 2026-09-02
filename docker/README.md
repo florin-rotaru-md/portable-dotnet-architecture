@@ -171,7 +171,7 @@ procedure, including the two-channel split between infrastructure and applicatio
 |-------------------------|---------------------------------------------------------|
 | `applications`          | List of app definitions (see below)                     |
 | `postgres_image`        | Full Postgres image (default `postgis/postgis:18-3.6`)  |
-| `postgres_max_connections` | Server connection ceiling (example 400, sized from the per-app pool budgets doubled for a blue/green drain) |
+| `postgres_max_connections` | Server connection ceiling (example 400: every deployment's own pools summed, plus the largest single one again for the length of a deploy) |
 | `backup_retention_days` | Days to keep nightly dumps (default 7)                  |
 | `use_cloudflared`       | `true` to install Cloudflare Tunnel                     |
 | `cloudflared_version`   | Pin the connector, e.g. `"2026.8.2"`; unset = repo default |
@@ -212,14 +212,22 @@ URLs.  Everything else stays in the image's `appsettings.json`.
 
 Npgsql keeps one pool per unique connection string, so give every string an explicit
 `Maximum Pool Size` — the example budgets 64 for the hot path, 16 for auth and 2 for
-the key ring, and `postgres_max_connections` is sized from that total doubled, because
-a blue/green drain has both slots holding their own pools. Treat the pool as a ceiling
-rather than a target: past what the database can execute at once, a larger pool moves
-the queue out of the application and into Postgres, where every query slows down
-instead of some of them waiting. `Keepalive=60` lets each pool detect and evict
-connections killed by a Postgres restart (container recreate, minor image update)
-before requests trip over them; `Timeout=5`, `Command Timeout=30` and
-`Connection Idle Lifetime=60` replace three defaults that bite under load — see
+the key ring, and `postgres_max_connections` is sized by summing that per-deployment
+total across every deployment sharing the cluster and adding the largest single one
+again, because for the length of a deploy both slots of the *deploying* application
+hold their own pools. It is not one deployment's total multiplied by the application
+count and doubled — that charges the smallest deployment at the largest one's size and
+assumes they all drain at once. Nothing in the database enforces the result: where
+every deployment connects as `postgres`, a superuser, both
+`superuser_reserved_connections` and `ALTER DATABASE ... CONNECTION LIMIT` are
+unenforced, so one application can take every slot on the server and `Maximum Pool
+Size` is the only cap that binds. Treat the pool as a ceiling rather than a target:
+past what the database can execute at once, a larger pool moves the queue out of the
+application and into Postgres, where every query slows down instead of some of them
+waiting. `Keepalive=60` lets each pool detect and evict connections killed by a
+Postgres restart (container recreate, minor image update) before requests trip over
+them; `Timeout=5`, `Command Timeout=30` and `Connection Idle Lifetime=60` replace
+three defaults that bite under load — see
 [`perf/README.md`](../perf/README.md#connection-string-settings-worth-fixing-first).
 
 Reference vault variables for secrets:
