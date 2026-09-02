@@ -58,9 +58,11 @@ applications:
     # headless_browser: true
     # repo_token: "{{ app_repo_token }}"
     # Npgsql keeps one pool per unique connection string; cap each with
-    # Maximum Pool Size, and size postgres_max_connections from the total —
-    # doubled, because a blue/green drain has both slots holding their own
-    # pools. The pool is a ceiling, not a target: Npgsql opens connections on
+    # Maximum Pool Size. postgres_max_connections above carries the
+    # arithmetic that turns these caps into a server ceiling — the sum over
+    # every deployment, plus the largest single one again for the length of
+    # a drain, not this total doubled.
+    # The pool is a ceiling, not a target: Npgsql opens connections on
     # demand, and past what the database can execute at once a larger pool
     # only moves the queue from the application into Postgres. Keepalive=60
     # lets the pool detect and evict connections killed by a Postgres restart
