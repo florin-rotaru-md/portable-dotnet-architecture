@@ -11,8 +11,9 @@
 # largest single one back for the length of a blue/green drain (both slots of
 # the deploying app hold their own pools for drain_seconds) and leave headroom
 # for psql/monitoring/backup. Deploys taken one at a time are what make that
-# the worst case; per-application roles with a CONNECTION LIMIT are what stop
-# that being an honour system.
+# the worst case, and it stays an honour system: the deploy playbook is what
+# serialises them, not the database. See superuser_reserved_connections below
+# for why no CONNECTION LIMIT binds anything here.
 # A RAM upgrade does not move this number; adding an application does.
 max_connections = {{ postgres_max_connections | default(128) }}
 
@@ -24,7 +25,14 @@ max_connections = {{ postgres_max_connections | default(128) }}
 # It buys nothing while the applications connect as a superuser — the
 # reservation is unenforced for superusers, and so is
 # ALTER DATABASE ... CONNECTION LIMIT. Per-application non-superuser roles,
-# each with its own CONNECTION LIMIT, are what close that.
+# each with its own CONNECTION LIMIT, are what would close that; they do not
+# exist here. Every application on this cluster connects as the postgres
+# superuser and owns its own databases — chosen deliberately, for one backup
+# and restore story, with the hole accepted: one application can consume every
+# slot and starve the others. So the value below is written out to keep the
+# published budget arithmetic honest, not because it reserves anything from
+# anybody today. What actually bounds each application is Maximum Pool Size in
+# its connection strings, which is client-side and always enforced.
 superuser_reserved_connections = {{ postgres_superuser_reserved_connections | default(3) }}
 
 # 25% of RAM, the dedicated-host starting point. Postgres reads also flow

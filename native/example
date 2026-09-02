@@ -140,8 +140,12 @@ postgres_auto_minor_upgrades: true
 #   82 + 82 + 18 = 182 steady, + 82 for the largest single drain = 264,
 #   inside 400 - 3 reserved = 397.
 #
-# Deploys taken one at a time are what make 264 the worst case; per-application
-# roles with a CONNECTION LIMIT are what stop that being an honour system.
+# Deploys taken one at a time are what make 264 the worst case, and that stays
+# an honour system: the deploy playbook serialises them, not the database.
+# Per-application roles with a CONNECTION LIMIT are what would enforce it, and
+# there are none here — every application connects as the postgres superuser
+# and owns its own databases, which is one restore story bought at the price of
+# one application being able to starve the others.
 # A RAM upgrade does not move it; another application does. perf/load-drill.sh
 # recomputes this from scenarios/endpoints.json and fails the run when it stops
 # fitting.
@@ -149,6 +153,8 @@ postgres_max_connections: 400
 
 # Slots held back for superusers — Postgres' own default, rendered explicitly
 # so the number every budget above subtracts is asserted rather than inherited.
+# It reserves nothing from an application that connects as a superuser, which
+# is every application here; subtracting it keeps the budget conservative.
 # postgres_superuser_reserved_connections: 3
 
 # Everything else derives from the host's RAM on every playbook run
@@ -346,14 +352,17 @@ ansible-playbook playbooks/bootstrap.yml
 #
 # The dumps carry ownership and grants (pg-backup.sh no longer passes
 # --no-owner --no-acl), so the owning role has to exist before the data does.
-# On this cluster it already does; on a rebuilt one, restore
-# globals_<stamp>.sql.gz first — that file is where the per-application roles
-# and their CONNECTION LIMITs live, and nothing in Ansible re-creates them.
+# Every database here is owned by the postgres superuser, so on this cluster it
+# trivially does; on a REBUILT one, restore globals_<stamp>.sql.gz first —
+# nothing in Ansible creates a role, not even the superuser's password.
 #
-# Create the scratch database with the same owner the real one has, restore
-# into it, then look at who owns the tables: the application role should own
-# the application's tables. Anything an extension created (PostGIS'
-# spatial_ref_sys, for one) stays with postgres, and that is correct.
+# Create the scratch database with the same owner the real one has — the query
+# below reads it rather than assuming it, which is what keeps this recipe
+# correct if ownership ever moves — restore into it, then look at who owns the
+# tables. They should all read that same owner. Anything an extension created
+# (PostGIS' spatial_ref_sys, for one) stays with postgres, and that is correct.
+# Read the ownership listing: pg_restore reports ownership errors WITHOUT
+# failing, so its exit code is not the check.
 # ssh devops@192.168.0.21 '
 #   OWNER=$(sudo -u postgres psql -Atqc "SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname = '\''<db>'\''") &&
 #   sudo -u postgres createdb -O "$OWNER" restore_test &&

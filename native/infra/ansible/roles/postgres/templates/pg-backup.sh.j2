@@ -17,29 +17,34 @@ fi
 
 mkdir -p "$BACKUP_DIR"
 
-# Globals (roles, their passwords and their CONNECTION LIMITs, tablespaces).
+# Globals (roles, their passwords, any CONNECTION LIMITs, tablespaces).
 # This is the first half of a restore and it has to be restored FIRST: the
 # per-database dumps below name their owner and their grantees, and a role that
-# does not exist yet is an error, not a silent skip. It is also the only record
-# of the per-application roles — nothing in Ansible creates them, so a rebuilt
-# cluster gets them from here or not at all.
+# does not exist yet is an error, not a silent skip. Today that owner is the
+# postgres superuser for every database, so this file is what carries its
+# password to a rebuilt cluster; it is also the only record of any application
+# role, should one ever be created — nothing in Ansible creates roles.
 pg_dumpall -U postgres --globals-only | gzip > "${BACKUP_DIR}/globals_${STAMP}.sql.gz"
 chmod 600 "${BACKUP_DIR}/globals_${STAMP}.sql.gz"
 
 # Per-database custom-format dumps (parallel restore friendly).
 #
-# Ownership and ACLs are deliberately kept. --no-owner --no-acl used to be
-# harmless because every database was owned by the postgres superuser and there
-# was nothing to lose; once a deployment owns its own databases through its own
-# non-superuser role, those two flags turn a restore into a database with no
-# owner and no grants — the application cannot write to what it just restored,
-# and nobody finds out until the drill. Keeping them costs nothing while
-# ownership is still uniform: the dump simply records `postgres` and the
-# restore reproduces it.
+# Ownership and ACLs are deliberately kept. A dump that records the real owner
+# is strictly more faithful than one that discards it, and it costs nothing
+# here: every database on this cluster is owned by the postgres superuser, so
+# the dump simply writes `postgres` and the restore reproduces it. --no-owner
+# --no-acl would throw that away for no gain — and would become an active
+# defect the day any database is owned by something else, turning a restore
+# into a database with no owner and no grants that the application cannot write
+# to, discovered at the drill rather than at the restore.
+#
+# --no-owner belongs on the RESTORE side instead, and only when the target
+# deliberately lacks the source's roles — a load-drill or analysis box. A
+# restore meant to replace production must not pass it.
 #
 # The restoring identity must be able to hand objects to their owner, which is
 # why the drill and the real thing both run as the postgres superuser over peer
-# auth — a CONNECTION LIMIT on an application role never applies to it.
+# auth.
 DATABASES=$(psql -U postgres -tAc \
   "SELECT datname FROM pg_database WHERE datistemplate = false AND datname NOT IN ('postgres')")
 
