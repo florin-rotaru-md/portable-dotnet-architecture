@@ -182,7 +182,7 @@ applications:
     # repo_token: "{{ app_repo_token }}"
     appsettings_override:
       # Levels only — and only for an app that calls ReadFrom.Configuration; anything written
-      # here reaches a logger built purely in code as inert JSON. Statics-based apps read this
+      # here reaches a logger built purely in code as inert JSON. Platform-based apps read this
       # section, having already applied their own baseline, so what follows raises a category
       # back up for the length of an incident without a deploy.
       #

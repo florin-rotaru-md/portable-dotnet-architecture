@@ -110,6 +110,6 @@ deciding whether the replication schedule or the backup cadence needs tightening
 | External uptime probe on the public ready endpoint | total loss — the only observer that does not live on the cluster | everything subtler than "down" |
 
 Three layers, each covering the one above it. The first exists since Stage 2.4; the second is
-specified in the app repository (`statics/docs/adr/0015-infrastructure-verification.md`); the
+specified in the app repository (`platform/docs/adr/0015-infrastructure-verification.md`); the
 third is a five-minute setup with any external uptime service, using the same
 `/.well-known/ready` URL the deploy script already trusts.

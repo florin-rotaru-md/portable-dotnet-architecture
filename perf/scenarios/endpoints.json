@@ -120,7 +120,7 @@
       "'everything drains at once' figure is printed too, but it does not decide the verdict.",
       "",
       "Keep this in step with the connection strings in the live inventory. It is the same table as",
-      "statics/docs/fiscal/OPERATIONS.md 1.1, which is where the arithmetic is explained."
+      "platform/docs/fiscal/OPERATIONS.md 1.1, which is where the arithmetic is explained."
     ],
     "drainSeconds": 32,
     "deployments": [

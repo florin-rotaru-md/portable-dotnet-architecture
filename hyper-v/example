@@ -200,7 +200,7 @@ postgres_auto_minor_upgrades: true
 # The all-drain reading, 164 + 164 + 36 = 364, is worth printing as a secondary
 # check and is not the verdict. That table's home is the live inventory, above
 # postgres_max_connections, mirrored in native/example and explained once in
-# statics/docs/fiscal/OPERATIONS.md §1.1; applications[] below is this
+# platform/docs/fiscal/OPERATIONS.md §1.1; applications[] below is this
 # setup's own and does not have to match it.
 #
 # Deploys taken one at a time are what make 264 the worst case, and that stays
@@ -319,7 +319,7 @@ applications:
     # health_max_attempts: 16
     # health_interval_seconds: 4
     drain_seconds: 32
-    repo_url:      "https://github.com/florin-rotaru-md/statics.git"
+    repo_url:      "https://github.com/florin-rotaru-md/platform.git"
     repo_branch:   "master"
     project_path:  "Apps/Waa/Waa.Server/Waa.Server.csproj"
     headless_browser: true

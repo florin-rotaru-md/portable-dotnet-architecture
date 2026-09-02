@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # infra-report — runs a helper script unchanged, then POSTs its outcome to the
-# app's infra monitor (statics ADR-0015, POST /api/infra/reports).
+# app's infra monitor (platform ADR-0015, POST /api/infra/reports).
 #
 #   infra-report cluster-health --quiet
 #

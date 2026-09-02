@@ -1,7 +1,7 @@
 # CLAUDE.md
 
 Infrastructure for the Waa/Educa platform. The application repositories are siblings:
-`statics/` (backend, start at `statics/docs/START-HERE.md`) and `ui/waa-src/` (frontend).
+`platform/` (backend, start at `platform/docs/START-HERE.md`) and `ui/waa-src/` (frontend).
 
 ## What is live, and what is a reference
 
@@ -32,9 +32,9 @@ Infrastructure for the Waa/Educa platform. The application repositories are sibl
   than the role (no tuning, no observability, no backups, no WAL stream) and was deleted. Tuning
   lives in `roles/postgres/templates/tuning.conf.j2`, derived from the VM's RAM.
 - Application-side operations (deploy order, restart-required settings, reading a failed boot) live
-  in `statics/docs/OPERATIONS.md` §1 and §5, not here.
+  in `platform/docs/OPERATIONS.md` §1 and §5, not here.
 
 ## Citing across repositories
 
-Prefix the path: `statics/docs/adr/0015-…md`, `waa-src/cloudflare/README.md`. An unqualified
+Prefix the path: `platform/docs/adr/0015-…md`, `waa-src/cloudflare/README.md`. An unqualified
 `docs/…` is ambiguous between three repositories and has already gone stale twice.
