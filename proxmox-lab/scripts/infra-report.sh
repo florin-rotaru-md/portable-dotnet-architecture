@@ -9,14 +9,24 @@
 # values the arrival as much as the content: a report landing daily is the
 # proof the cron layer itself is alive, the one failure root mail cannot see.
 #
-# Config: /etc/waa-infra-report.conf (root:root 600), two lines:
+# Config: /etc/infra-report.conf (root:root 600), two lines:
 #   INFRA_URL="https://<api-origin>/api/infra/reports"
 #   INFRA_TOKEN="<InfraMonitor:IngestToken>"
 # No config file = run the script normally and skip the report, so a node
 # without the app configured behaves exactly as before this wrapper existed.
+#
+# THAT PASS-THROUGH IS ALSO THE HAZARD, and it is why this path is never changed
+# on a node before the new file exists. The file was /etc/waa-infra-report.conf
+# until the estate dropped the product prefix; a node still holding only the old
+# name gets the no-config branch — the wrapped script runs, prints the same
+# output, exits with the same code, cron mails the same bytes, and the reports
+# simply stop. Nothing on the host says so, and the first symptom is the app's
+# own freshness check warning "silent for …" up to 26 hours later, pointing at a
+# dead cron rather than at a renamed file. Write the new file, verify a report
+# lands, and only then remove the old one — platform docs/waa/infra/OPERATIONS.md §1.6.
 
 set -uo pipefail
-CONF=/etc/waa-infra-report.conf
+CONF=/etc/infra-report.conf
 
 script="${1:?usage: infra-report <script> [args…]}"
 shift

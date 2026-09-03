@@ -146,7 +146,7 @@ backup_retention_days: 7
 #
 # The live estate — which runs on native/ + proxmox-lab/, never from here — now
 # has three deployments on one cluster: api.waa.ro 82, api.waa.events 82 and
-# fiscal.waa.ro 18 (headless, no users database).
+# `fiscal` 18 (headless, no users database; it answers on fiscal.waa.ro).
 #
 #   82 + 82 + 18 = 182 steady, + 82 for the largest single drain = 264,
 #   inside 400 - 3 reserved = 397.

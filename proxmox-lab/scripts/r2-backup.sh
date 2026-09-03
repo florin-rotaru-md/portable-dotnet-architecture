@@ -8,17 +8,23 @@
 # key would be a permanent loss no VM backup can answer. This makes R2 a tier
 # like the others ([17.10](../backup/17-backup-restore.md)).
 #
-# TWO buckets since the split (platform docs/adr/0034-platform-rename.md D3b),
-# and both are mirrored here:
-#   app-storage  the applications' media — regenerable in part, and the reason
-#                this script was written.
-#   app-fiscal   the company's filed invoices and accounting packages. NOT
-#                regenerable and not erasable: a filed record's retention
-#                obligation outranks an erasure request, so losing one is a
-#                compliance failure rather than a broken image. It is written by
-#                FiscalServer alone and no application holds a key for it.
-# The mirror token must be scoped to BOTH; a token that reaches only the first
-# fails the second pass with NoSuchBucket (Stage 22, incident table).
+# THREE buckets since the split (platform docs/adr/0034-platform-rename.md D3b
+# and D3c) — one per product plus the company's — and all three are mirrored here:
+#   waa-storage    Waa's media, roots ro/ en/ dev/ — regenerable in part, and the
+#                  reason this script was written.
+#   educa-storage  Educa's media. Empty until Educa deploys; an empty bucket
+#                  mirrors as an empty directory, not as an error.
+#   app-fiscal     the company's filed invoices and accounting packages. It keeps
+#                  the estate name deliberately: the ledger belongs to the legal
+#                  entity, not to a product. NOT regenerable and not erasable — a
+#                  filed record's retention obligation outranks an erasure
+#                  request, so losing one is a compliance failure rather than a
+#                  broken image. Written by FiscalServer alone and no application
+#                  holds a key for it.
+# The mirror token must be scoped to ALL THREE; a token that reaches only some of
+# them fails the remaining passes with NoSuchBucket (Stage 22, incident table).
+# Adding a product means adding its bucket to BUCKETS below and rescoping that
+# one token — the mirror is the one place the three are deliberately joined.
 #
 # Deletions are part of the design: `rclone sync` mirrors them (an erasure
 # request must eventually reach the backups too), but everything deleted or
@@ -38,7 +44,7 @@
 set -euo pipefail
 
 RCLONE_REMOTE=r2
-BUCKETS="app-storage app-fiscal"   # space-separated; add buckets as the estate grows
+BUCKETS="waa-storage educa-storage app-fiscal"   # space-separated; one per product, plus the company's
 USB_MOUNT=/mnt/usb-backup
 DEST_ROOT=$USB_MOUNT/r2
 TRASH_KEEP_DAYS=30

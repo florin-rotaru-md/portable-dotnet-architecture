@@ -133,7 +133,7 @@
         "pools": { "app": 64, "users": 16, "dataProtection": 2 }
       },
       {
-        "name": "fiscal.waa.ro",
+        "name": "fiscal",
         "pools": { "app": 16, "dataProtection": 2 },
         "note": "Headless — no users database (ADR-0032 D13). 16 here is the connection-string Maximum Pool Size, not FiscalDbContextExtensions.AppPoolSize, which is a DbContext instance pool and caps no connection; they are deliberately set to the same number."
       }

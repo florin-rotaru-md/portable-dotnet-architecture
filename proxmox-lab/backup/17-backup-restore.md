@@ -302,16 +302,18 @@ encrypted, with everything else.
 **One-time setup, on pve1:**
 
 1. In the Cloudflare dashboard: **R2 → Manage API Tokens → Create API Token** — permission
-   **Object Read only**, scoped to **both** buckets: `app-storage` (the applications' media) and
-   `app-fiscal` (the company's filed invoices and accounting packages, written by FiscalServer
-   alone). They were one bucket, `statics-waa`, until the split — platform
-   `docs/adr/0034-platform-rename.md` D3b. A token that covers only one fails the other pass with
-   `NoSuchBucket`.
+   **Object Read only**, scoped to **all three** buckets: `waa-storage` and `educa-storage` (one
+   per product, the applications' media) and `app-fiscal` (the company's filed invoices and
+   accounting packages, written by FiscalServer alone — it keeps the estate name because the
+   ledger belongs to the legal entity, not to a product). They were one bucket, `statics-waa`,
+   until the split — platform `docs/adr/0034-platform-rename.md` D3b and D3c. A token that covers
+   only some of them fails the remaining passes with `NoSuchBucket`.
 
    Read-only is the point: the backup host must never hold a key that can delete production media,
-   so a compromise of pve1 cannot become a compromise of either bucket. This is also the **only**
-   credential in the estate that legitimately spans both — the apps' write token reaches
-   `app-storage` alone and the ledger's reaches `app-fiscal` alone, and neither may be widened.
+   so a compromise of pve1 cannot become a compromise of any bucket. This is also the **only**
+   credential in the estate that legitimately spans them — every write token reaches exactly one
+   bucket (`waa_r2_*` → `waa-storage`, `educa_r2_*` → `educa-storage`, `fiscal_r2_*` →
+   `app-fiscal`) and none of them may be widened.
 2. Configure the remote (the S3 endpoint is on the same dashboard page):
    ```bash
    rclone config
@@ -319,7 +321,8 @@ encrypted, with everything else.
    # access_key_id / secret_access_key: from the token you just created
    # endpoint: https://<account-id>.r2.cloudflarestorage.com
    ```
-3. `rclone lsd r2:` — it must list **both** buckets; then `rclone ls r2:app-storage | head`. If
+3. `rclone lsd r2:` — it must list **every** bucket named in `BUCKETS`; then
+   `rclone ls r2:waa-storage | head`. If
    that lists objects, the tier works; the cron entry from
    [`install-scripts.sh`](../scripts/README.md) (03:30) does the rest, for every bucket named in
    `BUCKETS` in [`r2-backup.sh`](../scripts/r2-backup.sh).
@@ -336,7 +339,7 @@ copy, on its own. No copy keeps what the law said to delete.
 **Restoring media** is `rclone copy` in the other direction — from the mirror (or from
 `digi-crypt:r2/...` if the drive is gone too) back into the bucket. Mint a **write-capable token
 for the occasion and revoke it afterwards**; the stored remote deliberately cannot write. A single
-lost object is `rclone copy /mnt/usb-backup/r2/app-storage/<path> r2rw:app-storage/<dir>`; a
+lost object is `rclone copy /mnt/usb-backup/r2/waa-storage/<path> r2rw:waa-storage/<dir>`; a
 prefix works the same way. The app addresses objects by stable paths (`{root}/events/{uid}/…`),
 so copied-back objects are immediately served — no database surgery involved. Restoring into
 `app-fiscal` is the same command with `--checksum` and a token scoped to that bucket alone: a

@@ -36,7 +36,7 @@ Steady state is not where the budget is tight. A blue/green deploy is — and th
 |---|---|---|---|---|
 | `api.waa.ro` | 64 | 16 | 2 | 82 |
 | `api.waa.events` | 64 | 16 | 2 | 82 |
-| `fiscal.waa.ro` | 16 | — | 2 | **18** (headless: no users database) |
+| `fiscal` | 16 | — | 2 | **18** (headless: no users database) |
 | **steady** | | | | **182** |
 | + the largest single drain (one Waa slot) | | | | +82 |
 | **worst case, deploys serialised** | | | | **264** |
@@ -100,7 +100,7 @@ Four entries there are easy to overlook, and three of them invalidate a run if w
   peak client connections   58
   usable slots              397  (max_connections 400 - 3 reserved)
 [ OK ] peak used 14% of usable slots.
-  fleet steady total        182  (api.waa.ro 82 + api.waa.events 82 + fiscal.waa.ro 18)
+  fleet steady total        182  (api.waa.ro 82 + api.waa.events 82 + fiscal 18)
   blue/green worst case     264  (182 steady + 82 for the largest single drain: api.waa.ro)
 [ OK ] a deploy under load fits: 264/397 slots.
 [ OK ] simultaneous drains also fit: 364/397 slots — the budget does not rest on deploys being serialised.

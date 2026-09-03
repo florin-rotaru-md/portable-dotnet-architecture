@@ -34,7 +34,7 @@ MAILTO=root
 # sync window has passed (backup-verify exits quietly on the non-USB node).
 # infra-report passes output and exit code through untouched (so the mail
 # behaviour is unchanged) and POSTs the outcome to the app's infra monitor —
-# a no-op until /etc/waa-infra-report.conf exists (ADR-0015 in the app repo).
+# a no-op until /etc/infra-report.conf exists (ADR-0015 in the app repo).
 0  7 * * * root /usr/local/sbin/infra-report cluster-health --quiet
 30 7 * * * root /usr/local/sbin/infra-report backup-verify  --quiet
 EOF
