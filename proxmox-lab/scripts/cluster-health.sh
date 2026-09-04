@@ -218,12 +218,19 @@ for dev in /dev/nvme?n1; do
 done
 
 # ── Power (node-aware) ────────────────────────────────────────────────────────
-if command -v upsc >/dev/null 2>&1; then
+# MODE decides whether NUT is meant to run at all. On this build it is `none` —
+# the UPS has no data path to pve1 (4.6) — while `upsc` stays installed with
+# nothing to answer it. A nightly warning nobody can act on is how the real ones
+# get skimmed past, so the intended state reports OK and says why.
+NUT_MODE=$(awk -F= '/^[[:space:]]*MODE=/ {gsub(/[" ]/, "", $2); print $2}' /etc/nut/nut.conf 2>/dev/null)
+if [ "$NUT_MODE" = "none" ]; then
+    ok "power: UPS not monitored by design — NUT disabled, no data cable (4.6)"
+elif [ -n "$NUT_MODE" ] && command -v upsc >/dev/null 2>&1; then
     UPS_STATUS=$(upsc ups@localhost ups.status 2>/dev/null)
     case "$UPS_STATUS" in
         OL*)  ok "power: UPS on line power" ;;
         OB*)  warn "power: RUNNING ON UPS BATTERY — an outage is in progress (4.4 timeline applies)" ;;
-        "")   warn "power: NUT installed but not answering — the UPS safety net is offline (Stage 4)" ;;
+        "")   warn "power: NUT enabled but not answering — the UPS safety net is offline (Stage 4)" ;;
         *)    warn "power: UPS status '$UPS_STATUS'" ;;
     esac
 fi

@@ -7,7 +7,7 @@ A two-node Proxmox VE cluster for a self-hosted app: ZFS replication, HA with au
 - **Node 1 `pve1`** — ThinkStation P2 Gen 2, Core Ultra 7 265, 64GB, 3× NVMe, Intel X550-T2
 - **Node 2 `pve2`** — HP ZBook Fury G10 16", i9-13850HX, 64GB, 3× NVMe, Thunderbolt 4 (role: failover)
 - QDevice: Dell Pro 14 (PC14250) — Core Ultra 5 225U, 16GB DDR5, 2TB NVMe, Debian 13, static `192.168.0.10`. Holds the third vote *and* the continuous WAL archive ([Stage 13](ha/13-wal-stream.md)); being a laptop, it also carries its own battery and needs [Stage 3](setup/03-laptop-node.md)'s lid/sleep treatment ([8.1](cluster/08-qdevice.md#81-the-box-and-its-os))
-- ~5h UPS, router with tested 5G failover (~30s), Cloudflare Tunnel already in place
+- ~5h UPS — **unmonitored**: no USB or network data port, so pve1 takes a hard cut when it runs dry ([4.6](setup/04-ups.md#46-disabled-on-this-build)) — router with tested 5G failover (~30s), Cloudflare Tunnel already in place
 
 ## Design decisions (vs the defaults you'd otherwise pick)
 
@@ -30,7 +30,7 @@ The result, in one paragraph: two nodes joined by a direct 10G cable (corosync L
 | [Stage 1 — Installation](setup/01-installation.md) | Proxmox installer choices, identical on both nodes |
 | [Stage 2 — Post-install](setup/02-post-install.md) | No-Subscription repositories (click-by-click), first upgrade, **CPU microcode + `fwupd` (2.2)**, hardware sanity check, helper scripts, each node's SSH key pair |
 | [Stage 3 — Laptop node](setup/03-laptop-node.md) | pve2 now, the QDevice later ([8.1](cluster/08-qdevice.md#81-the-box-and-its-os)): lid/sleep, battery-driven clean shutdown, TLP + dynamic CPU governor |
-| [Stage 4 — UPS monitoring](setup/04-ups.md) | pve1 only: NUT, clean shutdown when the UPS runs dry, the full long-outage timeline |
+| [Stage 4 — UPS monitoring](setup/04-ups.md) | pve1 only: NUT, clean shutdown when the UPS runs dry, the full long-outage timeline — **not in service**: this UPS has no data port, so NUT is disabled ([4.6](setup/04-ups.md#46-disabled-on-this-build)) |
 | [Stage 5 — Network](setup/05-network.md) | `vmbr0` on 1G, the 10G point-to-point link, the one-default-route rule |
 
 ### [cluster/](cluster/) — storage and quorum
@@ -91,7 +91,7 @@ The whole build, in execution order, with the two deliberate "come back later" p
 - [ ] **1** Install Proxmox — pve1, then pve2
 - [ ] **2** Post-install — repos, upgrade, **microcode + `fwupd` (2.2)**, hardware check, **helper scripts (2.4)**, **each node's key pair (2.5)** — both nodes
 - [ ] **3** Laptop config — pve2 here; the QDevice gets the same 3.1/3.2 at Stage 8
-- [ ] **4** UPS monitoring (NUT) — pve1 only
+- [x] **4** UPS monitoring (NUT) — pve1 only; **not applicable on this build**: the UPS has no data port, NUT disabled ([4.6](setup/04-ups.md#46-disabled-on-this-build))
 - [ ] **5** Network — `vmbr0` + 10G link, both nodes; verify one default route
 - [ ] **6** ZFS pools `apps` + `db` — both nodes, identical names; **un-pin the storages from their node** and **thin provision (6.1)**, both before any VM disk exists
 - [ ] **7** Cluster — two corosync rings, migration network

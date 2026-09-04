@@ -40,8 +40,8 @@ Steady state is not where the budget is tight. A blue/green deploy is — and th
 | **steady** | | | | **182** |
 | + the largest single drain (one Waa slot) | | | | +82 |
 | **worst case, deploys serialised** | | | | **264** |
-| usable — `max_connections` 400 less 3 `superuser_reserved_connections` | | | | 397 |
-| headroom for `pg_dump`, `psql`, monitoring | | | | 133 |
+| usable — `max_connections` 640 less 3 `superuser_reserved_connections` | | | | 637 |
+| headroom for `pg_dump`, `psql`, monitoring | | | | 373 |
 
 For the length of `drain_seconds` both slots of the *deploying* application hold their own Npgsql pools, so that one application's footprint doubles. Only one does: `deploy.yml` loops over the applications and `deploy.sh` blocks through the drain. Adding every deployment's drain together instead — 364 here — is a case nobody performs, and the older `82 x 3 apps x 2 slots = 492` was worse still, because it also charged the smallest deployment at the largest one's size. The drill prints both readings; the serialised one decides the verdict.
 
@@ -49,9 +49,9 @@ The numbers' home is the live inventory, above `postgres_max_connections`; the a
 
 **Serialised deploys are an honour system, and stay one.** Every deployment on this cluster connects as `postgres`, a superuser, and owns its own databases — chosen deliberately, for one backup and restore story, with the cost accepted. For a superuser both `superuser_reserved_connections` and `ALTER DATABASE ... CONNECTION LIMIT` are unenforced, so **the hole is open**: one application can take every slot on the server, starve the others, and lock the operator out of the database it saturated. Nothing in the paragraph above is protected by the database; 264 is what a deploy costs when deploys go one at a time, and `deploy.yml` looping is the only reason they do.
 
-What would close it — recorded, not in force — is each deployment connecting as its own non-superuser role with a `CONNECTION LIMIT` equal to its drain-doubled footprint: 164 + 164 + 36 = 364, which with the 3 reserved is 367 of 400, so even simultaneous drains would fit and no application could take a slot belonging to another. Those roles do not exist. The table above sizes the budget either way; it is `Maximum Pool Size` in the connection strings — client-side, and therefore actually enforced — that keeps the table true.
+What would close it — recorded, not in force — is each deployment connecting as its own non-superuser role with a `CONNECTION LIMIT` equal to its drain-doubled footprint: 164 + 164 + 36 = 364, and 448 once `api.educa.ro` adds its 84 — which with the 3 reserved is 451 of 640, so even simultaneous drains would fit and no application could take a slot belonging to another. **That sum is why the ceiling moved to 640 on 2026-09-03**: at 400 those four caps did not fit under the usable 397, so the roles could not have been installed without cutting a Waa pool first. They still do not exist — the ceiling was raised ahead of them, which means the hole above is for now *wider* (637 slots, not 397), and only closes when the roles land. The table above sizes the budget either way; it is `Maximum Pool Size` in the connection strings — client-side, and therefore actually enforced — that keeps the table true.
 
-`api.educa.ro` is deliberately absent: it is not deployed. At its proposed 32 + 8 + 2 = 42 it takes steady to 224 and the worst case to 306 of 397 — but the sum of caps to 448, over the usable 397. Onboarding it means cutting a Waa pool or raising `max_connections`. Redo the table then.
+`api.educa.ro` is deliberately absent from the sums: it is not deployed, and a paper reservation is how a number stops being checked. At its proposed 32 + 8 + 2 = 42 it takes steady to 224 and the worst case to 306 of 637. Add its row when it is deployed, and set `deployment.deployments` in [`scenarios/endpoints.json`](scenarios/endpoints.json) in the same edit — the drill computes the fleet from there, not from this table.
 
 That window is the whole reason `deploy-overlap` exists, and why it is the scenario to run before a major change. `steady` cannot observe it; it projects it arithmetically and warns.
 
@@ -98,12 +98,12 @@ Four entries there are easy to overlook, and three of them invalidate a run if w
 
 ```
   peak client connections   58
-  usable slots              397  (max_connections 400 - 3 reserved)
-[ OK ] peak used 14% of usable slots.
+  usable slots              637  (max_connections 640 - 3 reserved)
+[ OK ] peak used 9% of usable slots.
   fleet steady total        182  (api.waa.ro 82 + api.waa.events 82 + fiscal 18)
   blue/green worst case     264  (182 steady + 82 for the largest single drain: api.waa.ro)
-[ OK ] a deploy under load fits: 264/397 slots.
-[ OK ] simultaneous drains also fit: 364/397 slots — the budget does not rest on deploys being serialised.
+[ OK ] a deploy under load fits: 264/637 slots.
+[ OK ] simultaneous drains also fit: 364/637 slots — the budget does not rest on deploys being serialised.
 [WARN] 'waa_ro_app' sat at its pool ceiling (64) for 47/180 samples — requests were queueing for a
        connection. Postgres was not the limit; the fix is a faster query or a larger pool.
 ```

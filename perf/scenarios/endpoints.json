@@ -138,6 +138,6 @@
         "note": "Headless — no users database (ADR-0032 D13). 16 here is the connection-string Maximum Pool Size, not FiscalDbContextExtensions.AppPoolSize, which is a DbContext instance pool and caps no connection; they are deliberately set to the same number."
       }
     ],
-    "note": "api.educa.ro is not in this list because it is not deployed. At its proposed 32 + 8 + 2 = 42 it takes steady to 224 and the worst case to 306 of 397 — and the sum of the per-role CONNECTION LIMITs to 448, over the usable 397. Onboarding it means cutting a Waa pool or raising max_connections."
+    "note": "api.educa.ro is not in this list because it is not deployed. At its proposed 32 + 8 + 2 = 42 it takes steady to 224 and the worst case to 306 of 637, and the sum of the per-role CONNECTION LIMITs to 448 of 637 usable. Both fit since max_connections moved 400 -> 640 on 2026-09-03, and the second number is why it moved: option Full's per-role CONNECTION LIMITs did not fit under the old 397. Add its entry here in the same edit that adds it to the live inventory."
   }
 }
