@@ -41,7 +41,7 @@ pvesm set db   --delete nodes
 
 ## 6.1 Thin provisioning — set it before any VM disk exists
 
-The **Add Storage** checkbox above registers each pool with `sparse` **off**, which is the Proxmox default and the wrong one here. A thick zvol carries a ZFS `refreservation` equal to its declared size, so the 640GB postgres disk from [Stage 10](../vms/10-vms.md#grow-the-disk--per-vm) would claim 640GB of real NVMe the day it's created — for a database that starts near empty.
+The **Add Storage** checkbox above registers each pool with `sparse` **off**, which is the Proxmox default and the wrong one here. A thick zvol carries a ZFS `refreservation` equal to its declared size, so the 1024GB postgres disk from [Stage 10](../vms/10-vms.md#grow-the-disk--per-vm) would claim 1024GB of real NVMe the day it's created — for a database that starts near empty.
 
 Turn it on now, while both pools are still empty. `sparse` applies only to volumes created *after* it's set, and at this point there is nothing to migrate:
 
@@ -63,4 +63,4 @@ Two consequences worth understanding, because both bite silently:
 > pvesh get /nodes/pve2/storage                                       # apps and db listed and active
 > ```
 
-**This is not overcommit.** The declared sizes fit both pools even if every guest filled its disk to the last byte: `apps` carries the template plus 1020, 1021 and 1023 — 512GB of ~1.8TB usable — and `db` carries 1022's 640GB alone. Thin provisioning here reclaims space that was never written; it isn't a bet that the VMs stay small. The per-VM sizes are set in [Stage 10](../vms/10-vms.md#grow-the-disk--per-vm).
+**This is not overcommit.** The declared sizes fit both pools even if every guest filled its disk to the last byte: `apps` carries the template plus 1020, 1021 and 1023 — 512GB of ~1.8TB usable — and `db` carries 1022's 1024GB alone. Thin provisioning here reclaims space that was never written; it isn't a bet that the VMs stay small. The per-VM sizes are set in [Stage 10](../vms/10-vms.md#grow-the-disk--per-vm).

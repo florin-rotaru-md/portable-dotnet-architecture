@@ -22,7 +22,7 @@ GATEWAY=192.168.0.1
 VMS="\
 1020  control-ubuntu     apps  2  4096   -     192.168.0.20  -
 1021  app-ubuntu         apps  8  8192   128G  192.168.0.21  order=2
-1022  postgres-ubuntu    db    8  32768  640G  192.168.0.22  order=1,up=60
+1022  postgres-ubuntu    db    8  32768  1024G 192.168.0.22  order=1,up=60
 1023  monitoring-ubuntu  apps  2  4096   320G  192.168.0.23  order=3"
 
 ok()      { printf '[ OK ] %s\n' "$1"; }

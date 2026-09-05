@@ -34,7 +34,7 @@ Then adjust each clone **before its first boot** — the IP especially, because 
 |---|---|---|---|---|---|---|---|
 | 1020 | control-ubuntu | `apps` | 2 | 4 GiB | 32G — as cloned | 192.168.0.20/24, gw .1 | no |
 | 1021 | app-ubuntu | `apps` | 8 | 8 GiB | **128G** | 192.168.0.21/24, gw .1 | `order=2` |
-| 1022 | postgres-ubuntu | **`db`** | 8 | 32 GiB | **640G** | 192.168.0.22/24, gw .1 | `order=1,up=60` |
+| 1022 | postgres-ubuntu | **`db`** | 8 | 32 GiB | **1024G** | 192.168.0.22/24, gw .1 | `order=1,up=60` |
 | 1023 | monitoring-ubuntu | `apps` | 2 | 4 GiB | **320G** | 192.168.0.23/24, gw .1 | `order=3` |
 
 1023 is the fourth, last VM: Loki + Grafana, wired up in [Stage 11](11-bootstrap.md#117-the-monitoring-vm-1023--loki--grafana). Its 320G looks generous next to 1020's 32G for the same CPU/RAM — but the `apps` pool is thin-provisioned ([Stage 6.1](../cluster/06-zfs-pools.md#61-thin-provisioning--set-it-before-any-vm-disk-exists)), so a big declared ceiling costs nothing until logs actually fill it. Cheap headroom now beats a `qm resize` interruption later.
@@ -51,10 +51,10 @@ One command per VM, from the Proxmox Shell — **before the first start** (`crea
 |---|---|---|
 | 1020 control | 32G | — nothing to do, the clone is already right |
 | 1021 app | 128G | `qm resize 1021 scsi0 128G` |
-| 1022 postgres | 640G | `qm resize 1022 scsi0 640G` |
+| 1022 postgres | 1024G | `qm resize 1022 scsi0 1024G` |
 | 1023 monitoring | 320G | `qm resize 1023 scsi0 320G` |
 
-Absolute sizes, not `+N`: the target is what it is regardless of what the template happens to be, so these lines stay correct if the template is ever rebuilt at a different size. Grow-only — ZFS-backed disks cannot be shrunk, in Proxmox or anywhere else. (`qm` sizes are binary: `640G` is 640 × 1024³.)
+Absolute sizes, not `+N`: the target is what it is regardless of what the template happens to be, so these lines stay correct if the template is ever rebuilt at a different size. Grow-only — ZFS-backed disks cannot be shrunk, in Proxmox or anywhere else. (`qm` sizes are binary: `1024G` is 1024 × 1024³ — a full TiB.)
 
 **The guest side happens by itself.** The cloud image's root sits on a plain partition, and cloud-init's `growpart` module runs at **every** boot — the first boot finds the bigger disk and grows the partition and filesystem into it. Nothing to run inside the guest, nothing to remember on VM number four; `df -h /` after boot is the proof, and the smoke test in [9.6](09-ubuntu-template.md#96-verify-before-you-build-on-it) already validated the mechanism. (Resized a disk while the VM was running? It's picked up on the next reboot.) This is also why [Stage 11](11-bootstrap.md#114-vaultyml-and-mainyml) sets `grow_root_filesystem: false`: the `common` role's growth chain exists for LVM layouts, and there's no LVM here to grow.
 

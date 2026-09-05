@@ -118,7 +118,7 @@ done
 ansible postgres -b -m shell -a 'du -sh /var/lib/postgresql/18/main; df -h /var/lib/postgresql'
 ```
 
-Want ≥ 2× the data directory free. The 640GB disk from [Stage 10](../vms/10-vms.md#grow-the-disk--per-vm) makes this a formality at this app's size, but check rather than assume.
+Want ≥ 2× the data directory free. The 1024GB disk from [Stage 10](../vms/10-vms.md#grow-the-disk--per-vm) makes this a formality at this app's size, but check rather than assume.
 
 ### Step 2. The safety net — three layers, take all three
 
