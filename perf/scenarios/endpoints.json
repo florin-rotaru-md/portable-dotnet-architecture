@@ -14,7 +14,7 @@
 
   "fixtures": {
     "slugs": {
-      "query": "SELECT \"PublicSlug\" FROM \"EventInfos\" WHERE \"PublicSlug\" IS NOT NULL ORDER BY random() LIMIT 200",
+      "query": "SELECT publicslug FROM events WHERE publicslug IS NOT NULL ORDER BY random() LIMIT 200",
       "minimum": 1,
       "onEmpty": "The public-event read is the hot path of this app; with no published events the drill would measure 404s. Restore a dump that has some, or drop the read from 'traffic' below."
     }
