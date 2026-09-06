@@ -7,16 +7,21 @@
     "'fixtures' are SQL queries run against the restored database before the drill starts.",
     "Each one fills a named list the scenarios draw from at random. This is what stops the",
     "test from hammering a single row: real traffic spreads across slugs, and a benchmark",
-    "that reads one row measures the buffer cache, not the database.",
+    "that reads one row measures the buffer cache, not the database. Spread is not what bounds",
+    "the observed peak on this harness, though — the generator's own concurrency is, and a",
+    "fixture of two SERVED rows already reproduces the per-request cost. What a fixture must not",
+    "do is admit rows the endpoint would 404, which cost one round trip where a served snapshot",
+    "costs several. See README, 'What the observed peak can and cannot show'.",
     "",
     "'weight' is relative pick frequency within a scenario, not a percentage."
   ],
 
   "fixtures": {
     "slugs": {
-      "query": "SELECT publicslug FROM events WHERE publicslug IS NOT NULL ORDER BY random() LIMIT 200",
+      "query": "SELECT publicslug FROM events WHERE publicslug IS NOT NULL AND timepublished IS NOT NULL AND timehidden IS NULL AND status NOT IN (600, 700) ORDER BY random() LIMIT 200",
       "minimum": 1,
-      "onEmpty": "The public-event read is the hot path of this app; with no published events the drill would measure 404s. Restore a dump that has some, or drop the read from 'traffic' below."
+      "note": "The WHERE is the endpoint's own predicate, copied from EventPublishingService.GetPublicEventSnapshotAsync: published, not hidden, and neither Archived (600) nor Deleted (700). A slug that fails it answers 404 on one round trip where a served snapshot costs several — so a fixture drawn without the filter quietly measures the cheap path and still passes. 'expect' on the read below no longer admits 404 for the same reason.",
+      "onEmpty": "The public-event read is the heaviest read this app serves; with no SERVED event the drill measures 404s. Restore a dump holding at least one published, un-hidden event, or drop the read from 'traffic' below."
     }
   },
 
@@ -26,8 +31,8 @@
       "method": "GET",
       "path": "/api/events/public/${slugs}",
       "weight": 60,
-      "expect": [200, 404],
-      "note": "The hot path — every invite open hits it. Rate-limited by the 'public' policy (64/min per IP), which is why the harness varies the client IP per VU."
+      "expect": [200],
+      "note": "The heaviest read this app serves — the snapshot plus its children over several round trips on one connection. NOT the path every invite open takes: the SPA reads {cdn.baseUrl}{cdn.eventsPath}/{slug}.json (/ro/events or /en/events in production) and falls back to this route only when cdn.baseUrl is unconfigured (waa-src InvitePage.vue). Weighted 60% because the CDN-less case is the worst case the budget must survive, not because it is the common one. Rate-limited by the public-read policy (RateLimiting:PublicRead, 240/min per IP), which is why the harness varies the client IP per VU. 404 is deliberately not accepted: a slug the endpoint will not serve is counted in drill_unexpected_status, which lib.js gates at zero, so one such slug fails the run rather than measuring the cheap path within the 1% the rate thresholds would tolerate."
     },
     {
       "name": "client-config",
@@ -66,7 +71,7 @@
       "ClientIpMiddleware trusts CF-Connecting-IP and X-Forwarded-For from loopback and RFC1918",
       "sources. A drill runs from exactly such a source, so each VU can present its own client IP.",
       "Without this the whole load collapses into one rate-limit partition and the drill measures",
-      "the rate limiter (64 req/min) instead of the connection pool — roughly 1 req/s, which would",
+      "the rate limiter (RateLimiting:PublicRead, 240 req/min) instead of the connection pool — 4 req/s, which would",
       "look like a pass while proving nothing."
     ]
   },

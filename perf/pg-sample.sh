@@ -77,6 +77,10 @@ while true; do
         SELECT coalesce(datname, '-'), state, count(*)
         FROM pg_stat_activity
         WHERE backend_type = 'client backend'
+          -- not the sampler's own session: the verdict compares this count with the
+          -- application's pool cap, and a count that includes the observer is off
+          -- by one in exactly the direction that makes a cap look exceeded.
+          AND pid <> pg_backend_pid()
         GROUP BY 1, 2
         ORDER BY 1, 2;") || { echo "WARN: sample failed at $TS (server refusing connections?)" >&2; sleep "$INTERVAL"; continue; }
 

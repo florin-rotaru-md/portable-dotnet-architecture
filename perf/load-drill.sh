@@ -75,8 +75,15 @@ case "$SCENARIO" in
     up)
         $COMPOSE up -d
         echo "Waiting for Postgres..."
+        # -h localhost forces TCP. The image's entrypoint runs a BOOTSTRAP server
+        # first — unix socket only, listen_addresses='' — to apply init scripts,
+        # stops it, then starts the real one. A socket probe passes against the
+        # bootstrap server, `up` reports OK, and the restore that follows lands on
+        # a server that is about to go away: "server closed the connection
+        # unexpectedly" on every createdb. Seen 2026-09-06. TCP is what the
+        # application and the sampler will use, so it is what readiness means.
         for _ in $(seq 1 60); do
-            if $COMPOSE exec -T postgres pg_isready -q 2>/dev/null; then
+            if $COMPOSE exec -T postgres pg_isready -q -h localhost 2>/dev/null; then
                 ok "Postgres up on port ${PGPORT:-55432}."
                 echo "Restore a dump into it, point the app's connection strings at it, then:"
                 echo "  ./load-drill.sh steady --base-url http://127.0.0.1:5000"
@@ -269,7 +276,13 @@ VERDICT=0
 
 PEAK=$(awk -F',' '$4=="all" {if ($5+0 > m) m=$5+0} END {print m+0}' "$CSV")
 USABLE=$(( ${MAXCONN:-128} - ${RESERVED:-3} ))
-PER_INSTANCE=$(jq -r '[.pools | to_entries[] | select(.value.maxPoolSize) | .value.maxPoolSize] | add // 0' "$CONFIG")
+# `pools` carries a `_readme` array beside the pool objects. jq cannot index an
+# array with a string, so `.value.maxPoolSize` on it is an error, not a null —
+# and under `set -e` that error ended the script here, before the first verdict
+# line, on every run. Neither scenario had ever printed a verdict. Found
+# 2026-09-06 on the first run that was actually read to the end. The type guard
+# is what the readme convention needs, here and at the two sites below.
+PER_INSTANCE=$(jq -r '[.pools | to_entries[] | select(.value | type == "object") | select(.value.maxPoolSize) | .value.maxPoolSize] | add // 0' "$CONFIG")
 
 echo "  peak client connections   $PEAK"
 echo "  usable slots              $USABLE  (max_connections ${MAXCONN:-?} - ${RESERVED:-3} reserved)"
@@ -280,8 +293,37 @@ elif [ "$PCT" -ge 75 ]; then warn "peak used ${PCT}% of usable slots — thin. B
 else ok "peak used ${PCT}% of usable slots."
 fi
 
-# The projection the steady scenario cannot observe directly: during a drain
-# both slots of the deploying application are alive, each holding its own pools.
+# What the observed peak is a measurement OF. The box under test usually carries
+# one deployment, and its Npgsql pools cap what it can open — one slot's worth
+# in `steady`, two slots' worth through a `deploy-overlap` drain — so on such a
+# box the peak cannot approach the fleet's usable slots however hard the load
+# is. And before the pools bind, the generator does: closed-loop VUs with think
+# time hold on average VUs x service/(service+think) connections in flight, a
+# couple at a few milliseconds per request, with a high-water mark not much
+# above that. A small percentage above is therefore not headroom; it is that
+# ceiling. The fleet verdict is the arithmetic below, and the one thing a run
+# CAN observe is the shape of a drain, not its magnitude.
+if [ "$PER_INSTANCE" -gt 0 ]; then
+    if [ "$SCENARIO" = "deploy-overlap" ]; then
+        CAP_OBS=$(( PER_INSTANCE * 2 )); CAP_WHY="pools.* x 2, both slots alive through the drain"
+    else
+        CAP_OBS=$PER_INSTANCE;            CAP_WHY="sum of pools.*, one slot"
+    fi
+    # Printed only while the pool cap is the binding ceiling. On a small box —
+    # max_connections at Postgres' default 100, say — two slots' worth of pools
+    # can exceed the usable slots, and then the server refuses first; a line
+    # saying "cannot exceed 164" against a server that stops at 97 is wrong.
+    if [ "$CAP_OBS" -lt "$USABLE" ]; then
+        echo "  deployment pool cap       $CAP_OBS  ($CAP_WHY — the observed peak cannot exceed it on a one-deployment box)"
+    fi
+fi
+
+# The projection neither scenario observes directly: during a drain both slots
+# of the deploying application are alive, each holding its own pools. It used to
+# print for `steady` only, on the reasoning that `deploy-overlap` observes the
+# peak instead — but on a one-deployment drill box it observes ONE deployment's
+# drain, and the number the budget is sized from is the fleet's. So it prints
+# for both, and for both it is the line that decides.
 #
 # The fleet is heterogeneous — deployments do not have the same pool sizes, and
 # they do not deploy together — so the model is a per-deployment one:
@@ -299,6 +341,21 @@ LARGEST=0
 LARGEST_NAME=""
 FLEET_DESC=""
 FLEET_COUNT=0
+# Read through a variable, not a process substitution: a jq failure inside
+# `< <(…)` is invisible to `set -e`, and an arithmetic error inside the loop
+# aborts only the loop — either way STEADY would stay 0, the fleet block below
+# would be skipped, and the drill would still exit 0 with no fleet verdict at
+# all. Here a pool value that is not a number is a jq error, the assignment
+# fails, and the run dies naming the file. Integers, not merely numbers: 64.5
+# passes a number check and then breaks the shell arithmetic in the loop.
+FLEET_TSV=$(jq -r '
+    .deployment.deployments // [] | .[]
+    | [ (.name // "?"),
+        ([.pools | to_entries[] | .value
+          | if (type == "number" and . == floor) then . else error("a pools.* value is not an integer") end] | add // 0) ]
+    | @tsv' "$CONFIG") \
+    || die "deployment.deployments in $(basename "$CONFIG") is malformed: every entry needs a pools object whose values are integers."
+
 while IFS="$(printf '\t')" read -r d_name d_total; do
     [ -n "${d_name:-}" ] || continue
     d_total=${d_total:-0}
@@ -308,9 +365,7 @@ while IFS="$(printf '\t')" read -r d_name d_total; do
     else FLEET_DESC="$FLEET_DESC + $d_name $d_total"
     fi
     if [ "$d_total" -gt "$LARGEST" ]; then LARGEST=$d_total; LARGEST_NAME=$d_name; fi
-done < <(jq -r '
-    .deployment.deployments // [] | .[]
-    | [ (.name // "?"), ([.pools | to_entries[] | .value] | add // 0) ] | @tsv' "$CONFIG")
+done <<< "$FLEET_TSV"
 
 # Fallback for a config that has not been given a fleet: treat it as `instances`
 # copies of the application under test, which is the old uniform model and the
@@ -323,12 +378,16 @@ if [ "$FLEET_COUNT" -eq 0 ] && [ "$PER_INSTANCE" -gt 0 ]; then
     FLEET_DESC="$INSTANCES x $PER_INSTANCE, assumed uniform — deployment.deployments is not set"
 fi
 
-if [ "$SCENARIO" = "steady" ] && [ "$STEADY" -gt 0 ]; then
+if [ "$STEADY" -gt 0 ]; then
     WORST=$(( STEADY + LARGEST ))
     echo "  fleet steady total        $STEADY  ($FLEET_DESC)"
     echo "  blue/green worst case     $WORST  ($STEADY steady + $LARGEST for the largest single drain: $LARGEST_NAME)"
     if [ "$WORST" -ge "$USABLE" ]; then
-        fail "a deploy under load would exceed the usable slots ($WORST > $USABLE). Run 'deploy-overlap' to see it happen, and cut a pool or raise max_connections before production."
+        if [ "$SCENARIO" = "steady" ]; then
+            fail "a deploy under load would exceed the usable slots ($WORST > $USABLE). Run 'deploy-overlap' to see it happen, and cut a pool or raise max_connections before production."
+        else
+            fail "a deploy under load would exceed the usable slots ($WORST > $USABLE). Cut a pool or raise max_connections before production."
+        fi
         VERDICT=1
     elif [ "$WORST" -ge $(( USABLE * 85 / 100 )) ]; then
         warn "a deploy under load reaches ${WORST}/${USABLE} slots. It fits, barely — one more application does not."
@@ -363,7 +422,7 @@ while read -r key; do
     if [ "${SAMPLES:-0}" -gt 0 ] && [ "$HITS" -gt $(( SAMPLES / 10 )) ] && [ "$HITS" -gt 3 ]; then
         warn "'$DB' sat at its pool ceiling ($CAP) for ${HITS}/${SAMPLES} samples — requests were queueing for a connection. Postgres was not the limit; the fix is a faster query or a larger pool, and pg_stat_statements says which."
     fi
-done < <(jq -r '.pools | to_entries[] | select(.value.database) | .key' "$CONFIG")
+done < <(jq -r '.pools | to_entries[] | select(.value | type == "object") | select(.value.database) | .key' "$CONFIG")
 
 if [ "$K6_EXIT" != "0" ]; then
     RL=$(jq -r '.metrics.drill_rate_limited.values.count // 0' "$SUMMARY" 2>/dev/null || echo 0)

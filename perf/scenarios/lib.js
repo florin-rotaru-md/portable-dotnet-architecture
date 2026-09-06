@@ -34,6 +34,7 @@ export const BASE_URL = (__ENV.BASE_URL || 'http://127.0.0.1:5000').replace(/\/$
 export const rateLimited = new Counter('drill_rate_limited');
 export const appErrors = new Counter('drill_app_errors');
 export const unexpectedStatus = new Counter('drill_unexpected_status');
+export const transportFailures = new Counter('drill_transport_failures');
 export const okRate = new Rate('drill_ok');
 export const byEndpoint = new Trend('drill_endpoint_duration', true);
 
@@ -52,8 +53,8 @@ function pickEndpoint(rnd) {
 
 // ── Client identity ───────────────────────────────────────────────────────────
 // Each VU presents a distinct client IP. Without this every request lands in
-// one rate-limit partition (the 'public' policy is 64/min per IP) and the drill
-// measures the limiter instead of the database — about 1 req/s, which passes
+// one rate-limit partition (RateLimiting:PublicRead is 240/min per IP) and the
+// drill measures the limiter instead of the database — 4 req/s, which passes
 // every latency threshold while proving nothing at all.
 function clientIp(vu) {
     const base = (config.clientIp && config.clientIp.cidrBase) || '10.99';
@@ -143,6 +144,18 @@ export function fireOne() {
 
     byEndpoint.add(res.timings.duration, { endpoint: endpoint.name });
 
+    if (res.status === 0) {
+        // No HTTP status at all — refused, reset, or k6's own timeout. The app
+        // never answered, so this is not an "unexpected status"; it is a
+        // transport failure and carries its own name and its own gate. Under
+        // steady load it is the only signal for a connection-level failure;
+        // during a deploy the scenario counts the same event again as a dropped
+        // request, which is a second question about one event, not a double.
+        transportFailures.add(1, { endpoint: endpoint.name });
+        okRate.add(false);
+        return res;
+    }
+
     if (res.status === 429) {
         // Not an app failure. It means the drill's client-IP spreading did not
         // take, so the numbers below it are meaningless.
@@ -173,6 +186,12 @@ export function baseThresholds(p95Ms) {
         // burning ten minutes producing a number nobody may trust.
         'drill_rate_limited': [{ threshold: 'count==0', abortOnFail: true }],
         'drill_app_errors': ['count==0'],
+        'drill_transport_failures': ['count==0'],
+        // A status outside the endpoint's `expect` is zero-tolerance too. The two
+        // rate gates below allow 1 %, which in a 200-slug fixture is three stale
+        // slugs answering 404 on one round trip each, passing while measuring the
+        // cheap path; a Counter at zero is what makes "must fail the run" true.
+        'drill_unexpected_status': ['count==0'],
         'drill_ok': ['rate>0.99'],
         'http_req_duration': [`p(95)<${p95Ms || 500}`],
         'http_req_failed': ['rate<0.01'],
@@ -205,6 +224,7 @@ function textSummary(data) {
         line('duration p99 (ms)', val('http_req_duration', 'p(99)')) +
         line('rate-limited (invalidates)', val('drill_rate_limited', 'count')) +
         line('app errors (5xx)', val('drill_app_errors', 'count')) +
+        line('transport failures (no status)', val('drill_transport_failures', 'count')) +
         line('unexpected status', val('drill_unexpected_status', 'count')) +
         '\n';
 }

@@ -57,10 +57,16 @@ services:
       - ./dumps:/dumps
     shm_size: 1gb
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d postgres"]
+      # -h localhost forces TCP. The entrypoint's bootstrap server — unix socket only,
+      # listen_addresses='' — satisfies a socket probe while it applies init scripts,
+      # then goes away; `docker compose up -d --wait` would report healthy against it,
+      # exactly the false positive load-drill.sh's own loop had. Both probes now mean
+      # the real server. start_period keeps initdb from burning the retries.
+      test: ["CMD-SHELL", "pg_isready -h localhost -U ${POSTGRES_USER:-postgres} -d postgres"]
       interval: 2s
       timeout: 3s
       retries: 30
+      start_period: 20s
     # A drill that OOMs tells you nothing about connections. Cap deliberately,
     # and keep the cap above shared_buffers + max_connections * work_mem worst case.
     deploy:
