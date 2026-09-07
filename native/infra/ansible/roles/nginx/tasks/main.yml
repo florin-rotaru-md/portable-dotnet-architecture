@@ -17,6 +17,40 @@
     loop_var: current_app
     label: "{{ current_app.name }}"
 
+
+# An app that a SIBLING app addresses by name over the local hop needs that name to resolve to
+# this host, or the call leaves the machine, arrives at the public ingress and is refused by
+# whatever guards it. That is not hypothetical: api.waa.ro reaches the ledger at
+# `Fiscal:Endpoint = http://fiscal.waa.ro/` (platform Apps/Waa/Waa.Server/appsettings.waa.ro.json),
+# deliberately by NAME rather than by loopback port, because a FiscalServer deploy switches nginx
+# from one slot to the other and an app pinned to a slot port would lose its drain mid-switch.
+#
+# Until 2026-09-07 the entry was a line somebody typed into /etc/hosts by hand. Nothing here
+# managed it, so a rebuilt VM came back without it and the first symptom would have been invoices
+# failing to reach the ledger — at whatever moment the rebuild happened to be.
+#
+# It is opt-in per app rather than applied to every domain, because making a domain resolve locally
+# is a behaviour change for anything on this host that means to reach it through the public path.
+# Only an app that is genuinely addressed by a sibling declares `resolve_locally: true`.
+#
+# Portability, since this deployment is expected to move to a cloud host: in that world the same
+# rule is a private DNS record or a service name, and the flag comes off. What must not change is
+# that the caller keeps addressing the callee by NAME.
+- name: Resolve locally-addressed app domains to this host
+  vars:
+    local_domains: "{{ native_apps | selectattr('resolve_locally', 'defined') | selectattr('resolve_locally') | map(attribute='domain') | list }}"
+  blockinfile:
+    path:   /etc/hosts
+    marker: "# {mark} ANSIBLE MANAGED - app domains addressed from this host"
+    block: |
+      {% for domain in local_domains %}
+      127.0.0.1 {{ domain }}
+      {% endfor %}
+    state: "{{ 'present' if local_domains | length > 0 else 'absent' }}"
+    owner:  root
+    group:  root
+    mode:   '0644'
+
 - name: Validate nginx config
   command: nginx -t
   changed_when: false
