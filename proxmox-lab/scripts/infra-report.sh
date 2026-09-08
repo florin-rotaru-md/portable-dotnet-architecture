@@ -15,15 +15,15 @@
 # No config file = run the script normally and skip the report, so a node
 # without the app configured behaves exactly as before this wrapper existed.
 #
-# THAT PASS-THROUGH IS ALSO THE HAZARD, and it is why this path is never changed
-# on a node before the new file exists. The file was /etc/waa-infra-report.conf
-# until the estate dropped the product prefix; a node still holding only the old
-# name gets the no-config branch — the wrapped script runs, prints the same
-# output, exits with the same code, cron mails the same bytes, and the reports
-# simply stop. Nothing on the host says so, and the first symptom is the app's
-# own freshness check warning "silent for …" up to 26 hours later, pointing at a
-# dead cron rather than at a renamed file. Write the new file, verify a report
-# lands, and only then remove the old one — platform docs/waa/infra/OPERATIONS.md §1.6.
+# THAT PASS-THROUGH IS ALSO THE HAZARD, and it is why CONF above is never changed
+# on a node before the new file exists there. A node that does not have the path
+# this script reads gets the no-config branch — the wrapped script runs, prints
+# the same output, exits with the same code, cron mails the same bytes, and the
+# reports simply stop. Nothing on the host says so, and the first symptom is the
+# app's own freshness check warning "silent for …" up to 26 hours later, pointing
+# at a dead cron rather than at this file. A rename cost four days of blind ingest
+# exactly this way (2026-09-04): write the new file, verify a report lands, and
+# only then remove the old one — platform docs/waa/infra/OPERATIONS.md §1.6.
 
 set -uo pipefail
 CONF=/etc/infra-report.conf

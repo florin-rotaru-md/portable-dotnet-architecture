@@ -39,6 +39,25 @@ MAILTO=root
 30 7 * * * root /usr/local/sbin/infra-report backup-verify  --quiet
 EOF
 
-echo "Installed to /usr/local/sbin: cluster-health backup-verify pve-config-backup r2-backup node-return restore-drill create-vms"
+# Ingest config guard — the wrapper installed above reads /etc/infra-report.conf and, when that
+# file is absent, silently skips the POST: same output, same exit code, same cron mail, no reports.
+# On 2026-09-04 a routine run of THIS script did exactly that on both nodes, swapping in a wrapper
+# that reads a path neither node had, and ingest went dark for four days with nothing saying so.
+# Hence this guard: installing the wrapper is the last moment anything says the config is missing.
+# Creating it: platform docs/waa/infra/OPERATIONS.md section 1, step 4.
+CONF=/etc/infra-report.conf
+
+echo
+if [ -r "$CONF" ]; then
+    echo "Ingest: $CONF present — the wrapper will report."
+else
+    echo "Ingest: WARNING — no $CONF on this host."
+    echo "  infra-report is a silent pass-through: the checks still run and still mail, but the"
+    echo "  app is told nothing. Create the file per platform docs/waa/infra/OPERATIONS.md"
+    echo "  section 1, step 4 (INFRA_URL + INFRA_TOKEN, mode 600), then re-run one by hand."
+fi
+echo
+
+echo "Installed to /usr/local/sbin: cluster-health backup-verify pve-config-backup r2-backup node-return restore-drill create-vms infra-report"
 echo "Scheduled via /etc/cron.d/pve-helper-scripts (config backup 02:40, R2 mirror 03:30, health 07:00, backup check 07:30)"
 echo "Not scheduled on purpose: node-return, restore-drill and create-vms are attended operations."
