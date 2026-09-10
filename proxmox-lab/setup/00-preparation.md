@@ -217,7 +217,28 @@ The first fingerprint has to appear in the second list. If it doesn't, what you 
 Three traps, in the order they are usually hit:
 
 - **Copy the file; never retype it or paste it through an editor.** A BOM or a CRLF picked up on the way makes the key invalid and OpenSSH names neither in the error. A password-manager attachment or a USB stick is a transport; chat and email are not — a key that travels through them is rotated, not installed.
-- **Install only the pair that machine needs.** A new workstation needs `workstation`, and nothing else. Re-creating a full `lab-keys` folder there rebuilds precisely the standing skeleton-key copy that the two deletions above exist to prevent — and now on a machine that travels.
+- **Install only the pair that machine needs.** A new workstation needs exactly two files — `id_ed25519` and `id_ed25519.pub` — and nothing else. Re-creating a full `lab-keys` folder there rebuilds precisely the standing skeleton-key copy that the two deletions above exist to prevent — and now on a machine that travels.
 - **Carry `known_hosts` over as well.** With it, host-key verification keeps meaning something. Without it, the first connection to every host is trust-on-first-use, and any warning it would have raised is accepted silently.
 
 **When reuse is the wrong answer.** If the old machine was sold, lost, or handed to someone else, its key is not an inheritance — it is an outstanding credential, and the section you want is [21.6](../operations/21-credentials.md#216-two-habits-that-make-key-loss-boring). Go in knowing that on this build rotating the workstation key is a four-place edit rather than one playbook run: the three VMs through Ansible; 1020 by hand, because it is not in `hosts.ini`; `/root/.ssh/authorized_keys` on both nodes, which no Ansible manages; and `/root/.ssh/vm_keys.pub` on pve1, without which a VM cloned afterwards would be born not trusting you. Remove the old key only once the new one is verified in all four.
+
+**Registering a key the lab has never seen.** A pair restored from the password manager needs none of this — its public half is already in all four places. A *new* one has to be put there, and with `ssh_authorized_keys_exclusive` on ([21.6](../operations/21-credentials.md#216-two-habits-that-make-key-loss-boring)) appending it to a VM's `authorized_keys` by hand is undone by the next playbook run:
+
+```bash
+# 1. the three VMs - add the line to ansible_ssh_extra_public_keys in vault.yml
+#    on the control node, then from native/infra/ansible:
+ansible-playbook playbooks/bootstrap.yml --tags common
+
+# 2. control-ubuntu itself - not in hosts.ini, so by hand, on 1020:
+cat new.pub >> ~/.ssh/authorized_keys
+
+# 3. root on both nodes - no Ansible here, on pve1 and pve2:
+cat new.pub >> /root/.ssh/authorized_keys
+
+# 4. clones made later - on pve1. The qm set is not optional: the template stores
+#    the file's *contents*, so editing the file alone changes nothing (9.4)
+cat new.pub >> /root/.ssh/vm_keys.pub
+qm set 9000 --sshkeys /root/.ssh/vm_keys.pub
+```
+
+Then log in from the new machine to all six — both nodes and the four VMs — before removing the old key anywhere.
