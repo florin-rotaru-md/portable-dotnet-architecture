@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# r2-backup.sh — nightly mirror of the app's Cloudflare R2 media bucket to the
-# USB drive, from where the 04:00 offsite sync (17.6) carries it on, encrypted.
+# r2-backup.sh — nightly mirror of the app's three Cloudflare R2 buckets (two of
+# media, one of filed invoices — see below) to the USB drive, from where the 04:00
+# offsite sync (17.6) carries them on, encrypted.
 #
-# Why this exists: every other tier protects the VMs and Postgres. The media
-# bucket (user uploads, generated products, published snapshots) lives only in
-# Cloudflare — a deleted bucket, a retention-sweep bug or a leaked write-capable
-# key would be a permanent loss no VM backup can answer. This makes R2 a tier
-# like the others ([17.10](../backup/17-backup-restore.md)).
+# Why this exists: every other tier protects the VMs and Postgres. What is in R2
+# — user uploads, generated products, published snapshots, and the fiscal ledger —
+# lives only in Cloudflare, so a deleted bucket, a retention-sweep bug or a leaked
+# write-capable key would be a permanent loss no VM backup can answer. This makes
+# R2 a tier like the others ([17.10](../backup/17-backup-restore.md)).
 #
 # THREE buckets since the split (platform docs/adr/0034-platform-rename.md D3b
 # and D3c) — one per product plus the company's — and all three are mirrored here:
@@ -32,12 +33,28 @@
 # — so a bad mass-delete in R2 stays recoverable for a month, while lawful
 # deletions age out of every copy on their own.
 #
-# Needs: an rclone remote named "r2" (type S3, provider Cloudflare) built from
-# an R2 API token with READ-ONLY object access — the backup host must never
-# hold a key that can delete production media. Setup: 17.10.
+# Needs: rclone on the host (17.6's `apt install rclone -y` — this tier rides on the
+# same binary the 04:00 offsite sync uses) and a remote named "r2" (type S3, provider
+# Cloudflare) built from an R2 API token with READ-ONLY object access — the backup host
+# must never hold a key that can delete production media. Setup: 17.6, then 17.10.
+# Both belong to the node that HOLDS the USB drive; the peer needs neither.
 #
-# Runs from cron at 03:30. On the node without the USB drive it exits 0
-# quietly, so the same cron entry can be installed everywhere.
+# Runs from cron at 03:30. On a node without the USB drive it exits 0 quietly, so
+# the same cron entry can be installed everywhere — and that convenience is the
+# trap: the branch never tests its own premise, which is that some OTHER node holds
+# the drive. On 2026-09-10 neither pve1 nor pve2 had /mnt/usb-backup at all, so both
+# took the quiet exit 0 and this tier had never run once — no /var/log/rclone-r2.log
+# on either host, rclone not even installed. backup-verify and cluster-health took
+# the same hatch, which is why nothing on the estate ever reported the R2 mirror
+# absent. Those two now ask the cluster-wide question (is any vzdump job scheduled
+# at all?) and fail loudly when the answer is no — in this repo; the copies under
+# /usr/local/sbin are the 2026-09-04 ones until 2.4 is re-run on that node. And it
+# answers for vzdump, not for this tier: backup-verify's `r2-mirror:` line still sits
+# past the USB gate.
+# No pmxcfs file answers "is anyone mirroring R2?", so this script stays silent by
+# design and the proof has to come from outside it: never count the tier as present
+# because the cron entry is installed — /var/log/rclone-r2.log must exist and end in
+# a transfer summary with no ERROR (Stage 22.2, the proof table).
 #
 # Usage: r2-backup.sh          (no arguments, safe to re-run any time)
 
@@ -57,6 +74,25 @@ if ! mountpoint -q "$USB_MOUNT"; then
     fi
     # No USB storage configured on this node — the mirror lives on the peer.
     exit 0
+fi
+
+# Two prerequisites, two different remedies — and one check used to report the first
+# as the second. `rclone listremotes` on a host without the binary exits 127, its
+# "command not found" goes into the 2>/dev/null below, and grep's empty input makes
+# the pipeline fail in exactly the way a missing remote does. The operator was then
+# sent to 17.10 — `rclone config` — on a host where that command does not exist.
+# Not hypothetical: on 2026-09-10 neither node had rclone installed at all and no
+# node held the drive, so this guard had never run once since the script was written;
+# the first person to attach a drive would have read precisely the wrong instruction.
+# Both checks stay BELOW the mount gate on purpose. rclone is a prerequisite of the
+# node that holds the drive, not of the peer (17.10 sets this up on pve1 alone), so
+# failing here on a driveless node would paint that node red in the admin UI every
+# night, through infra-report, about a node with nothing wrong with it. "Does ANY
+# node hold the drive?" is a cluster-wide question and is asked where a node can
+# answer it: backup-verify's USB block, against jobs.cfg/vzdump.cron.
+if ! command -v rclone >/dev/null 2>&1; then
+    echo "FAIL: rclone is not on this host's PATH — install it per 17.6 (\`apt install rclone\`, which lands in /usr/bin and is on cron's PATH; the upstream installer's /usr/local/bin is NOT), then configure the read-only remote per 17.10" >&2
+    exit 2
 fi
 
 if ! rclone listremotes 2>/dev/null | grep -qx "${RCLONE_REMOTE}:"; then

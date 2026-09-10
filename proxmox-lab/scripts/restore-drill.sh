@@ -1,11 +1,30 @@
 #!/usr/bin/env bash
-# restore-drill.sh — the monthly 17.9 drill, automated so it actually happens:
-# restore the newest archive of one VM to a spare ID, with the NIC disconnected,
-# boot it, prove the guest agent answers, report, destroy.
+# restore-drill.sh — the 17.9 drill as one command: restore the newest archive of one
+# VM to a spare ID, with the NIC disconnected, boot it, prove the guest agent answers,
+# report, destroy.
 #
 # "A backup you have never restored is a hypothesis." This turns the ten-minute
 # manual drill into one command and a log line, and its duration is your real
 # per-VM RTO — written down, not assumed.
+#
+# NOTHING RUNS THIS FOR YOU. install-scripts.sh installs it and then leaves it out of
+# /etc/cron.d/pve-helper-scripts on purpose, and says so as it finishes — "not scheduled
+# on purpose: node-return, restore-drill and create-vms are attended operations" — because
+# "procedures that move or create VMs deserve a human watching" (scripts/README.md). So
+# "monthly" is a promise made by a calendar, not by the machine, and on 2026-09-10 the
+# calendar had not kept it: /var/log/restore-drill.log existed on neither node, so this
+# had never been run once. In the same window /etc/pve/jobs.cfg did not exist,
+# /etc/pve/vzdump.cron held no jobs, the task index
+# carried zero vzdump entries and /var/lib/vz/dump was empty on both nodes — no archive
+# had ever been written to drill against. Nothing said so: backup-verify's "no USB drive
+# on this node" branch exited 0 without printing, and with the drive absent from BOTH
+# nodes both reported pass. The repo's backup-verify asks the cluster-wide question
+# instead — no drive here AND no vzdump job scheduled anywhere is a [FAIL], not a skip —
+# but the copies under /usr/local/sbin are the 2026-09-04 ones until 2.4 is re-run on each
+# node, so until then the only check that fails loudly on this is this script's own
+# mountpoint guard below, and nobody ever asks it. Put it in a calendar with a name
+# against it, or write down plainly that the vzdump tier is untested — those are the only
+# two honest states.
 #
 # Run on the node holding the USB drive (pve1). Results append to
 # /var/log/restore-drill.log. On failure the drill VM is KEPT for inspection.
@@ -67,6 +86,17 @@ RESTORE_S=$(( $(date +%s) - START ))
 # clone can never fight the original for its static IP (17.7 A / 20.3 step 0)
 NET0=$(qm config "$TARGET" | awk -F': ' '/^net0:/ {print $2}')
 [ -n "$NET0" ] && qm set "$TARGET" --net0 "${NET0},link_down=1" >/dev/null
+
+# And disarm its boot flags. qmrestore replays the ARCHIVED config and --unique rewrites
+# only the MAC, so the clone inherits `onboot: 1` and the original's `startup` order
+# (1022: order=1,up=60). A drill VM left behind — by --keep, or by fail(), which keeps it
+# on purpose — would then start itself on the next node reboot ahead of everything else,
+# and for 1022 that is a second 32 GiB Postgres on a stale copy racing the real one for a
+# 62 GiB node's RAM. link_down keeps the clone off the network; it does not keep it from
+# booting. If we cannot disarm it, we do not boot it.
+# ("cannot delete 'startup' - not set" is an expected warn for 1920 — 1020 has no startup key.)
+qm set "$TARGET" --onboot 0 --delete startup >/dev/null 2>&1 \
+    || fail "could not clear onboot/startup on the drill clone — destroy $TARGET now (qm destroy $TARGET --purge); an armed copy must not outlive the drill"
 
 qm start "$TARGET" >/dev/null || fail "restored VM refused to start"
 

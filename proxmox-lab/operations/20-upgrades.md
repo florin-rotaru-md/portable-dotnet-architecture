@@ -4,7 +4,7 @@
 
 Everything up to here protects you from hardware failing. This stage is about the other half of the risk: **planned changes you make yourself**. A botched database upgrade takes the app down just as effectively as a dead node, and unlike a dead node it has no automatic recovery — HA can't fail over from a bad schema.
 
-**Nothing is installed on these VMs by hand.** Postgres, PostGIS, `pg_hba.conf`, the firewall rule, the app DB user and the nightly dump job all come from the `postgres` role in [`native/infra/ansible`](../../native/infra/ansible/roles/postgres/tasks/main.yml), driven from control-ubuntu (1020). That constrains the procedure below in a specific way: **Ansible owns packages and configuration, but it does not own the data directory.** A major upgrade is therefore a hybrid — the playbook installs the new version and converges the config, and `pg_upgradecluster` does the one thing the playbook can't. Doing it by hand instead means the next `bootstrap.yml` run silently disagrees with reality.
+**Nothing is installed on these VMs by hand.** Postgres, PostGIS, `pg_hba.conf`, the firewall rule, the app DB user and the daily dump job all come from the `postgres` role in [`native/infra/ansible`](../../native/infra/ansible/roles/postgres/tasks/main.yml), driven from control-ubuntu (1020). That constrains the procedure below in a specific way: **Ansible owns packages and configuration, but it does not own the data directory.** A major upgrade is therefore a hybrid — the playbook installs the new version and converges the config, and `pg_upgradecluster` does the one thing the playbook can't. Doing it by hand instead means the next `bootstrap.yml` run silently disagrees with reality.
 
 ## 20.1 Minor and major upgrades are different operations
 
@@ -72,8 +72,12 @@ ansible postgres -b -m shell -a 'runuser -u postgres -- psql -tAc "select versio
 This is the single highest-value step in the whole stage, and the architecture already supports it — it's [17.7 scenario A](../backup/17-backup-restore.md#a-restore-into-a-new-vm-id-safest--start-here) with a different purpose. You hit every extension error, every removed config setting, and every surprise on a throwaway VM instead of on production, and you come out with a measured duration rather than a guess.
 
 ```bash
-# on the node holding the archive
-qmrestore /mnt/usb-backup/dump/vzdump-qemu-1022-<date>.vma.zst 1122 \
+# on pve1, which holds all four VMs. There is no stored archive to restore from — no vzdump has
+# ever run on this build and /mnt/usb-backup exists on neither node (Step 2) — so make one first.
+# Snapshot mode keeps 1022 serving throughout; `local` is ~78G free against ~2G of used zvol.
+vzdump 1022 --storage local --mode snapshot --compress zstd
+
+qmrestore /var/lib/vz/dump/vzdump-qemu-1022-<stamp>.vma.zst 1122 \
   --storage apps --unique
 ```
 
@@ -125,10 +129,20 @@ Want ≥ 2× the data directory free. The 1024GB disk from [Stage 10](../vms/10-
 | Layer | Command | Recovers from | Cost |
 |---|---|---|---|
 | **Logical dump** | `ansible postgres -b --become-user postgres -m command -a '/opt/postgres/scripts/pg-backup.sh'` | Anything, including "PG19 starts fine but the data is wrong". Version-independent — the per-database `-Fc` dumps restore into any Postgres | Minutes |
-| **VM backup** | `vzdump 1022 --storage usb-backup --mode snapshot --compress zstd` | The whole VM being unrecoverable. Survives the VM being destroyed | Minutes, off-VM |
+| **VM backup** | `vzdump 1022 --storage usb-backup --mode snapshot --compress zstd` — run `pvesm status` first; this storage exists only if [17.2](../backup/17-backup-restore.md#172-backup-storage--the-usb-drive) was actually done | The whole VM being unrecoverable. Survives the VM being destroyed — provided the archive isn't sitting on the VM's own pool | Minutes, off-VM |
 | **VM snapshot** | see below | Everything else — this is your actual undo button | Seconds to take, seconds to roll back |
 
-The logical dump is the role's own nightly script from [17.5](../backup/17-backup-restore.md#175-a-fourth-tier-for-the-database), run on demand — don't hand-roll a `pg_dumpall` next to it. It writes globals plus one custom-format dump per database into `/opt/postgres/backups`, which lives on the VM disk and is therefore captured by the `vzdump` in the next row.
+The logical dump is the role's own daily script from [17.5](../backup/17-backup-restore.md#175-a-fourth-tier-for-the-database), run on demand — don't hand-roll a `pg_dumpall` next to it. It writes globals plus one custom-format dump per database into `/opt/postgres/backups`, which lives on the VM disk and is therefore captured by the `vzdump` in the next row.
+
+**Today that middle row cannot be taken, and it is the only one of the three that survives losing the VM.** `pvesm status` on either node returns `local`, `local-lvm`, `apps`, `db` — the USB drive from [17.2](../backup/17-backup-restore.md#172-backup-storage--the-usb-drive) has never been attached, so the `vzdump` in that row exits `storage 'usb-backup' does not exist` before it writes a byte. What is left is the logical dump, which lives on 1022's own disk, and the snapshot, which is a ZFS snapshot inside `db` — and `db`, like every pool on both nodes, is a single bare NVMe with no redundancy. One dead disk takes the undo button and the dump with it. The replica on the peer is not the third layer either: [17.1](../backup/17-backup-restore.md#171-the-tiers) is right that replication copies a botched upgrade to pve2 within the minute. Until the drive exists, dump to `local` and then move the archive off the node yourself — and check the space first, because `local` is `/var/lib/vz` on the node's root filesystem and a full `/` on a PVE node takes pmxcfs and corosync down with it:
+
+```bash
+df -h /var/lib/vz    # want well more free than the VM's used space, not its provisioned size
+vzdump 1022 --storage local --mode snapshot --compress zstd
+scp /var/lib/vz/dump/vzdump-qemu-1022-*.vma.zst root@192.168.0.10:/srv/   # the QDevice
+```
+
+The QDevice is the only off-node destination this build has: x86_64 Debian at 192.168.0.10, 1.7T free, root SSH working from both nodes (checked 2026-09-10). Its `/srv` shares a filesystem with `/var/lib/wal-archive` ([Stage 13](../ha/13-wal-stream.md)), so run `df -h` there before pushing anything large. (Copying to the peer node instead means typing a plain `ssh`/`scp`, and pve2 holds no pin for pve1: at a console that is the *authenticity of host … can't be established* prompt, which you would be waving through unverified mid-upgrade, and from anything without a terminal a flat `Host key verification failed`. [21.7](21-credentials.md#217-the-fourth-kind-the-pins-nobody-inventories) has the repair, and `pvecm updatecerts` is not it.) An archive that never leaves the node answers "I broke the database", not "the disk died" — and a major upgrade is exactly when you want both answers.
 
 The snapshot has cluster interactions, so take it deliberately:
 
@@ -154,7 +168,8 @@ ansible postgres -m service -a 'name=postgresql state=started' -b
 
 ### Step 3. Preconditions before you start
 
-- **Both nodes up, `pvesr status` all OK.** Never run a major upgrade while the peer is down — that's removing the safety net at the exact moment you're most likely to need it.
+- **Both nodes up, replication healthy.** Never run a major upgrade while the peer is down — that's removing the safety net at the exact moment you're most likely to need it. Read `pvesr status` by the **`FailCount` column, not the word in `State`**: 1022-0 replicates `*/1` and takes about three seconds ([Stage 12](../ha/12-replication.md)), so roughly one check in twenty legitimately catches it mid-run and prints `SYNCING` — for the very VM you are about to upgrade — and the three `*:0` jobs do the same to any check landing in the first seconds of an hour. `SYNCING` with `FailCount 0` is a healthy job; anything else in `State` is the last run's error text and always arrives with a non-zero `FailCount`. Gate on the literal string and you either abandon a good window over a three-second sync, or you teach yourself to wave through a column you've decided is noise — and the second habit is the one that costs you.
+- **Know which corosync rings are up** — `corosync-cfgtool -s` on each node, read per nodeid. Every peer must be `connected` under `LINK ID 0`; `LINK ID 1` is the on-demand 10G cable and is `disconnected` as its normal state ([5.2](../setup/05-network.md#52-the-10g-direct-link--plugged-in-on-demand-not-left-connected)), which is exactly why this window deserves a decision rather than a glance. On one ring the cluster stays quorate, migrates, replicates and looks entirely healthy — but membership then rests on a single link that shares its switch with the QDevice, so seconds of jitter on the LAN are enough to leave a node inquorate, and a node holding HA resources resets itself within ~60s ([15.4](../ha/15-ha.md#154-the-watchdog--what-fencing-actually-rests-on)). That is the one failure the rest of this procedure cannot absorb: 1022 is killed mid-`pg_upgradecluster` at a moment you didn't choose, and the evening goes on restoring the Step 2 snapshot instead of verifying an upgrade. The cheap insurance is the cable — plug the 10G in for the length of the window and bring pve2's side up ([5.4](../setup/05-network.md#54-using-the-10g-link-for-a-migration) step 2), so the nodes keep a second path to each other, then unplug it afterwards. If `LINK ID 0` itself is degraded, reschedule: reduced redundancy is a reason to postpone, not to proceed carefully.
 - **No migration in flight**, and don't start one during the upgrade.
 - **A quiet window.** The database is down for the duration: writes and edits fail, the frontend keeps serving from Cloudflare ([18.4](../ha/18-failover.md#184-what-failover-does-not-cover)). Announce accordingly.
 - **An abort deadline.** Decide up front: *"if it isn't verified good in 45 minutes, I roll back and reschedule."* Debugging a half-migrated database at 1am is how a 20-minute maintenance becomes a four-hour outage.
@@ -190,8 +205,14 @@ ansible postgres -b -m shell -a 'pg_dropcluster 19 main --stop; pg_lsclusters'
 Stop the app slots first, so nothing writes to a database that's about to be frozen:
 
 ```bash
-ansible app -m service -a 'name=myapp-blue.service state=stopped' -b
+# on 1021 — every app, whichever slot is actually serving
+for app in /opt/apps/*/; do
+  name=$(basename "$app")
+  sudo systemctl stop "${name}-$("$app/scripts/current-slot.sh").service"
+done
 ```
+
+**Neither the slot nor the app count is a constant.** The `app` role installs `<app>-blue` *and* `<app>-green` for every entry in `applications:`, and deliberately leaves enablement to `deploy.sh`, which alternates between them — so the live unit is whatever `runtime/active-slot` records, and after any odd number of deploys that is `green`. Naming a slot by hand gets this wrong half the time by construction, and it fails in the worst possible way: `-m service state=stopped` against an already-stopped `blue` returns **ok**, so you get positive confirmation that nothing happened while the live slot keeps its connections open into a cluster `pg_upgradecluster` is about to stop underneath it — in-flight transactions killed mid-write instead of drained, which is the one failure this step exists to prevent. `current-slot.sh` is the role's own answer to the question (the runtime file first, the nginx upstream as fallback), so the loop survives any later change to how the slot is recorded. Note the plural too: 1021 runs *every* app in `applications:`, today three, not one.
 
 Then, on 1022 — this one is interactive enough to be worth doing over SSH rather than through Ansible, because you want to read its output as it goes:
 
@@ -253,7 +274,12 @@ diff <(grep -vE '^\s*#|^\s*$' /etc/postgresql/18/main/postgresql.conf) \
 Then start the app and do the checks that actually matter — application-level, not server-level:
 
 ```bash
-ansible app -m service -a 'name=myapp-blue.service state=started' -b
+# on 1021 — the same loop with `start`; deploy.sh has not run in between,
+# so active-slot still names exactly the units step 5 stopped
+for app in /opt/apps/*/; do
+  name=$(basename "$app")
+  sudo systemctl start "${name}-$("$app/scripts/current-slot.sh").service"
+done
 ```
 
 Load the site, exercise the app's main write path, confirm the row lands. A Postgres that starts is not the same as a Postgres your application works against — and with `Pooling=true` in the connection string, a stale pool produces failures that look like database problems but aren't.
@@ -297,9 +323,9 @@ sudo pg_ctlcluster 18 main start
 ```
 Then re-run the playbook with the reverted variable so config, the app role and the backup cron converge back onto 18.
 
-**Last resort** — restore the VM backup to a new VM ID and reload from `/opt/postgres/backups`: `globals_*.sql.gz` first, then `pg_restore` each `<db>_*.dump`. This path works across major versions, which is exactly why the role dumps in custom format rather than relying on the VM image alone.
+**Last resort** — restore **the archive you took in step 2** (there is no scheduled one, and nothing older exists on this build) to a new VM ID, then reload from `/opt/postgres/backups`: `globals_*.sql.gz` first, then `pg_restore` each `<db>_*.dump`. This path works across major versions, which is exactly why the role dumps in custom format rather than relying on the VM image alone.
 
-⚠️ **Every rollback path discards writes made against the new cluster.** This is why step 3 keeps the application stopped until step 6 passes: while nothing has written, rollback is free. Once writes have landed in PG17, rolling back means losing them, and you're into reconciling by hand.
+⚠️ **Every rollback path discards writes made against the new cluster.** This is why step 3 keeps the application stopped until step 6 passes: while nothing has written, rollback is free. Once writes have landed in PG19, rolling back means losing them, and you're into reconciling by hand.
 
 > **`qm rollback` diverges the local dataset from the last replicated snapshot,** so the next replication run needs a full transfer instead of a delta. Not a problem — just don't be alarmed by `pvesr status` showing a long-running job, and don't schedule the rollback expecting replication to be caught up two minutes later.
 
@@ -309,7 +335,7 @@ The shape generalizes: *rehearse on a restored copy → snapshot → change → 
 
 > **The ownership boundary.** The two Proxmox hosts are managed by hand; everything inside the VMs comes from `native/infra/ansible`. That's why Stages 16 and 19 are shell procedures on the node while Stage 20 is a variable bump plus a playbook run. Keep the boundary clean: don't hand-edit `/etc/postgresql/*` on 1022, and don't try to bring the hypervisors under Ansible for the sake of symmetry — two nodes configured twice a decade is not a fleet.
 
-**Ubuntu release upgrade inside a VM** (26.04 → nn.nn): same procedure, `do-release-upgrade` in place of `pg_upgradecluster`. Upgrade the app VM and the database VM in separate windows, never together — with two changes in flight you can't tell which one broke. There's one interaction specific to this role: the PGDG apt line is templated from `ansible_facts['distribution_release']`, so it still says `noble` after the OS moves on. Re-run `bootstrap.yml --limit postgres` afterwards to rewrite `/etc/apt/sources.list.d/pgdg.list` for the new release, before the next `apt update` starts resolving against a stale suite.
+**Ubuntu release upgrade inside a VM** (26.04 → nn.nn): same procedure, `do-release-upgrade` in place of `pg_upgradecluster`. Upgrade the app VM and the database VM in separate windows, never together — with two changes in flight you can't tell which one broke. There's one interaction specific to this role: the PGDG apt line is templated from `ansible_facts['distribution_release']`, a fact resolved at render time — `/etc/apt/sources.list.d/pgdg.list` on 1022 reads `resolute-pgdg` today, and it still will after the OS moves on. Re-run `bootstrap.yml --limit postgres` afterwards to rewrite that line for the new release, before the next `apt update` starts resolving against a suite the mirror no longer carries.
 
 **.NET runtime upgrades** follow the identical pattern one variable over — `dotnet_version` in the same `group_vars` file, then `bootstrap.yml --limit app`. Bump one thing per window.
 
@@ -320,6 +346,20 @@ The shape generalizes: *rehearse on a restored copy → snapshot → change → 
 1. Evacuate pve2 (Bulk Migrate → pve1), upgrade pve2, reboot.
 2. Migrate the VMs **from pve1 onto the freshly upgraded pve2**. Older QEMU → newer QEMU migrates cleanly; newer → older is what fails.
 3. Upgrade pve1, reboot, rebalance.
+
+After each reboot, prove it took. This is the step that quietly does not happen:
+
+```bash
+uname -r                                          # the kernel actually running
+pveversion -v | grep -m1 '^proxmox-kernel-[0-9]'  # the kernel meta-package installed
+uptime                                            # minutes, not days
+```
+
+`apt full-upgrade` unpacks a kernel and leaves the running one exactly where it was, so a reboot deferred to "later", or eaten by a guest that refused to shut down, leaves a node whose package list looks perfectly current. There is no `/var/run/reboot-required` on a Proxmox host — `update-notifier-common` is not installed, and nothing in `/etc/kernel/postinst.d` writes it — so the Debian reflex answers "nothing to do" on a node that needs a reboot badly, and so did the `-f /var/run/reboot-required` test [`node-return`](../scripts/README.md) used to gate on: a condition never once true here, guarding the exact state both nodes were sitting in. On 2026-09-10 both nodes here listed `proxmox-kernel-7.0: 7.0.14-15` installed while pve1 ran `7.0.14-12-pve` and pve2 had been up nineteen days on `7.0.14-8-pve`: two rolling upgrades, each stopped one step short, neither noticed.
+
+Both helpers now ask what that missing file could not. `node-return` compares the newest installed `proxmox-kernel-*` package against `uname -r` and stops Gate 1 on a node carrying an unbooted kernel; `cluster-health` compares the newest `/boot/vmlinuz-*` against the running one and warns. In `cluster-health` that is deliberately a *second*, independent line, because its version check compares the two nodes to *each other*, running kernel included — that catches the pair drifting apart, which is [16.2](16-maintenance.md#162-returning-a-node-after-a-long-outage-days-to-weeks)'s failure, and it correctly reports "both nodes on …" when you skip the reboot on both in the same window. Two caveats before you lean on either. **The copies on the nodes are not these copies:** `/usr/local/sbin` on both nodes still holds the 2026-09-04 scripts, which carry neither check; they become the current ones only when [2.4](../setup/02-post-install.md#24-install-the-helper-scripts-both-nodes) is re-run there after a `git pull`. And a warning still has to reach a human: root mail on these hosts is generated correctly, then rejected by the recipient provider and discarded ([15.3](../ha/15-ha.md#153-notifications)), so the only channel that arrives is the `infra-report` POST wrapped around the cron sweep. Until both nodes are refreshed, the three commands above are the check.
+
+What a missed reboot costs is not step 2 — the incoming guest runs against the *installed* QEMU on the target, which apt updated whether or not you rebooted, so that rule is about packages, not uptime. It is everything loaded at boot: you keep running the vulnerability you just downloaded, the ZFS userspace can end up ahead of the module it is talking to, and the reboot is still owed — paying it later means evacuating the node a second time, in a window you did not plan.
 
 Doing it the other way — upgrading pve1 first and then trying to migrate onto the un-upgraded pve2 — strands the VMs on one node. Same root cause as the version-skew warning in [16.2](16-maintenance.md#162-returning-a-node-after-a-long-outage-days-to-weeks). For a major PVE release, read the official upgrade notes first; for point releases this is all it takes.
 

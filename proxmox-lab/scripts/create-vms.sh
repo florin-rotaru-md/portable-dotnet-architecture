@@ -23,7 +23,16 @@ VMS="\
 1020  control-ubuntu     apps  2  4096   -     192.168.0.20  -
 1021  app-ubuntu         apps  8  8192   128G  192.168.0.21  order=2
 1022  postgres-ubuntu    db    8  32768  1024G 192.168.0.22  order=1,up=60
-1023  monitoring-ubuntu  apps  2  4096   320G  192.168.0.23  order=3"
+1023  monitoring-ubuntu  apps  4  8192   320G  192.168.0.23  order=3"
+
+# 1023's 4 cores / 8192 MB are the machine's numbers, not the plan's. This table said
+# 2/4096 for weeks while the VM ran on twice both, and the header's sync rule did not
+# catch it: that rule keeps this file and 10-vms.md identical, and they were — identically
+# wrong. Nothing compares either one to the hypervisor. The table is what a rebuild gets
+# (scripts/README.md, "rebuilding VMs after a disaster"), and the loop below prints
+# [ OK ] for whatever it reads, so a stale row hands Loki and Grafana half their CPU and
+# half their RAM and reports success. Diff it before you rebuild:
+#     for id in 1020 1021 1022 1023; do qm config $id; done | egrep 'name|cores|memory'
 
 ok()      { printf '[ OK ] %s\n' "$1"; }
 skip()    { printf '[SKIP] %s\n' "$1"; }
@@ -82,7 +91,21 @@ done <<< "$VMS"
 if confirm "Start all four now (first boot: cloud-init sets IPs and grows the disks)?"; then
     while read -r id name _; do
         [ -n "$id" ] || continue
-        [ "$(qm status "$id" 2>/dev/null)" = "status: stopped" ] && qm start "$id" >/dev/null && ok "$id ($name) started"
+        # One line per VM, always: the create loop above already promises that with its
+        # [SKIP], and the prompt says "all four". The old one-liner printed nothing for a
+        # VM it did not start, so the documented recovery run (10-vms.md: "qm stop 1020 &&
+        # qm destroy 1020 && create-vms") answered "start all four" with one [ OK ] line
+        # and no word about the other three. In a list of four, silence reads as success.
+        st=$(qm status "$id" 2>&1) || true   # rc=2 if the VM is gone; a bare assignment would trip set -e and end the loop here
+        if [ "$st" = "status: stopped" ]; then
+            if qm start "$id" >/dev/null; then
+                ok "$id ($name) started"
+            else
+                echo "[FAIL] $id ($name) did not start — qm's own error is just above; retry with 'qm start $id' and read the task log." >&2
+            fi
+        else
+            skip "$id ($name) left alone — qm status says: $st"
+        fi
     done <<< "$VMS"
     echo
     echo "Give first boot a minute, then check what the GUESTS actually took — the"

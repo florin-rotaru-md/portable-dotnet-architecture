@@ -35,9 +35,9 @@ Then adjust each clone **before its first boot** — the IP especially, because 
 | 1020 | control-ubuntu | `apps` | 2 | 4 GiB | 32G — as cloned | 192.168.0.20/24, gw .1 | no |
 | 1021 | app-ubuntu | `apps` | 8 | 8 GiB | **128G** | 192.168.0.21/24, gw .1 | `order=2` |
 | 1022 | postgres-ubuntu | **`db`** | 8 | 32 GiB | **1024G** | 192.168.0.22/24, gw .1 | `order=1,up=60` |
-| 1023 | monitoring-ubuntu | `apps` | 2 | 4 GiB | **320G** | 192.168.0.23/24, gw .1 | `order=3` |
+| 1023 | monitoring-ubuntu | `apps` | 4 | 8 GiB | **320G** | 192.168.0.23/24, gw .1 | `order=3` |
 
-1023 is the fourth, last VM: Loki + Grafana, wired up in [Stage 11](11-bootstrap.md#117-the-monitoring-vm-1023--loki--grafana). Its 320G looks generous next to 1020's 32G for the same CPU/RAM — but the `apps` pool is thin-provisioned ([Stage 6.1](../cluster/06-zfs-pools.md#61-thin-provisioning--set-it-before-any-vm-disk-exists)), so a big declared ceiling costs nothing until logs actually fill it. Cheap headroom now beats a `qm resize` interruption later.
+1023 is the fourth, last VM: Loki + Grafana, wired up in [Stage 11](11-bootstrap.md#117-the-monitoring-vm-1023--loki--grafana). Its 320G looks generous next to 1020's 32G — but the `apps` pool is thin-provisioned ([Stage 6.1](../cluster/06-zfs-pools.md#61-thin-provisioning--set-it-before-any-vm-disk-exists)), so a big declared ceiling costs nothing until logs actually fill it. Cheap headroom now beats a `qm resize` interruption later. **The 4 cores / 8 GiB are not the sizing 1023 was born with:** it was cloned at 2 / 4096 and raised on the live VM afterwards, and this row records what it runs (`qm config 1023`, verified 2026-09-10). That is the whole reason the row is worth correcting rather than ignoring — after a disaster this table and `create-vms` *are* the rebuild, `create-vms` skips VM IDs that already exist and never compares its table against a running guest, so a stale row is only ever discovered by a recreated VM coming back half-sized. Cores and RAM, unlike the disk, can also be lowered: if the growth wasn't deliberate, shrink the VM back to 2 / 4096 instead. What must not survive is the disagreement between the row, the script and the machine.
 
 > ⚠️ Under Hardware → Processors, the type stays **x86-64-v3** (inherited from the template). Do NOT change it to `host` — the VM would no longer migrate safely between the two nodes.
 
@@ -113,7 +113,7 @@ qm config 1020 | egrep 'ide2|ipconfig0'   # the two settings that make the above
 
 **Symptom B — the guest reports the right address, but you can't reach it.** The config worked; the network doesn't:
 
-- **Your LAN isn't `192.168.0.0/24`.** The guide hard-codes that range everywhere — vmbr0 in [5.1](../setup/05-network.md#51-management-network--vmbr0-on-the-onboard-nic), the gateway, this table, and the `GATEWAY` + IP column in [`create-vms`](../scripts/README.md). If your router serves `192.168.1.0/24`, a VM sitting on `192.168.0.21` is on a subnet nobody routes. Check with `ip -br a` on pve1 and adapt *all* of them together — the script warns about this mismatch before it creates anything.
+- **Your LAN isn't `192.168.0.0/24`.** The guide hard-codes that range everywhere — vmbr0 in [5.1](../setup/05-network.md#51-management-network--vmbr0-on-the-port-that-holds-the-lan-cable), the gateway, this table, and the `GATEWAY` + IP column in [`create-vms`](../scripts/README.md). If your router serves `192.168.1.0/24`, a VM sitting on `192.168.0.21` is on a subnet nobody routes. Check with `ip -br a` on pve1 and adapt *all* of them together — the script warns about this mismatch before it creates anything.
 - **`.20–.23` overlap the router's DHCP pool.** Two machines end up claiming one address, and which one answers depends on the ARP race. Reserve or exclude `.11`, `.12` and `.20–.23` in the router's DHCP settings — worth doing even when nothing is broken yet.
 
 **Fixing it.** At this stage the VMs are empty, so the honest answer is usually the fastest one — destroy and recreate, with the IP set before the first boot this time:
@@ -148,8 +148,17 @@ Canonical's cloud image ships `/etc/ssh/sshd_config.d/60-cloudimg-settings.conf`
 The hypervisor is the path that works regardless, since its own key is in that file — and it's where you'll be standing anyway, having just created the VMs:
 
 ```bash
-ssh devops@192.168.0.20        # from pve1, always
+ssh devops@192.168.0.20        # from pve1 — its key is always authorized
 ```
+
+**The second time a VM exists at that address, this line refuses to run.** Every clone generates its own SSH host keys on first boot, so a recreated VM presents a key that is not the one pve1 accepted last time — and ssh treats a *changed* key as an attack, not as something to confirm: `WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED`, then `Host key verification failed`, no login and no prompt to type through. That was pve1's state on **2026-09-10** for all four VMs, `.20` through `.23` — all four pins stale at once, and nothing clears one but the command below, run per address. The error names the file and the line to drop; do it on whichever machine you are connecting *from*, then reconnect:
+
+```bash
+ssh-keygen -R 192.168.0.20        # on pve1 — and again on your workstation, which keeps its own copy
+ssh devops@192.168.0.20
+```
+
+Expect it after every recreate: the destroy-and-recreate fix above, and any `create-vms` run rebuilding a missing VM. A `qmrestore` is the opposite case and needs none of this — the archive carries the original host keys back with the disk ([21.2](../operations/21-credentials.md#212-what-a-restore-actually-gives-back)).
 
 ### From your workstation
 

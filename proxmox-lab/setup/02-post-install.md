@@ -33,7 +33,7 @@ apt update && apt install -y intel-microcode fwupd
 reboot
 ```
 
-After the reboot, `grep -m1 microcode /proc/cpuinfo` should show a higher revision than before, and `journalctl -k | grep -i microcode` records the early load. Do the same on the QDevice when you get to [Stage 8](../cluster/08-qdevice.md) — same two packages, stock Debian repositories, no extra line needed.
+After the reboot, `grep -m1 microcode /proc/cpuinfo` should show a higher revision than before, and `journalctl -k | grep -i microcode` records the early load. **Prove the other half of that apt line too — it is the half that goes missing quietly:** `fwupdmgr get-devices` should list hardware rather than answer `command not found`, the same one-line proof [8.7](../cluster/08-qdevice.md#87-firmware-baseline) already runs on the QDevice. Microcode announces its own absence: the revision doesn't move and the kernel log stays empty. A missing `fwupd` announces nothing at all — the node simply stops having a firmware radar, [16.3](../operations/16-maintenance.md#163-firmware--detect-always-flash-rarely)'s *detect always* layer covers two machines instead of three, and the only line that ever says so is `cluster-health`'s `[WARN] firmware: fwupd not installed`, which leaves by root mail, a channel with a failure mode of its own ([15.3](../ha/15-ha.md#153-notifications)). Not hypothetical: pve1 ran without `fwupd` until 2026-09-10, with `intel-microcode` and the `non-free-firmware` list both in place, and nothing but that one WARN had ever said so. The gap costs nothing on the day it opens; it costs you the notice, months later, that a firmware fix for this machine exists. Do the same on the QDevice when you get to [Stage 8](../cluster/08-qdevice.md) — same two packages, stock Debian repositories, no extra line needed.
 
 Take these updates whenever they appear; they carry no more risk than any other package. That is emphatically **not** the policy for flashing a BIOS, which is the rest of [16.3](../operations/16-maintenance.md#163-firmware--detect-always-flash-rarely).
 
@@ -41,11 +41,13 @@ Take these updates whenever they appear; they carry no more risk than any other 
 
 **Shell:**
 ```bash
-lspci | grep -i ethernet     # pve1: two X550 entries
-lsblk                        # all 3 NVMe drives visible
+lspci | grep -i ethernet          # pve1: two X550 entries, plus the onboard I219-LM
+lsblk -d -e 230 -o NAME,SIZE,MODEL   # three drives per node — count drives, not NVMe
 ```
 
-If an NVMe drive is missing from `lsblk`, it's almost always VMD/RST still enabled in BIOS (Stage 0.1) — fix that before going further, not after.
+**Three drives on each node, but not the same kind.** pve2 is all-NVMe: SK hynix PC801 (OS), Kingston SKC3000D 1.9T → pool `apps`, WD PC SN8000S 4T → pool `db`. pve1 has exactly one NVMe — the Kingston SFYR2S2T0 that becomes pool `db`; its OS sits on an Intel SSDSC2BA400G4 and pool `apps` on a Samsung MZ7KM1T9, both SATA SSDs enumerating as `sda`/`sdb`. A single `nvme0n1` line on pve1 is therefore the correct result, not a symptom. (`-e 230` hides ZFS zvols, which is noise here and a dozen extra rows once [Stage 6](../cluster/06-zfs-pools.md) and the VMs exist.)
+
+A drive genuinely missing from the count of three is almost always VMD/RST still enabled in BIOS ([0.1](00-preparation.md#01-bios)) — fix that before going further, not after. Counting NVMe instead of drives inverts the check on pve1: you find one, conclude VMD is still on, and reboot into a BIOS to disable something that is already disabled. What settles it for good is `zpool status` after [Stage 6](../cluster/06-zfs-pools.md) — it names the actual device behind each pool, so the SATA vdev on pve1 shows up as a fact rather than as a missing NVMe.
 
 ## 2.4 Install the helper scripts (both nodes)
 

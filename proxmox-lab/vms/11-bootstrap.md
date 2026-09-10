@@ -24,7 +24,7 @@ The authoritative command-by-command walkthrough is [`native/example`](../../nat
 
 ## 11.2 On control-ubuntu (1020)
 
-Ansible and the SSH key exist since Stage 9. Clone the repo:
+Ansible and the `devops` private key have been on 1020 since [Stage 10](10-vms.md#control-node--ansible) — `pipx install --include-deps ansible`, and `~/.ssh/id_ed25519_devops` from [SSH keys](10-vms.md#ssh-keys--control-ubuntu--the-other-three), as the last row above already says. Stage 9 contributes only the *public* half, through `vm_keys.pub` at [9.4](09-ubuntu-template.md#94-cloud-init-defaults) — it builds the template on pve1, before 1020 exists, so it installs neither. Clone the repo:
 
 ```bash
 mkdir -p ~/src && cd ~/src
@@ -129,9 +129,15 @@ One thing the run did without being asked: the postgres role rendered `/etc/post
 ## 11.6 Verify before moving on
 
 ```bash
-# Postgres up, PostGIS present, dump script installed (on 1022)
-ssh devops@192.168.0.22 'systemctl is-active postgresql && ls -l /opt/postgres/scripts/pg-backup.sh'
+# Postgres up, PostGIS present (on 1022)
+ssh devops@192.168.0.22 'systemctl is-active postgresql'
 ssh devops@192.168.0.22 'sudo -u postgres psql -tAc "select version(), postgis_version()"'
+
+# The nightly dump: prove it RUNS, not that the file exists. Safe on demand,
+# and the same command 20.3 step 2 takes before a major upgrade.
+ssh devops@192.168.0.22 'sudo -u postgres /opt/postgres/scripts/pg-backup.sh'
+ssh devops@192.168.0.22 'sudo -u postgres ls -l /opt/postgres/backups'
+# expect at least globals_<stamp>.sql.gz, plus one <db>_<stamp>.dump per application database
 
 # Tuning followed the VM's RAM (conf.d/10-tuning.conf): 32 GiB → expect 8GB
 ssh devops@192.168.0.22 'sudo -u postgres psql -tAc "show shared_buffers"'
@@ -150,7 +156,9 @@ curl -s 'http://192.168.0.23:3100/loki/api/v1/label/service/values'
 # expect {"status":"success","data":["api.example.com"]} — one entry per app in `applications[]`
 ```
 
-**Every `docker` command on 1023 needs `sudo`** — this one, and any later `logs`/`restart` you run by hand. The playbook installs Docker and runs `docker compose up -d` as root, and nothing adds `devops` to the `docker` group: that group is root-equivalent on the machine (a container can mount `/`), which is a poor trade for saving four characters on a VM you visit to read logs. Without it you get `permission denied while trying to connect to the Docker daemon socket`.
+**Run the dump once, here.** An `ls -l` on the script would only tell you the template landed; the cron does not fire until its scheduled run — `15 5 * * *` on 1022, whose clock is `Etc/UTC`, so 08:15 on the hosts' Europe/Bucharest clock in summer and 07:15 in winter. The hour and minute come from `postgres_backup_hour` / `postgres_backup_minute` in the live inventory's group_vars, not from the role default; [17.5](../backup/17-backup-restore.md#175-a-fourth-tier-for-the-database) is the tier itself. Everything that can actually break the tier stays invisible until the first night: `postgres` unable to write the directory, a dedicated `postgres_backup_device` that isn't mounted (the script's own `FATAL ... aborting`, correct behaviour that nonetheless produces no dump), a client/server version mismatch. And when it does break, it reports itself into `backups/cron.log` inside the VM and into root mail, neither of which anyone reads. `backup-verify` on the hypervisors watches this directory — age *and* size, so a dump that aborts after creating its file is caught too — from [2.4](../setup/02-post-install.md#24-install-the-helper-scripts-both-nodes) onward, but only once 2.4 has been re-run with the current script: the copies installed on both nodes are still the 2026-09-04 ones, and those reach this check only on a node holding the USB backup drive, which is neither of them. And either way it can only compare against a dump that already exists — the run you do here is what gives it its first one. Thirty seconds now against finding out at a restore that the tier has never produced a byte, which is precisely how [20.3 step 2](../operations/20-upgrades.md#step-2-the-safety-net--three-layers-take-all-three) expects you to have proven it.
+
+**Every `docker` command on 1023 is written with `sudo` here** — this one, and any later `logs`/`restart` you run by hand. The playbook installs Docker and runs `docker compose up -d` as root, and nothing in `native/infra/ansible` adds `devops` to the `docker` group: that group is root-equivalent on the machine (a container can mount `/`), a poor trade for saving four characters on a VM you visit to read logs. On a 1023 built the way Ansible builds it, a bare `docker ps` therefore answers `permission denied while trying to connect to the Docker daemon socket`. **The live 1023 is not that VM:** `getent group docker` reads `docker:x:109:devops` and `docker ps` runs unprivileged there (verified 2026-09-10) — root-equivalence granted by hand, outside the playbook. Nothing reverts it (the `common` role's `user:` task names no `groups:`, so a re-run neither removes the membership nor reports it) and nothing reproduces it: recreate the VM from [Stage 10](10-vms.md) and the `sudo` is required again. Either run `sudo gpasswd -d devops docker` and keep the machine on the design, or expect one VM to differ from every document describing it.
 
 All green → the machines are done. From here on, **change VM state via the playbook, not by hand** ([the ownership boundary, 20.5](../operations/20-upgrades.md#205-the-same-pattern-applied-elsewhere)) — and continue with [Stage 12](../ha/12-replication.md), which replicates disks that now hold their real content.
 
@@ -164,7 +172,7 @@ The Ansible side of this needed no new code: `monitoring` and `alloy` are existi
 - 1021's Alloy config **auto-discovers** 1023: `config.alloy.j2` reads `groups['monitoring'][0]`'s address at render time, so defining the `[monitoring]` group in `hosts.ini` is the only wiring the app side needs. You do not set `alloy_loki_url` by hand — that variable exists only to *override* the discovery, for cases this lab doesn't have.
 - Grafana ships with the Loki datasource pre-provisioned (`grafana-datasource-loki.yml.j2`) — open `http://192.168.0.23:3000`, log in as `admin` / the `grafana_admin_password` from vault, and the app's logs are already queryable under `{service="api.example.com"}` — the label is `applications[].name`, **verbatim**, not `domain`. The two are equal for every entry whose name follows the name-==-domain convention, which is why this never bit; the live estate's `fiscal` entry deliberately breaks it (`name: fiscal`, `domain: fiscal.waa.ro`), and there the stream is `{service="fiscal"}`. `roles/alloy/templates/config.alloy.j2` is the authority: `service = "{{ app.name }}"`.
 
-**What does *not* ship logs yet, and why that's a deliberate stop here rather than an oversight:** Play 1 (postgres) runs only `common` + `postgres` — the `alloy` role isn't in that play, so 1022's Postgres logs stay local (`journalctl -u postgresql@{{ postgres_version }}-main`) and don't reach Grafana. Wiring that up means teaching Alloy to scrape journald instead of files (Postgres on Ubuntu logs to the journal, not a file, unless `logging_collector` is turned on) — a real change to a role shared by every setup in this repo, not a lab-only tweak. Doing it well is worth its own change, reviewed on its own; bolting it on here to make 1023's job description technically complete would be exactly the kind of half-finished feature this guide tries to avoid. Until then, `journalctl` on 1022 (and `cluster-health`'s existing checks) remain how you look at database-side problems.
+**What does *not* ship logs yet, and why that's a deliberate stop here rather than an oversight:** Play 1 (postgres) runs only `common` + `postgres` — the `alloy` role isn't in that play, so 1022's Postgres logs stay local (`journalctl -u postgresql@{{ postgres_version }}-main`) and don't reach Grafana. Wiring that up means teaching Alloy to scrape journald instead of files (Postgres on Ubuntu logs to the journal, not a file, unless `logging_collector` is turned on) — a real change to a role shared by every setup in this repo, not a lab-only tweak. Doing it well is worth its own change, reviewed on its own; bolting it on here to make 1023's job description technically complete would be exactly the kind of half-finished feature this guide tries to avoid. Until then, `journalctl` on 1022 — plus `backup-verify`'s `pg-dump:` and `wal-stream:` lines on the hypervisors, which are the only database-side checks either helper script runs, and only once [2.4](../setup/02-post-install.md#24-install-the-helper-scripts-both-nodes) has been re-run with the current copy (11.6 above) — remain how you look at database problems.
 
 **Why 1023 stays out of HA:** see [Stage 15.1](../ha/15-ha.md#151-which-vms-get-ha). Short version — it's an observability tool, not something users depend on; losing dashboards for the few minutes a manual restart takes is a cost worth paying for one less moving part during an actual incident.
 

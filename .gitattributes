@@ -1,0 +1,24 @@
+# Shell scripts MUST check out with LF endings, on every platform.
+#
+# These scripts are edited on Windows (core.autocrlf=true, so the working tree is CRLF)
+# and executed on Debian. Git normalises on commit, so the `git pull` on a node has always
+# been safe — which is exactly what made this dangerous: `git diff` looks clean, and
+# `bash -n` passes under MSYS bash, so nothing on the authoring machine complains. The
+# moment anyone takes the obvious shortcut for an urgent one-line fix and scp/rsyncs a
+# script straight from Windows to a node, the shebang becomes `#!/usr/bin/env bash\r` and
+# Linux answers:
+#
+#     /usr/bin/env: 'bash\r': No such file or directory
+#
+# install-scripts.sh copies bytes (`install -m 755`) and filters nothing, so a CRLF file
+# installs happily and only fails at run time. Pinning eol=lf makes the working tree match
+# what actually runs, and removes the trap rather than documenting it.
+*.sh text eol=lf
+
+# Same reasoning for the files that are read by tools on the Linux side.
+*.yml   text eol=lf
+*.yaml  text eol=lf
+*.j2    text eol=lf
+*.cfg   text eol=lf
+*.conf  text eol=lf
+*.service text eol=lf

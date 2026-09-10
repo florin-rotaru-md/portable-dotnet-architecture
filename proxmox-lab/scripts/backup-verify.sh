@@ -7,9 +7,16 @@
 # *failure* — a job that silently stopped running fires nothing. This checks
 # each link for *freshness*, which is the signal silence doesn't give you.
 #
-# Run on pve1 (where the USB drive and rclone live). On a node without the USB
-# storage configured it exits 0 quietly, so the same cron entry can be
-# installed everywhere.
+# Runs on both nodes; the same cron entry is installed everywhere. The tiers that live
+# on the USB drive are skipped where the drive is not mounted, and the tiers that reach
+# VM 1022 over the network run everywhere.
+#
+# The header used to say "run on pve1, where the USB drive and rclone live". Both halves
+# were false, and stating them cost real time: on 2026-09-10 /mnt/usb-backup existed on
+# NEITHER node and rclone was installed on neither node (nor on the QDevice) — the offsite
+# and R2 tiers had never been built at all, as opposed to having broken. A header that
+# names where something lives ends the next reader's search, so it had better be checked
+# rather than assumed.
 #
 # Output: one line per check, [ OK ] / [WARN] / [FAIL].
 # Exit:   0 = all OK, 1 = warnings, 2 = at least one failure.
@@ -19,10 +26,16 @@
 
 set -uo pipefail
 
+# Same reasoning as cluster-health.sh: /usr/sbin is where several of the tools below live,
+# cron's default PATH does not include it, and cron is not the only thing that runs this.
+PATH=/usr/sbin:/usr/bin:/sbin:/bin:${PATH:-}
+export PATH
+
 VMS="1020 1021 1022 1023"
 CONFIG_HOSTS="pve1 pve2"
 MAX_AGE_H=26                    # nightly jobs → anything older than ~a day is stale
 MIN_SIZE_MB=100                 # a vzdump smaller than this is almost certainly broken
+PG_MIN_SIZE_MB=1                # likewise for a Postgres dump; the real ones are 12-22 MB
 USB_MOUNT=/mnt/usb-backup
 RCLONE_REMOTE=digi-crypt:
 RCLONE_LOG=/var/log/rclone-backup.log
@@ -36,19 +49,60 @@ QUIET=0
 
 RC=0
 ok()   { [ "$QUIET" = 1 ] || printf '[ OK ] %s\n' "$1"; }
-warn() { printf '[WARN] %s\n' "$1"; [ "$RC" -lt 1 ] && RC=1; }
-fail() { printf '[FAIL] %s\n' "$1"; RC=2; }
+warn() { printf '[WARN] %s\n' "$1"; [ "$RC" -lt 1 ] && RC=1; return 0; }
+fail() { printf '[FAIL] %s\n' "$1"; RC=2; return 0; }
+
+have() { command -v "$1" >/dev/null 2>&1; }
+
+# The first line of a failed ssh is often the row of @ signs from the host-key banner,
+# which tells the reader nothing. Skip decoration and quote the first line that carries
+# actual words, so the message names the fault rather than the frame around it.
+first_meaningful() { grep -vE '^[[:space:]@*=-]*$' | head -1; }
 
 # ── The USB drive itself ──────────────────────────────────────────────────────
+# Read the comment below before touching this block; its shape is the entire point.
+#
+# The old code, on a node with no drive and no /mnt/usb-backup directory, ran
+# `exit 0` with no output whatsoever. That was deliberate and it was wrong. It was
+# written for the node that does not hold the drive — the peer does, and the peer's
+# own run does the verifying — so staying quiet let one cron entry be installed on
+# both nodes. But it encodes an assumption it never tests: that some OTHER node is
+# covering this. On 2026-09-10 neither node had the drive, so both took this branch,
+# both exited 0 silently, and the app dutifully recorded "pass — exit 0, no output"
+# for both. Two green ticks, five unverified tiers, and no vzdump had EVER run.
+#
+# Silence is only honest when something else is doing the work. So prove that
+# something is, using the one source that answers for the whole cluster rather than
+# for this node: jobs.cfg and vzdump.cron live in pmxcfs and read the same on either
+# side. No job anywhere means nobody is covering anybody, and that is a FAIL wherever
+# it is noticed first.
+JOBS_MODERN=$(grep -c '^vzdump:' /etc/pve/jobs.cfg 2>/dev/null)
+JOBS_LEGACY=$(grep -cE '^[^#]*[[:space:]]vzdump[[:space:]]' /etc/pve/vzdump.cron 2>/dev/null)
+BACKUP_JOBS=$(( ${JOBS_MODERN:-0} + ${JOBS_LEGACY:-0} ))
+
+# USB_OK gates only the tiers that genuinely live on the drive. It used to be an early
+# `exit`, and that was a second bug hiding behind the first: the WAL-slot and in-VM
+# pg-dump checks at the bottom of this file never touch /mnt/usb-backup — they reach
+# VM 1022 over the network — yet they sat below the gate, so on a node with no drive
+# they did not run. With no drive on EITHER node that meant the one tier that actually
+# exists, the nightly Postgres dump, was the only thing in the estate still protecting
+# anything and the only thing nothing ever checked. Absence of the drive is a reason to
+# skip the drive's tiers, not a reason to stop asking questions.
+USB_OK=1
 if ! mountpoint -q "$USB_MOUNT"; then
+    USB_OK=0
     if [ -d "$USB_MOUNT" ]; then
-        fail "usb: $USB_MOUNT exists but nothing is mounted — the drive dropped off; every tier below is dead (17.2)"
-        exit "$RC"
+        fail "usb: $USB_MOUNT exists but nothing is mounted — the drive dropped off, so every tier that lives on it is dead (17.2)"
+    elif [ "$BACKUP_JOBS" -eq 0 ]; then
+        fail "usb: no backup drive on this node AND no vzdump job scheduled anywhere in the cluster — no other node is covering this, nothing is being backed up at all (17.1)"
+    else
+        ok "usb: no drive on this node; $BACKUP_JOBS job(s) scheduled cluster-wide, so the peer's run verifies those tiers"
     fi
-    # No USB storage configured on this node — it lives on the peer. Nothing to verify here.
-    exit 0
+else
+    ok "usb: drive mounted"
 fi
-ok "usb: drive mounted"
+
+if [ "$USB_OK" = 1 ]; then
 
 # ── Per-VM vzdump freshness and plausibility ──────────────────────────────────
 for vm in $VMS; do
@@ -100,9 +154,13 @@ fi
 
 # The log proves the sync *ran*; this proves the remote actually *has current data*
 # — and, quarterly, scenario E proves the crypt passwords still decrypt it (17.9).
-NEWEST_REMOTE_TS=$(timeout 90 rclone lsl "${RCLONE_REMOTE}dump" 2>/dev/null \
+NEWEST_REMOTE_TS=$(have rclone && timeout 90 rclone lsl "${RCLONE_REMOTE}dump" 2>/dev/null \
     | awk '{print $2 " " substr($3, 1, 8)}' | sort | tail -1)
-if [ -z "$NEWEST_REMOTE_TS" ]; then
+if ! have rclone; then
+    # Distinct from "the remote did not answer": no binary means the offsite tier was
+    # never built on this node, which is a different conversation from a bad night.
+    fail "offsite: rclone is not installed on this node — the offsite tier does not exist here at all, it is not merely stale (17.6)"
+elif [ -z "$NEWEST_REMOTE_TS" ]; then
     warn "offsite: could not list ${RCLONE_REMOTE}dump — remote unreachable or empty (rclone ls ${RCLONE_REMOTE}dump)"
 else
     REMOTE_AGE_H=$(( ($(date +%s) - $(date -d "$NEWEST_REMOTE_TS" +%s 2>/dev/null || echo 0)) / 3600 ))
@@ -130,14 +188,30 @@ else
     fi
 fi
 
+fi  # end of the USB-drive-dependent tiers; everything below reaches the network instead
+
 # ── WAL stream to the QDevice (Stage 13) — slot active and not lagging ────────
 # Freshness can't be judged by file age (no traffic → no writes, by design), so
 # ask the primary: is the receiver connected, and how far behind is the slot?
 WAL_SLOT=wal_archive
 WAL_LAG_WARN_MB=64
-WAL_STATE=$(ssh -o BatchMode=yes -o ConnectTimeout=5 "devops@$PG_VM_IP" \
-    "sudo -u postgres psql -tAc \"select active::text || '|' || coalesce(pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn)::bigint / 1024 / 1024, -1) from pg_replication_slots where slot_name='$WAL_SLOT'\"" 2>/dev/null | tr -d '[:space:]')
-if [ -z "$WAL_STATE" ]; then
+#
+# The SSH exit status is kept SEPARATELY from the query result, and that separation is the
+# whole point of this block's shape. Both used to collapse into one empty string, so an
+# unreachable VM printed "no slot — Stage 13 not enabled (fine if that's intentional)":
+# a reassuring green line manufactured entirely by a connection failure. It was not
+# hypothetical — on 2026-09-10 pve1 could not reach 192.168.0.22 at all
+# ("REMOTE HOST IDENTIFICATION HAS CHANGED", the VM having been rebuilt during the
+# 2026-09-05..07 database reset without anyone updating the host's known_hosts) and this
+# line had been reporting the WAL tier as deliberately-off ever since. "I could not ask"
+# and "I asked and the answer was no" are different sentences and must print differently.
+WAL_RAW=$(ssh -o BatchMode=yes -o ConnectTimeout=5 "devops@$PG_VM_IP" \
+    "sudo -u postgres psql -tAc \"select active::text || '|' || coalesce(pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn)::bigint / 1024 / 1024, -1) from pg_replication_slots where slot_name='$WAL_SLOT'\"" 2>&1)
+WAL_RC=$?
+WAL_STATE=$(echo "$WAL_RAW" | tr -d '[:space:]')
+if [ "$WAL_RC" -ne 0 ]; then
+    fail "wal-stream: could not query $PG_VM_IP (ssh/psql exit $WAL_RC) — the slot state is UNKNOWN, not absent: $(echo "$WAL_RAW" | first_meaningful)"
+elif [ -z "$WAL_STATE" ]; then
     ok "wal-stream: no '$WAL_SLOT' slot on $PG_VM_IP — Stage 13 not enabled (fine if that's intentional)"
 else
     WAL_ACTIVE=${WAL_STATE%%|*}
@@ -157,16 +231,31 @@ fi
 # and the dir itself is read off the postgres crontab, because the Ansible role
 # relocates it to {{ postgres_backup_mount }}/postgres when a dedicated backup
 # disk is attached; PG_DUMP_DIR is only the fallback.
-PG_NEWEST_TS=$(ssh -o BatchMode=yes -o ConnectTimeout=5 "devops@$PG_VM_IP" \
-    "sudo -n -u postgres sh -c 'd=\$(crontab -l 2>/dev/null | sed -n \"s|.*>> \\(.*\\)/cron\\.log.*|\\1|p\" | head -1); d=\${d:-$PG_DUMP_DIR}; f=\$(ls -t \"\$d\"/*.dump 2>/dev/null | head -1); [ -n \"\$f\" ] && stat -c %Y \"\$f\"'" 2>/dev/null)
-if [ -z "$PG_NEWEST_TS" ]; then
-    warn "pg-dump: could not check $PG_VM_IP — VM down, sudo not passwordless for devops, or no dumps yet (17.5)"
+#
+# Size is fetched alongside the timestamp, and it is not decoration. The vzdump tier
+# above has always paired freshness with plausibility — MIN_SIZE_MB, "almost certainly
+# broken" — while this block read mtime alone, so a pg_dump that died after creating its
+# output file left a fresh, tiny archive and this printed "[ OK ] pg-dump: 3h old". The
+# tier that most needs the plausibility test is this one: with no vzdump anywhere, the
+# nightly dump on 1022 has been the only surviving copy of the databases.
+PG_STAT=$(ssh -o BatchMode=yes -o ConnectTimeout=5 "devops@$PG_VM_IP" \
+    "sudo -n -u postgres sh -c 'd=\$(crontab -l 2>/dev/null | sed -n \"s|.*>> \\(.*\\)/cron\\.log.*|\\1|p\" | head -1); d=\${d:-$PG_DUMP_DIR}; f=\$(ls -t \"\$d\"/*.dump 2>/dev/null | head -1); [ -n \"\$f\" ] && stat -c \"%Y %s\" \"\$f\"'" 2>&1)
+PG_RC=$?
+PG_NEWEST_TS=$(echo "$PG_STAT" | awk 'NF == 2 {print $1}')
+PG_NEWEST_SZ=$(echo "$PG_STAT" | awk 'NF == 2 {print $2}')
+if [ "$PG_RC" -ne 0 ]; then
+    fail "pg-dump: could not reach $PG_VM_IP (ssh/sudo exit $PG_RC) — the state of the only surviving database copy is UNKNOWN: $(echo "$PG_STAT" | first_meaningful)"
+elif [ -z "$PG_NEWEST_TS" ]; then
+    fail "pg-dump: $PG_VM_IP answered but reported no .dump file at all — the nightly dump has never produced one (17.5)"
 else
     PG_AGE_H=$(( ($(date +%s) - PG_NEWEST_TS) / 3600 ))
+    PG_SIZE_MB=$(( ${PG_NEWEST_SZ:-0} / 1024 / 1024 ))
     if [ "$PG_AGE_H" -gt "$MAX_AGE_H" ]; then
-        fail "pg-dump: newest dump is ${PG_AGE_H}h old — the 02:15 cron on 1022 stopped (17.5)"
+        fail "pg-dump: newest dump is ${PG_AGE_H}h old — the nightly cron on 1022 stopped (17.5)"
+    elif [ "$PG_SIZE_MB" -lt "$PG_MIN_SIZE_MB" ]; then
+        fail "pg-dump: newest dump is only ${PG_NEWEST_SZ:-0} bytes — fresh but implausibly small, so the dump aborted after creating the file; inspect it before trusting it (17.5)"
     else
-        ok "pg-dump: ${PG_AGE_H}h old"
+        ok "pg-dump: ${PG_AGE_H}h old, ${PG_SIZE_MB}MB"
     fi
 fi
 

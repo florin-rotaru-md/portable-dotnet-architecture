@@ -11,13 +11,27 @@ sequence to execute before go-live, the calendar that repeats after it, the app-
 that close every drill — a VM that boots is not yet a site that works — and the log where the
 measured numbers go. Nothing here replaces those sections; every row links back to its mechanics.
 
+> **Every helper named below is the repo version, and that is not yet what runs.** `cluster-health`,
+> `backup-verify` and the cron file that schedules them were rewritten on 2026-09-10; the copies in
+> `/usr/local/sbin` on both nodes are still the 2026-09-04 ones, which set no `PATH`, run the health
+> check at 07:00 rather than 07:07, exit 0 in silence on a node with no backup drive — which is both
+> nodes — and wrap only `cluster-health` and `backup-verify` in `infra-report`, leaving the 02:40
+> config backup and the 03:30 R2 mirror with root mail as their only channel. They become what this
+> stage describes only once Stage 2.4 ([`install-scripts.sh`](../scripts/README.md)) is re-run on
+> each node after a `git pull`. Every schedule, gate and pass condition here assumes that has
+> happened; until it has, run the checks by hand from the clone and do not read a clean cron night
+> as evidence.
+
 ## 23.1 The gate — before any drill
 
 Do not start a drill from an unknown state; a failed precondition turns a rehearsal into an
 incident. All four, every time:
 
 1. `cluster-health` exits clean on **both** nodes ([scripts](../scripts/README.md)).
-2. `backup-verify` exits clean on pve1.
+2. `backup-verify` exits clean on pve1 — which it cannot until the drive and the
+   [17.3](../backup/17-backup-restore.md#173-the-scheduled-job) job exist, since the repo version
+   fails the `usb:` block outright when no node has either. Read its output line by line and know
+   which failures you are choosing to drill through.
 3. A fresh on-demand vzdump of the VM you are about to break
    ([17.4](../backup/17-backup-restore.md#174-on-demand-backup-before-anything-risky)).
 4. `pvesr status` — all replication jobs current, then note which node currently holds which VM.
@@ -35,7 +49,7 @@ passed. An afternoon covers 1–6; 7–9 fit in another. Time everything and wri
 | 3 | Clean shutdown of pve2, then power back on | [18.6 #2](../ha/18-failover.md#186-pre-launch-test-plan) | VMs **migrate**, not restart (zero downtime); after power-on, 1023 returns by itself, the HA pair stays put — no failback |
 | 4 | Hard kill of pve2 (pull the plug) | [18.6 #3](../ha/18-failover.md#186-pre-launch-test-plan) | app answers again in ~2–3 min (measure it); Postgres crash recovery completes on its own; [app checklist](#234-the-app-checklist) passes; after pve2 returns, replication reverses without help |
 | 5 | **Isolation of pve2** — migrate the HA pair onto it, then pull both corosync links at once. The only drill that tests *fencing* rather than recovery | [18.6 #4](../ha/18-failover.md#186-pre-launch-test-plan) / [15.4](../ha/15-ha.md#154-the-watchdog--what-fencing-actually-rests-on) | pve2 resets **itself** ~60 s after going inquorate; pve1 has the pair started before it finishes rebooting; both rings OK again after reconnecting. A pve2 that just sits there = fencing is broken, stop and fix it |
-| 6 | WAL replay of the window drill 4 lost | [17.7 G](../backup/17-backup-restore.md#g-replaying-the-last-seconds-after-a-failover-wal-from-the-qdevice) | the spare VM's Postgres reaches seconds before the plug was pulled. **First check the guard fired**: `journalctl -u pg-receivewal \| grep wal-archive-guard` on the QDevice, and `ls -1d /var/lib/wal-archive*` shows a `.diverged-*` directory — that is the drill's real subject, because without it the reconnect would have overwritten the very window you are replaying ([13.5](../ha/13-wal-stream.md#135-failure-modes-stated-plainly)) |
+| 6 | WAL replay of the window drill 4 lost | [17.7 G](../backup/17-backup-restore.md#g-replaying-the-last-seconds-after-a-failover-wal-from-the-qdevice) | **Two prerequisites, both settled before drill 4 — after the kill neither can be established any more.** *A base:* G's first command restores last night's vzdump of 1022 and replays WAL onto it, and no vzdump has ever run on this cluster, so G stops at step 1. The nightly logical dump is not a substitute — `pg_restore` leaves no LSN to replay onto ([13.4](../ha/13-wal-stream.md#134-what-this-buys-beyond-the-failover-minute)). *The divergence guard on the QDevice:* run [13.3](../ha/13-wal-stream.md#133-verify--both-ends-then-end-to-end)'s two guard commands; on 2026-09-10 both came back empty, because [13.2](../ha/13-wal-stream.md#132-the-receiver-on-the-qdevice)'s guard block was never applied and an unguarded receiver streams, reports `state = streaming` and satisfies `backup-verify` exactly like a guarded one. Check it *first*, because afterwards the reconnect has already rewritten the `.partial` holding the very window this drill replays, and the post-drill evidence cannot tell you which happened: an empty `journalctl -u pg-receivewal \| grep wal-archive-guard` and a missing `/var/lib/wal-archive.diverged-*` read as *"the guard had nothing to move aside"* — the same branch G takes as licence to copy the live, i.e. overwritten, archive ([13.5](../ha/13-wal-stream.md#135-failure-modes-stated-plainly)). With both in place, pass = a `.diverged-*` directory exists and the spare VM's Postgres reaches seconds before the plug was pulled |
 | 7 | Restore drill, scenario A | [`restore-drill`](../scripts/README.md) / [17.9](../backup/17-backup-restore.md#179-restore-drills) | boots on a spare ID, guest agent reports, RTO logged |
 | 8 | Offsite restore, scenario E | [17.7 E](../backup/17-backup-restore.md#e-restore-from-offsite) | an archive pulled from Digi Storage restores — which proves the **crypt passwords**, the only proof that matters before you depend on them |
 | 9 | R2 media proof | [22.2](22-r2-mirror.md#222-proving-it-works) | one mirrored image opens from the USB copy **and** one from `digi-crypt:` |
@@ -49,23 +63,75 @@ anything that touches the network, the kernel or the watchdog
 
 | Cadence | What | Defined in |
 |---|---|---|
-| Daily, automatic | `cluster-health` 07:00 (both nodes), `backup-verify` 07:30, `r2-backup` 03:30, `pve-config-backup` 02:40 — quiet when healthy, mails root when not | [scripts](../scripts/README.md) |
+| Daily, automatic | `cluster-health` **07:07** (both nodes), `backup-verify` 07:30, `r2-backup` 03:30, `pve-config-backup` 02:40 — quiet when healthy. The seven minutes are cosmetic, and it matters that you know which half did the work: a check at 07:00:01 caught the `*:0` replication jobs mid-run and read a perfectly normal `SYNCING` as `[FAIL] replication: … your RPO is drifting right now` every morning, but moving off the hour cannot fix that — job 1022-0 runs `*/1` and fires 1440 times a day, so no cron minute dodges a sync. What fixed it is `cluster-health` no longer treating `SYNCING` as a fault; 07:07 is tidiness on top. If the alarm ever comes back, look at that rule, not at the clock. **The result reaches you through the app's infra ingest, not root mail** — see the proof below | [scripts](../scripts/README.md) |
 | Monthly, ~10 min | `restore-drill` on pve1 (rotates through the VMs); glance at `zpool status` — last scrub within a month (the shipped cron scrubs on the second Sunday) | [17.9](../backup/17-backup-restore.md#179-restore-drills), [18.7](../ha/18-failover.md#187-health-checks-worth-running-periodically) |
-| Quarterly, ~1 h | Offsite restore E + WAL replay G against the drill VM + open one offsite R2 object; firmware sweep across all three boxes; **root-mail proof** (below) | [17.9](../backup/17-backup-restore.md#179-restore-drills), [16.3](16-maintenance.md#163-firmware--detect-always-flash-rarely), [22.2](22-r2-mirror.md#222-proving-it-works) |
-| After any change to storage, backup config, Proxmox major, network | repeat the drill that covers what changed — each section states its own rule | [18.6](../ha/18-failover.md#186-pre-launch-test-plan), [17.9](../backup/17-backup-restore.md#179-restore-drills), [22.2](22-r2-mirror.md#222-proving-it-works) |
+| Quarterly, ~1 h | Offsite restore E + WAL replay G against the drill VM + open one offsite R2 object; firmware sweep across all three boxes; **root-mail proof** (below). E and G both start from a vzdump archive and the R2 leg from a mirror, none of which exists yet — until [17.3](../backup/17-backup-restore.md#173-the-scheduled-job)'s job and [17.10](../backup/17-backup-restore.md#1710-a-fifth-tier-for-the-r2-media-bucket) are built, this row is three rehearsals you cannot hold | [17.9](../backup/17-backup-restore.md#179-restore-drills), [16.3](16-maintenance.md#163-firmware--detect-always-flash-rarely), [22.2](22-r2-mirror.md#222-proving-it-works) |
+| After any change to storage, backup config, the notification target, Proxmox major, network | repeat the drill that covers what changed — each section states its own rule | [18.6](../ha/18-failover.md#186-pre-launch-test-plan), [17.9](../backup/17-backup-restore.md#179-restore-drills), [22.2](22-r2-mirror.md#222-proving-it-works) |
 
-**The root-mail proof.** Every automatic check on this list reports by mail and stays silent when
-healthy — which makes a healthy quarter indistinguishable from a dead mail path. Once a quarter,
-from **each** node and the QDevice:
+**The root-mail proof — and what it found.** Every automatic check on this list also mails root and
+stays silent when healthy — which makes a healthy quarter indistinguishable from a dead mail path.
+Once a quarter, from **each** node and the QDevice:
 
 ```bash
 echo "mail path test $(hostname) $(date -Is)" | mail -s "pve mail test" root
 ```
 
-Three messages arrive = the silence means something. One missing = fix that node's mail before
-anything else; its failures have been invisible. (The app-side monitor in
-[23.6](#236-division-of-labour--what-watches-what) exists precisely because this channel fails
-silently.)
+One message from each = the silence means something; one missing = fix that node's mail before
+anything else, because its failures have been invisible. **As of 2026-09-10 none arrive, and only
+two of the three commands can even run.** On both nodes postfix hands the message to
+`/usr/libexec/proxmox-mail-forward`, the upstream provider answers `550 5.7.1 … blocked using
+Spamhaus` for this home IP, and postfix logs `status=bounced` and then removes it. That takes the
+mail out from under every check in the daily row above — and only two of those four keep a second
+channel, because the installed cron wraps `cluster-health` and `backup-verify` in `infra-report`
+and runs `pve-config-backup` (02:40) and `r2-backup` (03:30) bare. For those two the dead mail is
+the whole reporting path, and it already costs: `journalctl -t pve-config-backup` carries *USB
+drive unreachable … kept local copy only* 38 times on pve1 (back to 2026-08-01, where its journal
+starts) and 25 times on pve2, the latest of them last night, and nobody has ever seen one. The
+repo's cron file wraps all four, which is one more thing Stage 2.4 lands. **And** the bounce takes
+out PVE's own notifications entirely, vzdump, replication, HA, fencing and package updates, because
+those have no second channel and all post to the same target. The QDevice cannot run the test at
+all: it ships no MTA, `mail`, `sendmail` and postfix are all absent, so it needs one installed
+first. Do not stop at the mail there, though — one of the two jobs an MTA would report on is not
+running at all. `/etc/cron.d/wal-archive-prune` is mode 0664, and cron loads nothing in
+`/etc/cron.d` that group or other can write (`INSECURE MODE (group/other writable)`, logged every
+minute), so nothing has ever been pruned: `find /var/lib/wal-archive -type f -mtime +7` still
+returns every segment back to 2026-08-16. That is a retention fault, not a notification one — and
+`chmod 0644` on its own is the wrong half of the repair, because the line on the box is still the
+old `! -name '*.partial'` sweep, which on its first working run deletes `walarchive`'s `.pgpass`
+along with the stale segments and kills the stream at the receiver's next restart. Rewrite the line
+in the `-regex` form and fix the mode in one sitting
+([13.2](../ha/13-wal-stream.md#132-the-receiver-on-the-qdevice)); the account's `/usr/sbin/nologin`
+is deliberate and not a second cause — cron runs a `/etc/cron.d` command under `SHELL` and never
+consults the passwd shell field.
+
+**Where to look when one does not arrive, because nothing else will tell you.** There is no bounce
+and nothing is retained, so the obvious places are all empty and prove nothing: `/var/mail/root` is
+never created, `mailq` stays empty, and a PVE 9 host has no `/var/log/mail.log` — postfix logs to
+the journal and only there:
+
+```bash
+journalctl -t postfix/smtp -t proxmox-mail-forward --since '2 days ago'
+```
+
+Two shapes of failure show up in those lines. If `/etc/pve/notifications.cfg` does not exist, no
+SMTP target was ever added and `proxmox-mail-forward` falls back to the built-in `mail-to-root` —
+the node is then speaking SMTP to your mailbox provider from its own WAN address, which is exactly
+the case [15.3](../ha/15-ha.md#153-notifications) says does not work, and it comes back as the `550`
+blocklist refusal naming your home IP. If a target *does* exist, read the same lines for an auth or
+TLS failure against the submission host. Either way the fix is 15.3's step 1, not a retry.
+
+What still delivers is the infra-report POST to the app
+(`platform/docs/adr/0015-infrastructure-verification.md`; `/etc/infra-report.conf` is present on
+both nodes), so until this proof passes, read the daily outcome in the app's admin view and treat an
+empty inbox as meaning nothing at all. The cost of not knowing that is wider than this drill: a
+target that cannot send takes the mail half of the first row of
+[23.6](#236-division-of-labour--what-watches-what) with it, and everything that reports *only* by
+mail — PVE's own vzdump, replication, HA and fencing notices, plus `pve-config-backup` and
+`r2-backup` for as long as the installed cron runs them unwrapped — goes with it too, silently,
+while the jobs keep looking green. Until a test message has actually landed in a human's inbox, the
+app-side ingest is not the backstop; it is the only channel you have, and it carries only what
+`infra-report` wraps. Repeat this proof the day anything about the mail target changes, not only at
+the quarter mark.
 
 ## 23.4 The app checklist
 
@@ -106,10 +172,18 @@ deciding whether the replication schedule or the backup cadence needs tightening
 | Observer | Sees | Blind to |
 |---|---|---|
 | Host cron + root mail (daily scripts) | everything on and between the nodes, in detail | its own death — dead cron and dead mail look identical to healthy |
-| App-side monitor (in the app repo: scheduled checks against the Proxmox API + script ingest, on-demand run from the admin UI, alerts through the app's own mailer) | cluster degradation from inside the workload: a node gone, replication stale, backups aging, quorum at 2/3 — and, via freshness, the death of the cron layer above | total cluster loss — it runs on the thing it watches |
+| App-side monitor (in the app repo: scheduled checks against the Proxmox API + script ingest, on-demand run from the admin UI, alerts through the app's own mailer) | cluster degradation from inside the workload: a node gone, replication stale, backups aging, quorum at 2/3 — and, via freshness, the death of the cron layer above | total cluster loss — it runs on the thing it watches — **and whatever a long run's detail does not fit.** `InfraStatusMath` clips the `" \| "`-joined lines at ingest and only the clipped string is persisted in the report payload; the raw lines are kept nowhere. Since 2026-09-10 the cap is 2000 characters rather than 300 and `[FAIL]` lines are sorted ahead of `[WARN]` ones before joining, so the reason a report went red now survives — but the clip has not gone away. The verdict always survives it (pass/warn/fail is graded over every line before anything is truncated); the *evidence* is best-effort. Trust this layer for the colour, and read the host for the reason |
 | External uptime probe on the public ready endpoint | total loss — the only observer that does not live on the cluster | everything subtler than "down" |
 
-Three layers, each covering the one above it. The first exists since Stage 2.4; the second is
-specified in the app repository (`platform/docs/adr/0015-infrastructure-verification.md`); the
-third is a five-minute setup with any external uptime service, using the same
-`/.well-known/ready` URL the deploy script already trusts.
+Three layers, each covering the one above it — but layers one and two overlap more than they look.
+`infra-report` wraps the helper inside the same cron entry, so the *content* the app ingests is not
+a second opinion: it is that run's own output, clipped. What layer two adds independently is
+**arrival** — a report that does not land at all is a signal the host cannot send about itself, and
+it is how a dead cron gets noticed, up to 26 hours later. So read the colour in the UI and the
+reason on the host (`cluster-health` interactively) rather than acting on the excerpt; and after
+changing a script or the cron file, check that a report still lands, because a wrapper that silently
+stops reporting looks exactly like a healthy quiet night until that freshness check fires.
+
+The first layer exists since Stage 2.4; the second is specified in the app repository
+(`platform/docs/adr/0015-infrastructure-verification.md`); the third is a five-minute setup with any
+external uptime service, using the same `/.well-known/ready` URL the deploy script already trusts.
