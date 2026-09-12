@@ -46,9 +46,22 @@
 
 set -uo pipefail
 CONF=/etc/infra-report.conf
+PATH=/usr/sbin:/usr/bin:/sbin:/bin:${PATH:-}
+export PATH
 
 script="${1:?usage: infra-report <script> [args…]}"
 shift
+
+# mktemp creates a private file. Never reuse a caller-supplied path or mix concurrent runs.
+INFRA_CHECKS_FILE=$(mktemp) || exit 2
+export INFRA_CHECKS_FILE
+trap 'rm -f -- "$INFRA_CHECKS_FILE"' EXIT
+time_observed=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+if [ -r "$CONF" ]; then
+    # shellcheck source=/dev/null
+    . "$CONF"
+    export INFRA_PEER_ADDRESS
+fi
 
 out="$("/usr/local/sbin/$script" "$@" 2>&1)"
 exit_code=$?
@@ -58,19 +71,13 @@ exit_code=$?
 [ -n "$out" ] && printf '%s\n' "$out"
 
 if [ -r "$CONF" ]; then
-    # shellcheck source=/dev/null
-    . "$CONF"
     if [ -n "${INFRA_URL:-}" ] && [ -n "${INFRA_TOKEN:-}" ]; then
         # python3 ships on PVE hosts; it builds the JSON so no line can break quoting.
-        payload="$(printf '%s' "$out" | python3 -c '
-import json, sys
-lines = [l for l in sys.stdin.read().splitlines() if l.strip()][:200]
-print(json.dumps({
-    "host": sys.argv[1],
-    "script": sys.argv[2],
-    "exitCode": int(sys.argv[3]),
-    "lines": lines,
-}))' "$(hostname)" "$script" "$exit_code")"
+        if ! payload="$(printf '%s' "$out" | python3 /usr/local/sbin/infra-report-payload.py \
+            "$(hostname)" "$script" "$exit_code" "$time_observed" "$INFRA_CHECKS_FILE")"; then
+            logger -t infra-report "payload failed for $script (exit $exit_code stays authoritative)"
+            exit "$exit_code"
+        fi
 
         curl -fsS -m 20 -X POST \
             -H "Authorization: Bearer $INFRA_TOKEN" \

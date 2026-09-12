@@ -52,9 +52,16 @@ QUIET=0
 [ "${1:-}" = "--quiet" ] && QUIET=1
 
 RC=0
-ok()   { [ "$QUIET" = 1 ] || printf '[ OK ] %s\n' "$1"; }
-warn() { printf '[WARN] %s\n' "$1"; [ "$RC" -lt 1 ] && RC=1; return 0; }
-fail() { printf '[FAIL] %s\n' "$1"; RC=2; return 0; }
+record() { :; }
+if [ -n "${INFRA_CHECKS_FILE:-}" ]; then
+    helper="$(dirname "${BASH_SOURCE[0]}")/infra-check-output"
+    [ -r "$helper" ] || helper="$helper.sh"
+    # shellcheck source=infra-check-output.sh
+    . "$helper" || exit 2
+fi
+ok()   { record pass "$1"; [ "$QUIET" = 1 ] || printf '[ OK ] %s\n' "$1"; }
+warn() { record warn "$1"; printf '[WARN] %s\n' "$1"; [ "$RC" -lt 1 ] && RC=1; return 0; }
+fail() { record fail "$1"; printf '[FAIL] %s\n' "$1"; RC=2; return 0; }
 
 # ── Tool guards ───────────────────────────────────────────────────────────────
 # Every check below shells out, and until 2026-09-10 none of them checked that the
@@ -76,11 +83,12 @@ fail() { printf '[FAIL] %s\n' "$1"; RC=2; return 0; }
 have()    { command -v "$1" >/dev/null 2>&1; }
 require() {
     have "$1" && return 0
-    fail "$2: '$1' is not on PATH — this check DID NOT RUN, so treat it as unknown, not as passing (PATH=$PATH)"
+    CHECK_OBSERVATION=unknown fail "$2: '$1' is not on PATH — this check DID NOT RUN, so treat it as unknown, not as passing (PATH=$PATH)"
     return 1
 }
 
 # ── Quorum ────────────────────────────────────────────────────────────────────
+CHECK_ID=quorum CHECK_CATEGORY=cluster
 if require pvecm "quorum"; then
     PVECM=$(pvecm status 2>&1)
     if echo "$PVECM" | grep -q 'Quorate:.*Yes'; then
@@ -97,6 +105,7 @@ if require pvecm "quorum"; then
 fi
 
 # ── Corosync rings ────────────────────────────────────────────────────────────
+CHECK_ID=corosync CHECK_CATEGORY=network
 # Judged per link, not with one grep over the whole output, because the two links
 # do not mean the same thing. Link 0 is the LAN ring: membership rides on it and it
 # being down is an incident. Link 1 is the 10G direct cable (5.4), which is plugged
@@ -140,6 +149,7 @@ EOF
 fi
 
 # ── ZFS pools: health, capacity, pinned snapshots ─────────────────────────────
+CHECK_ID=zfs CHECK_CATEGORY=storage
 # Worth knowing while reading these lines: every pool here is a SINGLE-DEVICE vdev,
 # no mirror and no raidz (6.1). "all pools healthy" therefore means "the one disk
 # under each pool has not failed yet" — it is not a redundancy statement. The whole
@@ -191,6 +201,7 @@ if require zfs "zfs-snapshots"; then
 fi
 
 # ── Replication ───────────────────────────────────────────────────────────────
+CHECK_ID=replication CHECK_CATEGORY=replication
 # Columns: JobID Enabled Target LastSync NextSync Duration FailCount State
 #
 # SYNCING IS NOT A FAILURE. pvesr builds that last column as
@@ -288,6 +299,7 @@ EOF
 fi
 
 # ── HA ────────────────────────────────────────────────────────────────────────
+CHECK_ID=ha CHECK_CATEGORY=guests
 # The old test was "is any service line NOT started?", which answers [ OK ] just as
 # happily when there are no service lines at all — whether because HA was never
 # configured or because ha-manager itself could not be found (which is precisely
@@ -328,6 +340,7 @@ if [ "${HA_COUNT:-0}" -gt 0 ]; then
 fi
 
 # ── Watchdog (fencing) ────────────────────────────────────────────────────────
+CHECK_ID=watchdog CHECK_CATEGORY=cluster
 # Self-fencing is what makes automatic recovery safe rather than reckless (18.2),
 # and it is the one piece of the HA stack that fails completely silently: nothing
 # in the UI, and nothing else in this script, reports a watchdog that never got
@@ -343,6 +356,7 @@ else
 fi
 
 # ── Start at boot ─────────────────────────────────────────────────────────────
+CHECK_ID=autostart CHECK_CATEGORY=guests
 # HA guests are started by the HA stack; every other VM comes back after a node
 # reboot only if onboot is set. Nothing else surfaces a missing flag — you find
 # out the next time you reboot (10-vms.md, "Start at boot"). Node-local: VMs
@@ -371,6 +385,7 @@ if require qm "autostart"; then
 fi
 
 # ── Version skew vs the peer node ─────────────────────────────────────────────
+CHECK_ID=versions CHECK_CATEGORY=maintenance
 PEER_LINE=$(awk -v me="$(hostname)" '
     /node {/ {name=""; addr=""}
     $1 == "name:" {name=$2}
@@ -414,6 +429,7 @@ else
 fi
 
 # ── Running kernel vs installed kernel ────────────────────────────────────────
+CHECK_ID=kernel CHECK_CATEGORY=maintenance
 # The peer comparison above reads `pveversion`, which reports the RUNNING kernel — so two
 # nodes can agree with each other perfectly while BOTH have a newer kernel installed and
 # unbooted, which is exactly the state this cluster was in (7.0.14-15-pve sitting in /boot
@@ -435,6 +451,7 @@ else
 fi
 
 # ── Plain node-to-node SSH (the human path) ───────────────────────────────────
+CHECK_ID=ssh CHECK_CATEGORY=network
 # Checked separately from the version comparison above, and the separation is the
 # whole point: the two use completely different host-key stores and can disagree
 # for months without anything noticing. PVE's own tooling carries
@@ -459,6 +476,7 @@ if [ -n "${PEER_ADDR:-}" ]; then
 fi
 
 # ── Firmware ──────────────────────────────────────────────────────────────────
+CHECK_ID=firmware CHECK_CATEGORY=maintenance
 # Detection only — nothing here ever flashes anything (16.3: flashing is a
 # planned window, per machine, on a reason). fwupd refreshes LVFS metadata on
 # its own timer and this just reads the result. A machine LVFS doesn't cover
@@ -491,6 +509,7 @@ else
 fi
 
 # ── Time sync ─────────────────────────────────────────────────────────────────
+CHECK_ID=clock CHECK_CATEGORY=host
 if [ "$(timedatectl show -p NTPSynchronized --value 2>/dev/null)" = "yes" ]; then
     ok "time: synchronized"
 else
@@ -498,6 +517,7 @@ else
 fi
 
 # ── Backups ───────────────────────────────────────────────────────────────────
+CHECK_ID=backup-schedule CHECK_CATEGORY=backups
 # Two questions, cluster-wide one first, and that ordering is the whole fix.
 #
 # The old check only asked the node-local one — "is the USB drive mounted HERE?" —
@@ -538,6 +558,7 @@ fi
 # is how the original bug read as normal for as long as it did.
 
 # ── NVMe health and wear ──────────────────────────────────────────────────────
+CHECK_ID=disks CHECK_CATEGORY=disks
 # This loop is where the missing-tool bug did its loudest damage: with smartctl absent,
 # the old condition simply found no "PASSED" in an empty string and declared every
 # healthy disk dead — four screaming FAILs a night about hardware nothing had looked
@@ -591,13 +612,14 @@ if require smartctl "disks"; then
 fi
 
 # ── Power (node-aware) ────────────────────────────────────────────────────────
+CHECK_ID=power CHECK_CATEGORY=host
 # MODE decides whether NUT is meant to run at all. On this build it is `none` —
 # the UPS has no data path to pve1 (4.6) — while `upsc` stays installed with
 # nothing to answer it. A nightly warning nobody can act on is how the real ones
 # get skimmed past, so the intended state reports OK and says why.
 NUT_MODE=$(awk -F= '/^[[:space:]]*MODE=/ {gsub(/[" ]/, "", $2); print $2}' /etc/nut/nut.conf 2>/dev/null)
 if [ "$NUT_MODE" = "none" ]; then
-    ok "power: UPS not monitored by design — NUT disabled, no data cable (4.6)"
+    CHECK_OBSERVATION=notApplicable ok "power: UPS not monitored by design — NUT disabled, no data cable (4.6)"
 elif [ -n "$NUT_MODE" ] && command -v upsc >/dev/null 2>&1; then
     UPS_STATUS=$(upsc ups@localhost ups.status 2>/dev/null)
     case "$UPS_STATUS" in
@@ -616,4 +638,17 @@ for ac in /sys/class/power_supply/AC*/online; do
     fi
 done
 
+# Additional read-only metrics use structured command output and preserve unknown observations.
+CHECK_ID=host-metrics CHECK_CATEGORY=monitoring
+metrics_script="$(dirname "${BASH_SOURCE[0]}")/infra-host-metrics.py"
+if require python3 "host-metrics"; then
+    python3 "$metrics_script" "$@"
+    metrics_rc=$?
+    if [ "$metrics_rc" -gt 2 ]; then
+        fail "host-metrics: collector failed (exit $metrics_rc)"
+    elif [ "$metrics_rc" -gt "$RC" ]; then
+        RC=$metrics_rc
+    fi
+fi
+[ -z "${INFRA_CHECKS_FILE:-}" ] || printf '@complete\n' >> "$INFRA_CHECKS_FILE"
 exit "$RC"

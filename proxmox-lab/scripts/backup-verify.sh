@@ -48,9 +48,16 @@ QUIET=0
 [ "${1:-}" = "--quiet" ] && QUIET=1
 
 RC=0
-ok()   { [ "$QUIET" = 1 ] || printf '[ OK ] %s\n' "$1"; }
-warn() { printf '[WARN] %s\n' "$1"; [ "$RC" -lt 1 ] && RC=1; return 0; }
-fail() { printf '[FAIL] %s\n' "$1"; RC=2; return 0; }
+record() { :; }
+if [ -n "${INFRA_CHECKS_FILE:-}" ]; then
+    helper="$(dirname "${BASH_SOURCE[0]}")/infra-check-output"
+    [ -r "$helper" ] || helper="$helper.sh"
+    # shellcheck source=infra-check-output.sh
+    . "$helper" || exit 2
+fi
+ok()   { record pass "$1"; [ "$QUIET" = 1 ] || printf '[ OK ] %s\n' "$1"; }
+warn() { record warn "$1"; printf '[WARN] %s\n' "$1"; [ "$RC" -lt 1 ] && RC=1; return 0; }
+fail() { record fail "$1"; printf '[FAIL] %s\n' "$1"; RC=2; return 0; }
 
 have() { command -v "$1" >/dev/null 2>&1; }
 
@@ -60,6 +67,7 @@ have() { command -v "$1" >/dev/null 2>&1; }
 first_meaningful() { grep -vE '^[[:space:]@*=-]*$' | head -1; }
 
 # ── The USB drive itself ──────────────────────────────────────────────────────
+CHECK_ID=usb CHECK_CATEGORY=backups
 # Read the comment below before touching this block; its shape is the entire point.
 #
 # The old code, on a node with no drive and no /mnt/usb-backup directory, ran
@@ -105,6 +113,7 @@ fi
 if [ "$USB_OK" = 1 ]; then
 
 # ── Per-VM vzdump freshness and plausibility ──────────────────────────────────
+CHECK_ID=vzdump CHECK_CATEGORY=backups
 for vm in $VMS; do
     NEWEST=$(ls -1t "$USB_MOUNT"/dump/vzdump-qemu-"$vm"-*.vma.zst 2>/dev/null | head -1)
     if [ -z "$NEWEST" ]; then
@@ -123,6 +132,7 @@ for vm in $VMS; do
 done
 
 # ── Host-config archives (pve-config-backup.sh, both nodes) ───────────────────
+CHECK_ID=config-backups CHECK_CATEGORY=backups
 for host in $CONFIG_HOSTS; do
     NEWEST=$(ls -1t "$USB_MOUNT"/config-backup/"$host"/pve-config-"$host"-*.tar.gz 2>/dev/null | head -1)
     if [ -z "$NEWEST" ]; then
@@ -138,6 +148,7 @@ for host in $CONFIG_HOSTS; do
 done
 
 # ── Offsite: did the last sync run, and is the remote fresh? ──────────────────
+CHECK_ID=offsite CHECK_CATEGORY=backups
 if [ -f "$RCLONE_LOG" ]; then
     LOG_AGE_H=$(( ($(date +%s) - $(stat -c %Y "$RCLONE_LOG")) / 3600 ))
     ERRORS=$(tail -50 "$RCLONE_LOG" | grep -c ERROR || true)
@@ -172,8 +183,9 @@ else
 fi
 
 # ── R2 media mirror (17.10) — the bucket's only copy outside Cloudflare ──────
+CHECK_ID=r2 CHECK_CATEGORY=backups
 if [ ! -d "$R2_DIR" ]; then
-    ok "r2-mirror: not set up on this drive — fine if that's intentional (17.10)"
+    CHECK_OBSERVATION=unknown warn "r2-mirror: not set up on this drive — no R2 mirror coverage verified (17.10)"
 elif [ ! -f "$R2_LOG" ]; then
     fail "r2-mirror: $R2_DIR exists but $R2_LOG is missing — the 03:30 sync has never run (17.10)"
 else
@@ -191,6 +203,7 @@ fi
 fi  # end of the USB-drive-dependent tiers; everything below reaches the network instead
 
 # ── WAL stream to the QDevice (Stage 13) — slot active and not lagging ────────
+CHECK_ID=wal CHECK_CATEGORY=backups
 # Freshness can't be judged by file age (no traffic → no writes, by design), so
 # ask the primary: is the receiver connected, and how far behind is the slot?
 WAL_SLOT=wal_archive
@@ -212,7 +225,7 @@ WAL_STATE=$(echo "$WAL_RAW" | tr -d '[:space:]')
 if [ "$WAL_RC" -ne 0 ]; then
     fail "wal-stream: could not query $PG_VM_IP (ssh/psql exit $WAL_RC) — the slot state is UNKNOWN, not absent: $(echo "$WAL_RAW" | first_meaningful)"
 elif [ -z "$WAL_STATE" ]; then
-    ok "wal-stream: no '$WAL_SLOT' slot on $PG_VM_IP — Stage 13 not enabled (fine if that's intentional)"
+    CHECK_OBSERVATION=unknown warn "wal-stream: no '$WAL_SLOT' slot on $PG_VM_IP — no WAL streaming protection verified (Stage 13)"
 else
     WAL_ACTIVE=${WAL_STATE%%|*}
     WAL_LAG_MB=${WAL_STATE##*|}
@@ -226,6 +239,7 @@ else
 fi
 
 # ── The fourth tier: in-VM Postgres dumps (17.5) ──────────────────────────────
+CHECK_ID=postgres-dumps CHECK_CATEGORY=backups
 # Reached with the devops key + passwordless sudo — the same pair the WAL check
 # above uses. Plain devops cannot read the dump dir (0750 postgres:postgres),
 # and the dir itself is read off the postgres crontab, because the Ansible role
@@ -259,4 +273,5 @@ else
     fi
 fi
 
+[ -z "${INFRA_CHECKS_FILE:-}" ] || printf '@complete\n' >> "$INFRA_CHECKS_FILE"
 exit "$RC"

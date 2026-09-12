@@ -12,8 +12,9 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-for f in cluster-health.sh backup-verify.sh pve-config-backup.sh r2-backup.sh node-return.sh restore-drill.sh create-vms.sh infra-report.sh; do
-    install -m 755 "$f" "/usr/local/sbin/${f%.sh}"
+for f in cluster-health.sh backup-verify.sh pve-config-backup.sh r2-backup.sh node-return.sh restore-drill.sh create-vms.sh infra-report.sh infra-check-output.sh infra-report-payload.py infra-host-metrics.py; do
+    target=${f%.sh}
+    install -m 755 "$f" "/usr/local/sbin/$target"
 done
 
 cat > /etc/cron.d/pve-helper-scripts << 'EOF'
