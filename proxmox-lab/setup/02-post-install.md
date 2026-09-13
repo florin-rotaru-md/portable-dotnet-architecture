@@ -61,7 +61,15 @@ cd portable-dotnet-architecture/proxmox-lab/scripts
 ./install-scripts.sh
 ```
 
-This installs them into `/usr/local/sbin` (so `cluster-health` works from anywhere) and schedules the recurring ones via `/etc/cron.d/pve-helper-scripts`. It also installs an APT hook, `/etc/apt/apt.conf.d/15update-success-stamp`, because the package-updates probe reads a stamp nothing on Debian writes by default; `lm-sensors` is what the temperatures check reads. Skip either and `cluster-health` warns about it on every run. Do not `chmod +x` the installer: it is executable in git, and a mode change made by hand is a local modification that makes the next `git pull` refuse to update the file. To update later: `cd /root/src/portable-dotnet-architecture && git pull && proxmox-lab/scripts/install-scripts.sh`.
+This installs them into `/usr/local/sbin` (so `cluster-health` works from anywhere) and schedules the recurring ones via `/etc/cron.d/pve-helper-scripts`. It also installs an APT hook, `/etc/apt/apt.conf.d/15update-success-stamp`, because the package-updates probe reads a stamp nothing on Debian writes by default; `lm-sensors` is what the temperatures check reads. Skip either and `cluster-health` warns about it on every run. Do not `chmod +x` the installer: it is executable in git since 2026-09-13, and a mode change made by hand is a local modification that makes `git pull` refuse to update the file. To update later, on each node:
+
+```bash
+cd /root/src/portable-dotnet-architecture
+git checkout -- proxmox-lab/scripts/install-scripts.sh   # drops a hand-made chmod +x (this step used to include one); a no-op otherwise
+git pull --ff-only && proxmox-lab/scripts/install-scripts.sh
+```
+
+The installer ends by listing what it cannot do for you: a missing `/etc/infra-report.conf`, or `INFRA_PEER_ADDRESS` missing from it (created in `platform/docs/waa/infra/OPERATIONS.md` §1 step 4, added to an existing file in §2.2); `lm-sensors` not installed; an APT stamp that does not exist yet (`apt-get update` once). Act on every line it prints — each one is a check that otherwise warns on every run. Then refresh the app's view instead of waiting for the morning cron: `infra-report cluster-health --quiet; infra-report backup-verify --quiet`.
 
 Right now, most `cluster-health` lines will be warnings — no cluster, no pools, no replication yet. That's expected; it becomes the daily "is everything fine" command once the build reaches Stage 13. Run it after each stage from here on and watch warnings turn into `[ OK ]` lines as the pieces come up.
 
