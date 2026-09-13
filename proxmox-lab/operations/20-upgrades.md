@@ -72,9 +72,8 @@ ansible postgres -b -m shell -a 'runuser -u postgres -- psql -tAc "select versio
 This is the single highest-value step in the whole stage, and the architecture already supports it — it's [17.7 scenario A](../backup/17-backup-restore.md#a-restore-into-a-new-vm-id-safest--start-here) with a different purpose. You hit every extension error, every removed config setting, and every surprise on a throwaway VM instead of on production, and you come out with a measured duration rather than a guess.
 
 ```bash
-# on pve1, which holds all four VMs. There is no stored archive to restore from — no vzdump has
-# ever run on this build and /mnt/usb-backup exists on neither node (Step 2) — so make one first.
-# Snapshot mode keeps 1022 serving throughout; `local` is ~78G free against ~2G of used zvol.
+# on the node running 1022. The rehearsal wants today's data, not the quarterly image, so take
+# an on-demand one first (17.5); snapshot mode keeps 1022 serving throughout.
 vzdump 1022 --storage local --mode snapshot --compress zstd
 
 qmrestore /var/lib/vz/dump/vzdump-qemu-1022-<stamp>.vma.zst 1122 \
@@ -129,20 +128,12 @@ Want ≥ 2× the data directory free. The 1024GB disk from [Stage 10](../vms/10-
 | Layer | Command | Recovers from | Cost |
 |---|---|---|---|
 | **Logical dump** | `ansible postgres -b --become-user postgres -m command -a '/opt/postgres/scripts/pg-backup.sh'` | Anything, including "PG19 starts fine but the data is wrong". Version-independent — the per-database `-Fc` dumps restore into any Postgres | Minutes |
-| **VM backup** | `vzdump 1022 --storage usb-backup --mode snapshot --compress zstd` — run `pvesm status` first; this storage exists only if [17.2](../backup/17-backup-restore.md#172-backup-storage--the-usb-drive) was actually done | The whole VM being unrecoverable. Survives the VM being destroyed — provided the archive isn't sitting on the VM's own pool | Minutes, off-VM |
+| **VM image** | Proxmox UI → 1022 → Backup → **Backup now** (storage `local`, snapshot, zstd) — or `vzdump 1022 --storage local --mode snapshot --compress zstd` on the node running it ([17.5](../backup/17-backup-restore.md#175-vm-images--quarterly-and-on-demand)) | The whole VM being unrecoverable. Survives the VM being destroyed; `local` keeps only this newest image, and the next `offsite-sync` (05:00) carries it to Digi | Minutes, off-VM |
 | **VM snapshot** | see below | Everything else — this is your actual undo button | Seconds to take, seconds to roll back |
 
-The logical dump is the role's own daily script from [17.5](../backup/17-backup-restore.md#175-a-fourth-tier-for-the-database), run on demand — don't hand-roll a `pg_dumpall` next to it. It writes globals plus one custom-format dump per database into `/opt/postgres/backups`, which lives on the VM disk and is therefore captured by the `vzdump` in the next row.
+The logical dump is the role's own daily script from [17.4](../backup/17-backup-restore.md#174-postgres--continuous-wal-and-a-weekly-base), run on demand — don't hand-roll a `pg_dumpall` next to it. It writes globals plus one custom-format dump per database into `/opt/postgres/backups`, which lives on the VM disk and is therefore captured by the image in the next row; `pg-offsite` also carries each completed run to the node and to Digi within fifteen minutes.
 
-**Today that middle row cannot be taken, and it is the only one of the three that survives losing the VM.** `pvesm status` on either node returns `local`, `local-lvm`, `apps`, `db` — the USB drive from [17.2](../backup/17-backup-restore.md#172-backup-storage--the-usb-drive) has never been attached, so the `vzdump` in that row exits `storage 'usb-backup' does not exist` before it writes a byte. What is left is the logical dump, which lives on 1022's own disk, and the snapshot, which is a ZFS snapshot inside `db` — and `db`, like every pool on both nodes, is a single bare NVMe with no redundancy. One dead disk takes the undo button and the dump with it. The replica on the peer is not the third layer either: [17.1](../backup/17-backup-restore.md#171-the-tiers) is right that replication copies a botched upgrade to pve2 within the minute. Until the drive exists, dump to `local` and then move the archive off the node yourself — and check the space first, because `local` is `/var/lib/vz` on the node's root filesystem and a full `/` on a PVE node takes pmxcfs and corosync down with it:
-
-```bash
-df -h /var/lib/vz    # want well more free than the VM's used space, not its provisioned size
-vzdump 1022 --storage local --mode snapshot --compress zstd
-scp /var/lib/vz/dump/vzdump-qemu-1022-*.vma.zst root@192.168.0.10:/srv/   # the QDevice
-```
-
-The QDevice is the only off-node destination this build has: x86_64 Debian at 192.168.0.10, 1.7T free, root SSH working from both nodes (checked 2026-09-10). Its `/srv` shares a filesystem with `/var/lib/wal-archive` ([Stage 13](../ha/13-wal-stream.md)), so run `df -h` there before pushing anything large. (Copying to the peer node instead means typing a plain `ssh`/`scp`, and pve2 holds no pin for pve1: at a console that is the *authenticity of host … can't be established* prompt, which you would be waving through unverified mid-upgrade, and from anything without a terminal a flat `Host key verification failed`. [21.7](21-credentials.md#217-the-fourth-kind-the-pins-nobody-inventories) has the repair, and `pvecm updatecerts` is not it.) An archive that never leaves the node answers "I broke the database", not "the disk died" — and a major upgrade is exactly when you want both answers.
+**Underneath all three runs the layer you don't take: the database's WAL, archived continuously, and a weekly base, both on Digi ([17.4](../backup/17-backup-restore.md#174-postgres--continuous-wal-and-a-weekly-base)).** The snapshot is a ZFS snapshot inside `db`, a single bare NVMe; the image sits on the node's `local` until `offsite-sync` runs (at 05:00, or by hand there); the replica on the peer copies a botched upgrade within the minute ([17.1](../backup/17-backup-restore.md#171-the-tiers)). For the window itself, the WAL tier is the copy that survives losing the node, so prove it current before you start: `backup-verify` on the node running 1022 must pass its archiver, spool and newest-WAL-on-Digi lines. It recovers the 18 cluster and only that — archived WAL replays onto a base of the same major version — so the 19 cluster needs a base of its own (Step 8).
 
 The snapshot has cluster interactions, so take it deliberately:
 
@@ -284,6 +275,15 @@ done
 
 Load the site, exercise the app's main write path, confirm the row lands. A Postgres that starts is not the same as a Postgres your application works against — and with `Pooling=true` in the connection string, a stale pool produces failures that look like database problems but aren't.
 
+**Then give the 19 cluster a base.** Step 6 rendered the archive settings into it, so WAL keeps flowing to Digi — but every base on the node and on Digi is an 18 one, and until the Sunday base backup runs the new cluster's WAL has nothing to replay onto ([17.4](../backup/17-backup-restore.md#174-postgres--continuous-wal-and-a-weekly-base)). Don't wait for it:
+
+```bash
+# on 1022
+sudo -u postgres /opt/postgres/scripts/pg-basebackup.sh
+# on the node running 1022 — pull and upload now instead of at the next 15-minute pass
+pg-offsite --now
+```
+
 ### Step 9. Soak, then clean up
 
 Leave `18/main` and the snapshot in place for **at least a few days of real traffic** — long enough for a slow query or a rarely-hit code path to surface. Then:
@@ -323,7 +323,7 @@ sudo pg_ctlcluster 18 main start
 ```
 Then re-run the playbook with the reverted variable so config, the app role and the backup cron converge back onto 18.
 
-**Last resort** — restore **the archive you took in step 2** (there is no scheduled one, and nothing older exists on this build) to a new VM ID, then reload from `/opt/postgres/backups`: `globals_*.sql.gz` first, then `pg_restore` each `<db>_*.dump`. This path works across major versions, which is exactly why the role dumps in custom format rather than relying on the VM image alone.
+**Last resort** — restore **the image you took in step 2** to a new VM ID ([17.7 A](../backup/17-backup-restore.md#a-restore-into-a-new-vm-id-safest--start-here)), then reload from `/opt/postgres/backups`: `globals_*.sql.gz` first, then `pg_restore` each `<db>_*.dump`. This path works across major versions, which is exactly why the role dumps in custom format rather than relying on the VM image alone. Writes that landed between step 2 and step 5 are in neither; the 18 cluster's base + WAL recovers them, up to the last WAL it archived before `pg_upgradecluster` stopped it ([17.7 G](../backup/17-backup-restore.md#g-database-point-in-time-recovery-base--wal)).
 
 ⚠️ **Every rollback path discards writes made against the new cluster.** This is why step 3 keeps the application stopped until step 6 passes: while nothing has written, rollback is free. Once writes have landed in PG19, rolling back means losing them, and you're into reconciling by hand.
 
@@ -357,7 +357,7 @@ uptime                                            # minutes, not days
 
 `apt full-upgrade` unpacks a kernel and leaves the running one exactly where it was, so a reboot deferred to "later", or eaten by a guest that refused to shut down, leaves a node whose package list looks perfectly current. There is no `/var/run/reboot-required` on a Proxmox host — `update-notifier-common` is not installed, and nothing in `/etc/kernel/postinst.d` writes it — so the Debian reflex answers "nothing to do" on a node that needs a reboot badly, and so did the `-f /var/run/reboot-required` test [`node-return`](../scripts/README.md) used to gate on: a condition never once true here, guarding the exact state both nodes were sitting in. On 2026-09-10 both nodes here listed `proxmox-kernel-7.0: 7.0.14-15` installed while pve1 ran `7.0.14-12-pve` and pve2 had been up nineteen days on `7.0.14-8-pve`: two rolling upgrades, each stopped one step short, neither noticed.
 
-Both helpers now ask what that missing file could not. `node-return` compares the newest installed `proxmox-kernel-*` package against `uname -r` and stops Gate 1 on a node carrying an unbooted kernel; `cluster-health` compares the newest `/boot/vmlinuz-*` against the running one and warns. In `cluster-health` that is deliberately a *second*, independent line, because its version check compares the two nodes to *each other*, running kernel included — that catches the pair drifting apart, which is [16.2](16-maintenance.md#162-returning-a-node-after-a-long-outage-days-to-weeks)'s failure, and it correctly reports "both nodes on …" when you skip the reboot on both in the same window. Two caveats before you lean on either. **The copies on the nodes are not these copies:** `/usr/local/sbin` on both nodes still holds the 2026-09-04 scripts, which carry neither check; they become the current ones only when [2.4](../setup/02-post-install.md#24-install-the-helper-scripts-both-nodes) is re-run there after a `git pull`. And a warning still has to reach a human: root mail on these hosts is generated correctly, then rejected by the recipient provider and discarded ([15.3](../ha/15-ha.md#153-notifications)), so the only channel that arrives is the `infra-report` POST wrapped around the cron sweep. Until both nodes are refreshed, the three commands above are the check.
+Both helpers now ask what that missing file could not. `node-return` compares the newest installed `proxmox-kernel-*` package against `uname -r` and stops Gate 1 on a node carrying an unbooted kernel; `cluster-health` compares the newest `/boot/vmlinuz-*` against the running one and warns. In `cluster-health` that is deliberately a *second*, independent line, because its version check compares the two nodes to *each other*, running kernel included — that catches the pair drifting apart, which is [16.2](16-maintenance.md#162-returning-a-node-after-a-long-outage-days-to-weeks)'s failure, and it correctly reports "both nodes on …" when you skip the reboot on both in the same window. One caveat before you lean on either: a warning still has to reach a human, and root mail on these hosts is generated correctly, then rejected by the recipient provider and discarded ([15.3](../ha/15-ha.md#153-notifications)), so the only channel that arrives is the `infra-report` POST wrapped around the cron sweep.
 
 What a missed reboot costs is not step 2 — the incoming guest runs against the *installed* QEMU on the target, which apt updated whether or not you rebooted, so that rule is about packages, not uptime. It is everything loaded at boot: you keep running the vulnerability you just downloaded, the ZFS userspace can end up ahead of the module it is talking to, and the reboot is still owed — paying it later means evacuating the node a second time, in a window you did not plan.
 

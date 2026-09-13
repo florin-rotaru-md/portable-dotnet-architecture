@@ -12,10 +12,11 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-for f in cluster-health.sh backup-verify.sh pve-config-backup.sh r2-backup.sh node-return.sh restore-drill.sh create-vms.sh infra-report.sh infra-check-output.sh infra-report-payload.py infra-host-metrics.py; do
+for f in cluster-health.sh backup-verify.sh pve-config-backup.sh pg-offsite.sh offsite-sync.sh node-return.sh restore-drill.sh create-vms.sh infra-report.sh infra-check-output.sh infra-report-payload.py infra-host-metrics.py backup-retention.py; do
     target=${f%.sh}
     install -m 755 "$f" "/usr/local/sbin/$target"
 done
+rm -f /usr/local/sbin/r2-backup     # not part of the tiers (17.1)
 
 # APT success stamp. infra-host-metrics.py's package-updates probe trusts only
 # /var/lib/apt/periodic/update-success-stamp, and on Debian/PVE NOTHING writes that file:
@@ -52,24 +53,22 @@ MAILTO=root
 # exactly this line — the helpers simply never copied it.
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
-# 02:40 host-config archive (both nodes). The 17.5 ordering chain this used to cite —
-# 02:15 dump, 03:00 vzdump, 04:00 offsite — does not exist on this cluster: there is no
-# vzdump job at all, no offsite sync, and the in-VM dump runs at 05:15 UTC (08:15 here),
-# not 02:15. Restore the chain when those tiers are built, and re-time this with them.
+# 02:40 host-config archive (both nodes), kept locally; offsite-sync uploads it at 05:00 (17.6).
 40 2 * * * root /usr/local/sbin/infra-report pve-config-backup >/dev/null
 
-# 03:30 R2 media mirror (17.10). On a node without the drive it does no work and says which
-# case that is: [ OK ] when a usb-backup storage is defined for another node, FAIL when none
-# is defined anywhere — today, on both nodes, because no drive exists and rclone is installed
-# nowhere. It stays scheduled so that building the tier is the only step left.
-30 3 * * * root /usr/local/sbin/infra-report r2-backup >/dev/null
+# Every minute: Postgres WAL, the weekly base and the nightly dumps, pulled off VM 1022 and
+# uploaded to Digi (17.4). It acts only on the node running 1022 and exits at once on the
+# other, so it follows the database through a migration or a failover. Not wrapped in
+# infra-report — 1440 reports a day would drown the ingest; backup-verify proves each
+# morning that it kept up.
+* * * * * root /usr/local/sbin/pg-offsite >> /var/log/pg-offsite.log 2>&1
 
-# Both of the jobs above are wrapped in infra-report, not run bare. They used to be the only
-# two scheduled jobs whose entire failure story was stderr -> cron mail -> root, which the
-# comment at the top of this file explains is a channel that delivers nothing. That made the
-# host-config archive and the R2 mirror the two tiers with no working failure signal AND no
-# arrival signal: the app cannot notice a job that never reports. Wrapping them costs one
-# POST a night and turns both into something the freshness check can see.
+# 05:00 VM images and host-config archives to Digi, with their offsite retention (17.5, 17.6).
+0 5 * * * root /usr/local/sbin/infra-report offsite-sync >/dev/null
+
+# The two nightly copy jobs are wrapped in infra-report rather than run bare: their failure
+# would otherwise travel only as stderr -> cron mail -> root, which the top of this file
+# explains delivers nothing, and the app cannot notice a job that never reports.
 
 # Morning sweep: cluster health, then backup freshness once the offsite
 # sync window has passed. infra-report passes output and exit code through
@@ -85,6 +84,16 @@ PATH=/usr/sbin:/usr/bin:/sbin:/bin
 # moving off the top of the hour is tidiness layered on top of a real fix.
 7  7 * * * root /usr/local/sbin/infra-report cluster-health --quiet
 30 7 * * * root /usr/local/sbin/infra-report backup-verify  --quiet
+EOF
+
+cat > /etc/logrotate.d/pg-offsite << 'EOF'
+/var/log/pg-offsite.log {
+    weekly
+    rotate 8
+    compress
+    missingok
+    notifempty
+}
 EOF
 
 # Ingest config guard — the wrapper installed above reads /etc/infra-report.conf and, when that
@@ -110,9 +119,14 @@ command -v sensors >/dev/null 2>&1 ||
     echo "Sensors: WARNING — lm-sensors is not installed, so cluster-health's temperatures check warns on every run: apt install -y lm-sensors (Stage 2.4)."
 [ -e /var/lib/apt/periodic/update-success-stamp ] ||
     echo "APT: the success stamp does not exist yet — run 'apt-get update' once, or package-updates warns until pve-daily-update.timer next succeeds."
+if ! command -v rclone >/dev/null 2>&1; then
+    echo "Offsite: WARNING — rclone is not installed, so pg-offsite and offsite-sync upload nothing: apt install -y rclone, then 17.3."
+elif ! rclone listremotes 2>/dev/null | grep -qx 'digi-crypt:'; then
+    echo "Offsite: WARNING — the 'digi-crypt:' remote is not configured on this node; both upload jobs fail until it is (17.3)."
+fi
 echo
 
-echo "Installed to /usr/local/sbin: cluster-health backup-verify pve-config-backup r2-backup node-return restore-drill create-vms infra-report"
-echo "Scheduled via /etc/cron.d/pve-helper-scripts (config backup 02:40, R2 mirror 03:30, health 07:07, backup check 07:30)"
+echo "Installed to /usr/local/sbin: cluster-health backup-verify pve-config-backup pg-offsite offsite-sync node-return restore-drill create-vms infra-report"
+echo "Scheduled via /etc/cron.d/pve-helper-scripts (config backup 02:40, Postgres offsite every minute, images + config offsite 05:00, health 07:07, backup check 07:30)"
 echo "NOTE: that cron file is rewritten wholesale on every run — put operator additions in a separate /etc/cron.d/ file, not in this one."
 echo "Not scheduled on purpose: node-return, restore-drill and create-vms are attended operations."

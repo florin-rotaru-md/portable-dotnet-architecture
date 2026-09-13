@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# archive_command: compress one completed WAL file into the spool that the hypervisor running this
+# VM pulls from (proxmox-lab/backup/17-backup-restore.md, 17.4). Managed by Ansible (roles/postgres).
+#
+#   pg-wal-archive.sh <path relative to the data directory> <file name>
+#
+# Exit 0 tells Postgres the file is safe and may be recycled, so the copy is synced and renamed into
+# place before that. A non-zero exit makes Postgres keep the file in pg_wal and retry it, which is
+# the correct failure: WAL waits, nothing is lost, and backup-verify reports the failing archiver.
+set -euo pipefail
+
+SRC="$1"
+NAME="$2"
+SPOOL="{{ postgres_wal_spool_dir | default('/opt/postgres/wal-spool') }}"
+CAP_MB="{{ postgres_wal_spool_max_mb | default(20480) }}"
+DEST="$SPOOL/$NAME.zst"
+
+if [ -f "$DEST" ]; then
+    # Postgres re-runs a command whose success it never saw; identical content is that case.
+    if zstd -dcq "$DEST" | cmp -s - "$SRC"; then
+        exit 0
+    fi
+    # Different content under the same name follows an HA failover: 1022 restarts from a replica up
+    # to a minute old and writes new WAL under names it had already archived. The running server's
+    # WAL is the history that exists now, so it is archived; the older copy is set aside, not pulled,
+    # and reported by backup-verify.
+    mv "$DEST" "$DEST.diverged-$(date +%s)"
+fi
+
+USED_MB=$(du -sm "$SPOOL" | cut -f1)
+if [ "$USED_MB" -ge "$CAP_MB" ]; then
+    echo "pg-wal-archive: $SPOOL holds ${USED_MB} MB (cap ${CAP_MB} MB): the hypervisor's pull is not draining it" >&2
+    exit 1
+fi
+
+zstd -q -f -o "$DEST.part" "$SRC"
+sync "$DEST.part"
+mv "$DEST.part" "$DEST"

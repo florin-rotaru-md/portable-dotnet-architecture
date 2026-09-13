@@ -7,7 +7,7 @@
 # The exit code passes straight through untouched. The OUTPUT does not, and the
 # difference matters before you wrap anything else: stderr is merged into stdout
 # below and re-printed there, so a cron line that redirects stdout — as the
-# pve-config-backup and r2-backup entries do, `… >/dev/null` — now discards the
+# pve-config-backup and offsite-sync entries do, `… >/dev/null` — now discards the
 # stderr cron used to mail. That is deliberate for those two, whose failure story
 # travels in the POST instead, and costs nothing today because root mail is
 # generated, rejected by the recipient's provider on a Spamhaus block and dropped
@@ -37,10 +37,7 @@
 # InfraCheckService.EvaluateIngest sees exit 0 with no [FAIL]/[WARN] line, scores it pass and
 # stores Detail = "exit 0, no output". Freshness is satisfied, so nothing warns, ever. Under
 # --quiet that empty shape is also exactly what a genuinely clean run looks like — nothing
-# here can tell "checked everything, all clean" from "checked nothing". backup-verify's USB
-# block used to take a bare exit 0 on a node without the drive, assuming the peer covered it;
-# on 2026-09-10 neither node had one, so both posted a green empty report every morning while
-# no vzdump had EVER run (see the comment on that block). Hence the rule for every script
+# here can tell "checked everything, all clean" from "checked nothing". Hence the rule for every script
 # wrapped here: a check may opt out, but it must SAY so on stdout — an early silent exit makes
 # this wrapper report a lie nothing downstream can detect.
 

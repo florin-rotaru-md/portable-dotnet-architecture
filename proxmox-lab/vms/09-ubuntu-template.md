@@ -23,7 +23,7 @@ The `releases/<version>/release/` path always holds the current build of that LT
 
 ## 9.2 Inject the guest agent
 
-The one thing the image lacks is `qemu-guest-agent` — and the guide leans on it everywhere: graceful shutdowns, the guest IP in the UI, filesystem freeze during snapshot backups ([17.3](../backup/17-backup-restore.md#173-the-scheduled-job)), boot-proof in [`restore-drill`](../scripts/README.md). Inject it into the image offline — nothing gets booted:
+The one thing the image lacks is `qemu-guest-agent` — and the guide leans on it everywhere: graceful shutdowns, the guest IP in the UI, filesystem freeze during snapshot backups ([17.5](../backup/17-backup-restore.md#175-vm-images--quarterly-and-on-demand)), boot-proof in [`restore-drill`](../scripts/README.md). Inject it into the image offline — nothing gets booted:
 
 ```bash
 apt install -y libguestfs-tools
@@ -126,7 +126,7 @@ Irreversible: 9000 can no longer be started or edited as a VM. Everything from h
 
 Optional but cheap insurance — back the template up once, so a future rebuild is a restore instead of redoing all of Stage 9:
 ```bash
-vzdump 9000 --storage usb-backup --compress zstd     # after Stage 17.2 sets up the drive
+vzdump 9000 --storage local --compress zstd     # lands in /var/lib/vz/dump; offsite-sync ships it to Digi once 17.3 exists
 ```
 
 ## 9.6 Verify before you build on it
@@ -162,9 +162,9 @@ qm stop 999 && qm destroy 999
 
 The template lives on pve1's local `apps` pool, so it exists only on pve1 — fine for *cloning*. In the clone dialog, **Mode: Full Clone** lets you pick either node as target; Proxmox streams the disk across for you. Linked clones can't leave the node, which is one more reason Stage 10 uses full clones throughout.
 
-Fine for cloning is not fine for durability. `apps` is a **single-disk** vdev ([Stage 6](../cluster/06-zfs-pools.md)) with no redundancy under it, [Stage 12](../ha/12-replication.md) replicates the four VMs and not 9000, and the hypervisor backup that would have covered any of them is a recipe rather than a running job: [17.3](../backup/17-backup-restore.md#173-the-scheduled-job) tells you to create it, and on this cluster it has never existed — no `/etc/pve/jobs.cfg`, a header-only `vzdump.cron`, not one `vzdump` in the whole task history. So until the `vzdump` in [9.5](#95-convert-to-template) has actually been run by hand, "only on pve1" means "exactly one copy" — and that one disk dying costs you all of Stage 9 again, on the day you are already rebuilding a node ([19.2 step 5](../operations/19-node-replacement.md#5-build-the-new-node)).
+Fine for cloning is not fine for durability. `apps` is a **single-disk** vdev ([Stage 6](../cluster/06-zfs-pools.md)) with no redundancy under it, [Stage 12](../ha/12-replication.md) replicates the four VMs and not 9000, and the quarterly job ([17.5](../backup/17-backup-restore.md#175-vm-images--quarterly-and-on-demand)) images 1020–1023 and not 9000 either. So until the `vzdump` in [9.5](#95-convert-to-template) has actually been run by hand, "only on pve1" means "exactly one copy" — and that one disk dying costs you all of Stage 9 again, on the day you are already rebuilding a node ([19.2 step 5](../operations/19-node-replacement.md#5-build-the-new-node)).
 
-Which is why the second copy is worth more than it looks: clone the template to pve2 once and run `qm template` on the copy. One clone, one command, thin-provisioned — and unlike the `vzdump` it doesn't wait on the USB drive from [17.2](../backup/17-backup-restore.md#172-backup-storage--the-usb-drive) being plugged in.
+Which is why the second copy is worth more than it looks: clone the template to pve2 once and run `qm template` on the copy. One clone, one command, thin-provisioned — and unlike the `vzdump` archive, it needs no restore before the next clone.
 
 ## 9.8 The alternative: interactive ISO install
 

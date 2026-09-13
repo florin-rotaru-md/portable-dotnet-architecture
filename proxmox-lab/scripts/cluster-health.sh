@@ -36,9 +36,7 @@ POOLS="apps db"
 CAPACITY_WARN=80          # % pool usage that triggers a warning
 SNAPSHOT_WARN_GB=50       # a single snapshot pinning more than this → warning
 NVME_WEAR_WARN=85         # % NVMe endurance used
-BACKUP_MAX_AGE_H=26       # newest vzdump older than this → warning
 REPL_STALE_H=26           # a recurring replication job silent this long → the scheduler died
-USB_MOUNT=/mnt/usb-backup
 AUTOSTART_VMS="1021 1022 1023"   # must have onboot=1 (10-vms.md); 1020 is manual by design
 
 # Corosync links that are plugged in on purpose and unplugged again afterwards, so
@@ -562,44 +560,18 @@ fi
 
 # ── Backups ───────────────────────────────────────────────────────────────────
 CHECK_ID=backup-schedule CHECK_CATEGORY=backups
-# Two questions, cluster-wide one first, and that ordering is the whole fix.
-#
-# The old check only asked the node-local one — "is the USB drive mounted HERE?" —
-# and its else-branch printed "[ OK ] backup: no USB storage on this node (it lives
-# on the peer)". That sentence is a guess dressed as a verdict: the node cannot see
-# the peer, so it asserts something it did not check. On 2026-09-10 that branch
-# fired on BOTH nodes, because no node had the drive at all — two green lines, no
-# USB anywhere, no backup job configured anywhere, and not a single vzdump in the
-# entire task history. A per-node question can never detect a cluster-wide absence.
-#
-# /etc/pve/jobs.cfg and /etc/pve/vzdump.cron both live in pmxcfs and read identically
-# on either node, so the "is anything scheduled AT ALL?" question can be answered
-# from here honestly, and it is the one that actually matters.
+# Is a vzdump job scheduled anywhere at all? /etc/pve/jobs.cfg and /etc/pve/vzdump.cron
+# live in pmxcfs and read identically on either node, so this is a cluster-wide answer
+# from any node. Whether the images actually reached Digi is backup-verify's question.
 JOBS_MODERN=$(grep -c '^vzdump:' /etc/pve/jobs.cfg 2>/dev/null)
 JOBS_LEGACY=$(grep -cE '^[^#]*[[:space:]]vzdump[[:space:]]' /etc/pve/vzdump.cron 2>/dev/null)
 BACKUP_JOBS=$(( ${JOBS_MODERN:-0} + ${JOBS_LEGACY:-0} ))
 
 if [ "$BACKUP_JOBS" -eq 0 ]; then
-    fail "backup: NO vzdump job is scheduled anywhere in the cluster — nothing is being backed up, on either node (17.3)"
+    fail "backup: NO vzdump job is scheduled anywhere in the cluster — no VM image is being taken (17.5)"
 else
     ok "backup: $BACKUP_JOBS vzdump job(s) scheduled cluster-wide"
 fi
-
-if mountpoint -q "$USB_MOUNT"; then
-    NEWEST=$(find "$USB_MOUNT/dump" -name 'vzdump-qemu-*' -mmin -$((BACKUP_MAX_AGE_H * 60)) 2>/dev/null | head -1)
-    if [ -n "$NEWEST" ]; then
-        ok "backup: fresh vzdump on the USB drive (<${BACKUP_MAX_AGE_H}h) — backup-verify has the per-VM detail"
-    else
-        warn "backup: no vzdump newer than ${BACKUP_MAX_AGE_H}h on $USB_MOUNT — check the job and its notifications (17.3)"
-    fi
-elif [ -d "$USB_MOUNT" ]; then
-    fail "backup: $USB_MOUNT exists but nothing is mounted there — the USB drive dropped off (17.2)"
-elif [ "$BACKUP_JOBS" -gt 0 ]; then
-    ok "backup: no USB drive on this node; a job is scheduled cluster-wide, so the peer's backup-verify run is the authority"
-fi
-# No else. When there is no drive here AND no job anywhere, the FAIL above already
-# said the only true thing there is to say, and repeating a reassurance underneath it
-# is how the original bug read as normal for as long as it did.
 
 # ── NVMe health and wear ──────────────────────────────────────────────────────
 CHECK_ID=disks CHECK_CATEGORY=disks

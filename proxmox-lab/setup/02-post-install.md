@@ -51,7 +51,7 @@ A drive genuinely missing from the count of three is almost always VMD/RST still
 
 ## 2.4 Install the helper scripts (both nodes)
 
-The repo ships a small set of host-side scripts — a one-command health check, backup freshness verification, a nightly archive of the host's own config, and guided versions of the two riskiest procedures (node return, restore drill). What each does and when: [`scripts/README.md`](../scripts/README.md).
+The repo ships a small set of host-side scripts — a one-command health check, backup freshness verification, a nightly archive of the host's own config, the offsite uploads, and guided versions of the two riskiest procedures (node return, restore drill). What each does and when: [`scripts/README.md`](../scripts/README.md).
 
 ```bash
 apt install -y git smartmontools lm-sensors
@@ -71,7 +71,7 @@ git pull --ff-only && proxmox-lab/scripts/install-scripts.sh
 
 The installer ends by listing what it cannot do for you: a missing `/etc/infra-report.conf`, or `INFRA_PEER_ADDRESS` missing from it (created in `platform/docs/waa/infra/OPERATIONS.md` §1 step 4, added to an existing file in §2.2); `lm-sensors` not installed; an APT stamp that does not exist yet (`apt-get update` once). Act on every line it prints — each one is a check that otherwise warns on every run. Then refresh the app's view instead of waiting for the morning cron: `infra-report cluster-health --quiet; infra-report backup-verify --quiet`.
 
-Right now, most `cluster-health` lines will be warnings — no cluster, no pools, no replication yet. That's expected; it becomes the daily "is everything fine" command once the build reaches Stage 13. Run it after each stage from here on and watch warnings turn into `[ OK ]` lines as the pieces come up.
+Right now, most `cluster-health` lines will be warnings — no cluster, no pools, no replication yet. That's expected; it becomes the daily "is everything fine" command once the build reaches [Stage 17](../backup/17-backup-restore.md). Run it after each stage from here on and watch warnings turn into `[ OK ]` lines as the pieces come up.
 
 ## 2.5 Install the node's key pair (both nodes)
 
@@ -122,4 +122,4 @@ ssh-keygen -lf /root/.ssh/id_ed25519.pub
 
 **The staging folder stays — one pair is still in it.** `~/lab-keys` still holds the `devops` pair, which [Stage 10](../vms/10-vms.md#ssh-keys--control-ubuntu--the-other-three) installs on VM 1020; the folder is deleted there, on [0.5](00-preparation.md#05-keys--generate-all-of-them-now)'s schedule. After this section: the two node keys are on their nodes *and* in your password manager, all five public halves are on pve1, and the break-glass private half exists nowhere but the password manager and paper. Once Stage 10 runs, what's left is one installed copy of each key on the machine that uses it, backed by the password manager — the property the rest of [21.5](../operations/21-credentials.md#215-recovery-scenarios--what-losing-each-thing-actually-means) assumes.
 
-Two things this is **not**. It is not the key Proxmox uses between the nodes — cluster root SSH is set up by `pvecm add` and lives in `/etc/pve/priv/authorized_keys`, untouched by any of this. And it is not backed up by [`pve-config-backup`](../scripts/README.md), deliberately: that archive lands unencrypted on the USB drive, and a skeleton key doesn't belong there. The password manager copy from [0.5](00-preparation.md#05-keys--generate-all-of-them-now) is this key's backup — which is also what turns a rebuilt node ([19.2 step 5](../operations/19-node-replacement.md#5-build-the-new-node)) back into a node that opens every existing VM.
+Two things this is **not**. It is not the key Proxmox uses between the nodes — cluster root SSH is set up by `pvecm add` and lives in `/etc/pve/priv/authorized_keys`, untouched by any of this. And it is not backed up by [`pve-config-backup`](../scripts/README.md), deliberately: that archive leaves the lab for Digi ([17.6](../backup/17-backup-restore.md#176-host-configuration-and-the-ansible-inventory)), and a skeleton key doesn't belong in an offsite copy. The password manager copy from [0.5](00-preparation.md#05-keys--generate-all-of-them-now) is this key's backup — which is also what turns a rebuilt node ([19.2 step 5](../operations/19-node-replacement.md#5-build-the-new-node)) back into a node that opens every existing VM.

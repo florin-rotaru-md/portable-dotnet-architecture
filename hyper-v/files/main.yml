@@ -103,19 +103,18 @@ postgres_app_cidr: "192.168.0.0/24"
 # stays empty here.
 postgres_extra_cidrs: []
 
-# ── WAL streaming to a third box (optional) ────────────────────────────────────
-# Streams the write-ahead log to an always-on receiver (pg_receivewal), so an
-# unplanned failover loses seconds instead of the VM-replication interval.
-# Receiver setup + the recovery procedure: proxmox-lab/ha/13-wal-stream.md
-postgres_wal_stream_enabled: false
-postgres_wal_stream_user: "walreceiver"
-postgres_wal_stream_slot: "wal_archive"
-# The receiver's address as a CIDR, e.g. "192.168.0.10/32" (the QDevice)
-postgres_wal_stream_cidr: ""
-# Safety valve: max WAL retained for a disconnected receiver, so a dead
-# receiver breaks the stream instead of filling the database disk.
-postgres_max_slot_wal_keep_size: "10GB"
-# postgres_wal_stream_password comes from vault.yml when enabled
+# ── WAL archiving + weekly base backup (optional) ──────────────────────────────
+# Point-in-time recovery: every completed WAL file is compressed into a spool on
+# the postgres host and a verified base backup is taken weekly. Something must
+# pull the spool off the host — on the Proxmox build the hypervisor does, every
+# minute (proxmox-lab/backup/17-backup-restore.md, 17.4). Leave it off where
+# nothing pulls: the spool would grow to its cap, and then pg_wal would.
+postgres_wal_archive_enabled: false
+postgres_archive_timeout: 60          # seconds a segment holding writes may stay unfinished
+postgres_wal_spool_max_mb: 20480      # archive_command refuses beyond this
+postgres_basebackup_weekday: "0"      # cron weekday, 0 = Sunday
+postgres_basebackup_hour:   "2"
+postgres_basebackup_minute: "45"
 
 # ── Postgres backup disk (optional, recommended on Hyper-V) ───────────────────
 # Attach a second VHDX (or pass-through disk) to the postgres VM, pointing to a

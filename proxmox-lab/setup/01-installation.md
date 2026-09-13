@@ -4,6 +4,7 @@
 
 1. Boot from the stick → **Install Proxmox VE (Graphical)** → accept the EULA.
 2. **Target Harddisk: disk 1 (OS).** Careful not to pick the data disks. Default filesystem (ext4/LVM).
+   - The installer splits that disk into `local` (`pve/root`) and `local-lvm` (thin pool `pve/data`). Keep the defaults: the build later removes `local-lvm` and gives its space to `local`, where backups stage ([17.2](../backup/17-backup-restore.md#172-local-staging--local-on-each-node)).
 3. Romania / Europe/Bucharest.
 4. Root password + email.
 5. Network: pick the **onboard 1G NIC** (that's the management network). Hostname `pve1.local` / `pve2.local`, IP 192.168.0.11 / .12, gateway 192.168.0.1, DNS.

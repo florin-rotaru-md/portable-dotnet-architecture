@@ -44,7 +44,7 @@ class InfraReportingTests(unittest.TestCase):
         self.assertEqual("unknown", result["checks"][0]["observation"])
 
     def test_copy_job_reports_execution_without_claiming_archive_coverage(self):
-        result = self.payload(script="r2-backup")
+        result = self.payload(script="offsite-sync")
         self.assertEqual("monitoring", result["checks"][0]["category"])
         self.assertIn("backup-verify", result["checks"][0]["detail"])
 

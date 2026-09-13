@@ -47,7 +47,7 @@ def payload(host, script, exit_code, time_observed, output, records):
         }
     if len(groups) > 100:
         raise ValueError("too many checks; refusing to drop evidence")
-    if not groups and script in {"pve-config-backup", "r2-backup"}:
+    if not groups and script in {"pve-config-backup", "offsite-sync"}:
         groups["process"] = {
             "check": "process", "category": "monitoring", "resource": host,
             "status": "fail" if exit_code else "pass", "observation": "observed",

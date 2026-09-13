@@ -21,24 +21,16 @@ Assume below you're replacing **pve2**. Replacing pve1 is symmetric.
 ### Before you touch anything
 
 ```bash
-# On-demand backup of everything — you have replication, and this is still worth 10 minutes.
-# Find out where it can land first: `usb-backup` (17.2) is the intended target, but it does
-# not exist on this build — the drive was never attached, so a --storage usb-backup run aborts.
-pvesm status                  # is usb-backup listed? if not, fall back to `local`
-df -h /var/lib/vz             # `local` is a dir storage with content=backup; ~16G of zvols
-                              # across the four VMs (1022 is 1T provisioned, 2G used) — zstd
-                              # makes that a few GB against ~78G free
+# On-demand image of everything (17.5) — you have replication, and this is still worth 10 minutes.
+df -h /var/lib/vz             # `local` is the node's root filesystem (17.2): a full / takes pmxcfs down
 
 # vzdump only backs up guests on the node it runs on — all four live on pve1 today, so run it there
 vzdump 1020 1021 1022 1023 --storage local --mode snapshot --compress zstd
 ls -lh /var/lib/vz/dump       # prove it actually wrote something
 
-# `local` is the root filesystem of the node you are about to lean on — get the archives off it.
-# Exactly one off-node destination exists on this build: the QDevice at 192.168.0.10 (x86_64
-# Debian, 1.7T free, root SSH working from both nodes, checked 2026-09-10). pve2 is the machine
-# you are removing, so it is not one. /srv there shares its filesystem with /var/lib/wal-archive
-# (Stage 13) — `ssh root@192.168.0.10 df -h /srv` before you push tens of GB into it.
-scp /var/lib/vz/dump/vzdump-qemu-*.zst root@192.168.0.10:/srv/
+# `local` is on the node you are about to lean on — send the images to Digi now, not at 05:00 (17.3)
+offsite-sync
+rclone ls digi-crypt:vzdump | grep "$(date +%Y_%m_%d)"   # today's image, one per VM
 
 # Write down the config you'll need to recreate
 cat /etc/pve/corosync.conf | grep -A4 "node {"
@@ -48,7 +40,7 @@ ha-manager status
 ip -br a                      # on pve2, note both IPs
 ```
 
-⚠️ **On this build that dump is the only VM-level copy that has ever existed.** Nothing has ever been written to `/var/lib/vz/dump` on either node and the USB drive of [17.2](../backup/17-backup-restore.md#172-backup-storage--the-usb-drive) was never attached, so read the first comment accordingly: this is not the belt-and-braces extra on top of replication, it is the whole of it. Every pool on both machines is a **single-device vdev** with no redundancy, so from the moment step 4 removes pve2 until step 7 finishes resyncing, pve1 holds the only copy of everything you own — and an archive parked on pve1's own root filesystem dies with pve1. Copy it off the node before you run `delnode`, not after.
+⚠️ **Every pool on both machines is a single-device vdev** with no redundancy, so from the moment step 4 removes pve2 until step 7 finishes resyncing, pve1 holds the only current copy of every VM — and an image parked on pve1's own `local` dies with pve1. The database is covered to within a minute or two regardless, by its WAL on Digi ([17.4](../backup/17-backup-restore.md#174-postgres--continuous-wal-and-a-weekly-base)); for the other three VMs this image is the newest point there is to restore to. See it on Digi before you run `delnode`, not after.
 
 ### 1. Evacuate the node (zero downtime)
 
@@ -105,6 +97,7 @@ Follow the guide from the top on the new machine:
 - **Stage 3** only if the replacement is a laptop
 - **Stage 5** both interfaces: `vmbr0` on 192.168.0.12, the 10G interface on 10.10.10.2
 - **Stage 6** ZFS pools — **`apps` and `db`, spelled exactly the same.** This is the single most important detail in the whole procedure; replication matches on pool name. The node is still standalone here, so *Add Storage* writes a local storage entry that the join in step 6 discards — harmless, as long as the cluster-wide `apps`/`db` entries carry no node restriction ([Stage 6](../cluster/06-zfs-pools.md))
+- **17.3** rclone and `/root/.config/rclone/rclone.conf` — the same file on both nodes, so copy it from the surviving one or rebuild it from the password manager ([21.1](21-credentials.md#211-inventory--what-exists-and-where-it-lives)). Without it `pg-offsite` and `offsite-sync` upload nothing from this node, and the database's offsite tier stops the day 1022 lands here. What the old node carried by hand — network, fstab, the Stage 3 scripts, its package list — is in its host-config archives on Digi under `config/pve2/` ([17.6](../backup/17-backup-restore.md#176-host-configuration-and-the-ansible-inventory)); read it from there as you rebuild
 
 Check CPU compatibility before going further:
 ```bash
@@ -207,7 +200,7 @@ ssh -o BatchMode=yes root@192.168.0.11 pveversion     # run on the new node
 
 ⚠️ **Every test above passes while ordinary node-to-node SSH is broken, and after a swap it is broken in both directions.** PVE never uses ordinary SSH: `qm migrate`, replication and `pvecm` go through `PVE::SSHInfo`, which passes `-o UserKnownHostsFile=/etc/pve/nodes/<node>/ssh_known_hosts -o HostKeyAlias=<node>` on every call — a file keyed by *node name* and distributed by pmxcfs, which is why the migration test above proves exactly nothing about `ssh root@192.168.0.11`. Two separate things break, for two different reasons:
 
-- **From the new node.** A fresh install has no entry for the peer in `/root/.ssh/known_hosts`, and the join creates none — the state pve2 is in today ([21.7](21-credentials.md#217-the-fourth-kind-the-pins-nobody-inventories)). At a console that surfaces as the *authenticity of host … can't be established* prompt, `StrictHostKeyChecking` being at its default `ask`, and typing `yes` there pins whatever answered sight unseen; anything without a terminal — a script, a cron job, `BatchMode=yes` — gets a flat `Host key verification failed` instead. What that costs is your own hands, not the tooling: [`node-return`](../scripts/README.md) reaches the peer the way PVE itself does — `HostKeyAlias=<node>` against `/etc/pve/nodes/<node>/ssh_known_hosts`, tried over every `ring*_addr` in the peer's stanza — so the [16.2](16-maintenance.md#162-returning-a-node-after-a-long-outage-days-to-weeks) procedure runs from either direction on a node nobody keyed. That is the script **in this repo**. `/usr/local/sbin` on both existing nodes still holds the 2026-09-04 build, which shells out to a plain `ssh` and aborts at its first gate; step 5 installs the current one on the replacement as part of Stage 2 ([2.4](../setup/02-post-install.md#24-install-the-helper-scripts-both-nodes)), and the surviving node needs the same command run there after a `git pull` or 16.2 stays broken on the half of the pair you did not rebuild.
+- **From the new node.** A fresh install has no entry for the peer in `/root/.ssh/known_hosts`, and the join creates none — the state pve2 is in today ([21.7](21-credentials.md#217-the-fourth-kind-the-pins-nobody-inventories)). At a console that surfaces as the *authenticity of host … can't be established* prompt, `StrictHostKeyChecking` being at its default `ask`, and typing `yes` there pins whatever answered sight unseen; anything without a terminal — a script, a cron job, `BatchMode=yes` — gets a flat `Host key verification failed` instead. What that costs is your own hands, not the tooling: [`node-return`](../scripts/README.md) reaches the peer the way PVE itself does — `HostKeyAlias=<node>` against `/etc/pve/nodes/<node>/ssh_known_hosts`, tried over every `ring*_addr` in the peer's stanza — so the [16.2](16-maintenance.md#162-returning-a-node-after-a-long-outage-days-to-weeks) procedure runs from either direction on a node nobody keyed. Step 5 installs it on the replacement as part of Stage 2 ([2.4](../setup/02-post-install.md#24-install-the-helper-scripts-both-nodes)); the surviving node runs what 2.4 last installed there.
 - **From the surviving node.** Its `known_hosts` still holds the **old** machine's key for that same address. New chassis, same IP, different key, so you get `REMOTE HOST IDENTIFICATION HAS CHANGED` — a warning that reads like an attack and is only a hardware swap. Appending the new key does not silence it; the stale line has to go first.
 
 Key both nodes by hand as part of the swap, verifying the fingerprint out of band the way [8.4](../cluster/08-qdevice.md#84-ssh--key-only-from-your-pc-and-from-both-nodes) does it for the QDevice — a host key accepted blind is one you cannot later claim you checked:
@@ -236,5 +229,5 @@ And when you have a maintenance window, repeat test 3 from Stage 18.6 (hard kill
 - **Removing the QDevice before `delnode`.** Skip it and you get quorum errors that look far more alarming than the actual problem.
 - **Never re-power the removed node** on the same network with its old cluster config.
 - **CPU generation going backwards.** Replacing with older hardware can invalidate `x86-64-v3`. Check with `lscpu` before you migrate anything onto it.
-- **The window in step 4-6 is worse than "no failover".** Between `delnode` and the new node joining you are on one node whose two pools are both **single-device vdevs** — no mirror, no raidz on either machine, since [Stage 6](../cluster/06-zfs-pools.md) creates them as *Single Disk* — and the replication you deleted in step 2 was the second copy of every VM. One disk dying in that window costs everything back to the last `vzdump`, and it takes the in-VM Postgres dump on 1022 (`/opt/postgres/backups`) with it, because that lives on the same disk. That is why the step-0 archive is not the optional ten minutes its comment makes it sound like — and it only counts once you have seen the file and moved it off the node. Keep the window short and do the swap when you can afford it, not on a Friday evening during a peak-traffic window. If the new machine brings its own disks, leave the old node's drives untouched on a shelf until [19.4](#194-verification-after-either-approach) passes: a stale pool you could still transplant beats a wiped one.
+- **The window in step 4-6 is worse than "no failover".** Between `delnode` and the new node joining you are on one node whose two pools are both **single-device vdevs** — no mirror, no raidz on either machine, since [Stage 6](../cluster/06-zfs-pools.md) creates them as *Single Disk* — and the replication you deleted in step 2 was the second copy of every VM. One disk dying in that window sends you to [17.7](../backup/17-backup-restore.md#177-restore--pick-your-scenario): each guest back to its newest image — in `/var/lib/vz/dump` on the node that ran it, or on Digi ([17.7 E](../backup/17-backup-restore.md#e-restore-from-offsite)) — and the database to its last archived WAL, replayed onto a base ([17.7 G](../backup/17-backup-restore.md#g-database-point-in-time-recovery-base--wal)). That is why the step-0 image is not the optional ten minutes its comment makes it sound like — and it only counts once you have seen it on Digi. Keep the window short and do the swap when you can afford it, not on a Friday evening during a peak-traffic window. If the new machine brings its own disks, leave the old node's drives untouched on a shelf until [19.4](#194-verification-after-either-approach) passes: a stale pool you could still transplant beats a wiped one.
 - **Interface names in approach B.** Guaranteed to change. Have a keyboard and monitor ready before you start rather than discovering the need mid-swap.

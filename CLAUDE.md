@@ -8,7 +8,7 @@ Infrastructure for the Waa/Educa platform. The application repositories are sibl
 - **`native/infra/ansible`** — everything inside the VMs: users, .NET runtime, Nginx, PostgreSQL,
   the blue/green deploy script, cloudflared. This is what production runs.
 - **`proxmox-lab/`** — the two hosts those VMs live on: cluster, QDevice, ZFS replication, HA,
-  backups, the WAL stream, the drill book. A build-and-operate guide, written to be followed
+  backups to Digi Storage, the drill book. A build-and-operate guide, written to be followed
   top-to-bottom the first time and used by symptom afterwards (see its README's *Reading paths*).
 - **`perf/`** — load-testing harness; applies to whichever setup is running.
 - **`docker/`, `k3s/`, `k3s-proxmox/`, `hyper-v/`** — alternatives. Nothing serves traffic from
@@ -29,7 +29,7 @@ Infrastructure for the Waa/Educa platform. The application repositories are sibl
   commit.
 - **The `native` postgres role is the only PostgreSQL configuration.** A hand-written
   `postgres.md` used to sit at the root with a pasted stock `postgresql.conf`; it did strictly less
-  than the role (no tuning, no observability, no backups, no WAL stream) and was deleted. Tuning
+  than the role (no tuning, no observability, no backups, no WAL archiving) and was deleted. Tuning
   lives in `roles/postgres/templates/tuning.conf.j2`, derived from the VM's RAM.
 - Application-side operations (deploy order, restart-required settings, reading a failed boot) live
   in `platform/docs/OPERATIONS.md` §1 and §5, not here.

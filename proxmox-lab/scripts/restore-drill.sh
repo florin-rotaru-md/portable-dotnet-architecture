@@ -7,27 +7,16 @@
 # manual drill into one command and a log line, and its duration is your real
 # per-VM RTO — written down, not assumed.
 #
-# NOTHING RUNS THIS FOR YOU. install-scripts.sh installs it and then leaves it out of
-# /etc/cron.d/pve-helper-scripts on purpose, and says so as it finishes — "not scheduled
-# on purpose: node-return, restore-drill and create-vms are attended operations" — because
-# "procedures that move or create VMs deserve a human watching" (scripts/README.md). So
-# "monthly" is a promise made by a calendar, not by the machine, and on 2026-09-10 the
-# calendar had not kept it: /var/log/restore-drill.log existed on neither node, so this
-# had never been run once. In the same window /etc/pve/jobs.cfg did not exist,
-# /etc/pve/vzdump.cron held no jobs, the task index
-# carried zero vzdump entries and /var/lib/vz/dump was empty on both nodes — no archive
-# had ever been written to drill against. Nothing said so: backup-verify's "no USB drive
-# on this node" branch exited 0 without printing, and with the drive absent from BOTH
-# nodes both reported pass. The repo's backup-verify asks the cluster-wide question
-# instead — no drive here AND no vzdump job scheduled anywhere is a [FAIL], not a skip —
-# but the copies under /usr/local/sbin are the 2026-09-04 ones until 2.4 is re-run on each
-# node, so until then the only check that fails loudly on this is this script's own
-# mountpoint guard below, and nobody ever asks it. Put it in a calendar with a name
-# against it, or write down plainly that the vzdump tier is untested — those are the only
-# two honest states.
+# NOTHING RUNS THIS FOR YOU. install-scripts.sh leaves it out of the cron file on
+# purpose — procedures that create and destroy VMs deserve a human watching
+# (scripts/README.md) — so the quarterly drill is a promise your calendar keeps or
+# nobody does.
 #
-# Run on the node holding the USB drive (pve1). Results append to
-# /var/log/restore-drill.log. On failure the drill VM is KEPT for inspection.
+# Run on either node: it restores the newest image of that VM in /var/lib/vz/dump
+# there. Storage `local` keeps one image per VM, on the node that ran the guest; to
+# drill an image from Digi, copy it into that directory first (17.7 E), which makes the
+# drill a proof of the offsite tier too. Results append to /var/log/restore-drill.log.
+# On failure the drill VM is KEPT for inspection.
 #
 # Usage: restore-drill [vmid] [--keep]
 #   vmid      which VM's backup to drill (default: rotates 1020/1021/1022/1023 by month)
@@ -36,7 +25,7 @@
 
 set -euo pipefail
 
-USB_DUMP=/mnt/usb-backup/dump
+DUMP=/var/lib/vz/dump
 STORAGE=apps                    # drill restores are throwaway — apps has the room
 BOOT_TIMEOUT=300                # seconds to wait for the guest agent
 LOG=/var/log/restore-drill.log
@@ -59,9 +48,8 @@ fi
 
 TARGET=$((VMID + 900))          # 1020→1920, 1021→1921, 1022→1922, 1023→1923
 
-mountpoint -q "$(dirname "$USB_DUMP")" || { echo "FAIL: USB backup drive not mounted (17.2)" >&2; exit 2; }
-ARCHIVE=$(ls -1t "$USB_DUMP"/vzdump-qemu-"$VMID"-*.vma.zst 2>/dev/null | head -1)
-[ -n "$ARCHIVE" ] || { echo "FAIL: no archive for VM $VMID in $USB_DUMP" >&2; exit 2; }
+ARCHIVE=$(ls -1t "$DUMP"/vzdump-qemu-"$VMID"-*.vma.zst 2>/dev/null | head -1)
+[ -n "$ARCHIVE" ] || { echo "FAIL: no image of VM $VMID in $DUMP on this node — copy one from Digi first: rclone lsf digi-crypt:vzdump | grep qemu-$VMID, then rclone copy digi-crypt:vzdump/<name> $DUMP/ (17.7 E)" >&2; exit 2; }
 if qm status "$TARGET" >/dev/null 2>&1; then
     echo "FAIL: VM ID $TARGET already exists — a previous drill wasn't cleaned up (qm stop $TARGET && qm destroy $TARGET)" >&2
     exit 2
@@ -109,7 +97,7 @@ until qm agent "$TARGET" ping >/dev/null 2>&1; do
 done
 TOTAL_S=$(( $(date +%s) - START ))
 
-echo "PASS: restore ${RESTORE_S}s, restore+boot ${TOTAL_S}s — that is your measured RTO for VM $VMID from the USB tier."
+echo "PASS: restore ${RESTORE_S}s, restore+boot ${TOTAL_S}s — that is your measured RTO for VM $VMID from a local image."
 echo "$(date '+%F %T') PASS vm=$VMID target=$TARGET archive=$(basename "$ARCHIVE") restore=${RESTORE_S}s total=${TOTAL_S}s" >> "$LOG"
 
 if [ "$KEEP" = 1 ]; then

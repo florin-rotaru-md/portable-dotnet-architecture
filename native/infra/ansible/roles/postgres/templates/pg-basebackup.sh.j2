@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Weekly physical base backup: the starting point every archived WAL file replays onto
+# (proxmox-lab/backup/17-backup-restore.md, 17.4). Managed by Ansible (roles/postgres).
+#
+# Written into <stamp>.partial and renamed only after pg_verifybackup has checked every file against
+# the manifest, so a directory without the suffix is a complete, verified backup — the only kind the
+# hypervisor's pull picks up. Only the newest one is kept in the VM; the history lives on the
+# hypervisor and offsite.
+set -euo pipefail
+
+DIR="{{ postgres_basebackup_dir | default('/opt/postgres/base') }}"
+STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+WORK="$DIR/$STAMP.partial"
+
+rm -rf "$DIR"/*.partial
+mkdir -p "$WORK"
+echo "[$(date -Iseconds)] Base backup $STAMP started"
+
+# -X stream puts the WAL that makes this backup consistent inside it (pg_wal.tar.zst), so the backup
+# restores on its own even if the archived copies of those files were lost.
+pg_basebackup -D "$WORK" -F tar -X stream --compress=client-zstd \
+  --checkpoint=fast --manifest-checksums=SHA256 --no-password
+
+"/usr/lib/postgresql/{{ postgres_version }}/bin/pg_verifybackup" -F tar -n "$WORK"
+
+mv "$WORK" "$DIR/$STAMP"
+find "$DIR" -mindepth 1 -maxdepth 1 -type d -name '[0-9]*T[0-9]*Z' | sort | head -n -1 | xargs -r rm -rf --
+echo "[$(date -Iseconds)] Base backup complete - $STAMP"
