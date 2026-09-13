@@ -162,7 +162,7 @@ drill, appended at the time, not from memory:
 
 | Date | Drill (23.2 #) | Measured RTO | Data window lost | Notes |
 |---|---|---|---|---|
-| | | | | |
+| 2026-09-13 | — (not a drill: the [17.2](../backup/17-backup-restore.md#172-backup-storage--the-usb-drive) interim, started) | — | — | No USB drive on either node and no vzdump job. Ad-hoc `vzdump 1022 --storage local --mode snapshot --compress zstd` on pve1: `/var/lib/vz/dump/vzdump-qemu-1022-2026_09_13-08_02_34.vma.zst`, 1.25 GB from a 1 TiB zvol that is 99 % zero, 3 min 11 s, `/` 77 → 75 G free. Nothing prunes it — delete it by hand when the drive arrives. `/opt/postgres/backups` (68 dumps + globals) copied off the cluster to the operator workstation as `D:/backups/postgres-1022/backups-20260912.tar`; repeat weekly by hand until 17.6. Replaced by the drive: not yet |
 
 Those measured numbers are the build's real RTO/RPO — quote them, not the design targets, when
 deciding whether the replication schedule or the backup cadence needs tightening.

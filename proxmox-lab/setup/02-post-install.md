@@ -54,15 +54,14 @@ A drive genuinely missing from the count of three is almost always VMD/RST still
 The repo ships a small set of host-side scripts — a one-command health check, backup freshness verification, a nightly archive of the host's own config, and guided versions of the two riskiest procedures (node return, restore drill). What each does and when: [`scripts/README.md`](../scripts/README.md).
 
 ```bash
-apt install -y git smartmontools
+apt install -y git smartmontools lm-sensors
 mkdir -p /root/src && cd /root/src
 git clone https://github.com/florin-rotaru-md/portable-dotnet-architecture
 cd portable-dotnet-architecture/proxmox-lab/scripts
-chmod +x install-scripts.sh
 ./install-scripts.sh
 ```
 
-This installs them into `/usr/local/sbin` (so `cluster-health` works from anywhere) and schedules the recurring ones via `/etc/cron.d/pve-helper-scripts`. To update later: `cd /root/src/portable-dotnet-architecture && git pull && proxmox-lab/scripts/install-scripts.sh`.
+This installs them into `/usr/local/sbin` (so `cluster-health` works from anywhere) and schedules the recurring ones via `/etc/cron.d/pve-helper-scripts`. It also installs an APT hook, `/etc/apt/apt.conf.d/15update-success-stamp`, because the package-updates probe reads a stamp nothing on Debian writes by default; `lm-sensors` is what the temperatures check reads. Skip either and `cluster-health` warns about it on every run. Do not `chmod +x` the installer: it is executable in git, and a mode change made by hand is a local modification that makes the next `git pull` refuse to update the file. To update later: `cd /root/src/portable-dotnet-architecture && git pull && proxmox-lab/scripts/install-scripts.sh`.
 
 Right now, most `cluster-health` lines will be warnings — no cluster, no pools, no replication yet. That's expected; it becomes the daily "is everything fine" command once the build reaches Stage 13. Run it after each stage from here on and watch warnings turn into `[ OK ]` lines as the pieces come up.
 

@@ -17,6 +17,17 @@ for f in cluster-health.sh backup-verify.sh pve-config-backup.sh r2-backup.sh no
     install -m 755 "$f" "/usr/local/sbin/$target"
 done
 
+# APT success stamp. infra-host-metrics.py's package-updates probe trusts only
+# /var/lib/apt/periodic/update-success-stamp, and on Debian/PVE NOTHING writes that file:
+# the hook that does ships in Ubuntu's update-notifier-common, and apt.systemd.daily writes
+# update-stamp instead. Without this hook the probe warned "no successful APT metadata
+# refresh recorded within 48h" on both nodes permanently (found 2026-09-12). The refresh
+# itself is PVE's own — pve-daily-update.timer runs `apt-get update` daily — and the hook
+# fires on its success, as it does on any successful `apt update` by hand.
+cat > /etc/apt/apt.conf.d/15update-success-stamp << 'EOF'
+APT::Update::Post-Invoke-Success {"touch /var/lib/apt/periodic/update-success-stamp 2>/dev/null || true";};
+EOF
+
 cat > /etc/cron.d/pve-helper-scripts << 'EOF'
 # Helper-script schedule — proxmox-lab/scripts/README.md
 #
@@ -47,9 +58,10 @@ PATH=/usr/sbin:/usr/bin:/sbin:/bin
 # not 02:15. Restore the chain when those tiers are built, and re-time this with them.
 40 2 * * * root /usr/local/sbin/infra-report pve-config-backup >/dev/null
 
-# 03:30 R2 media mirror (17.10) — exits quietly on the node without the USB drive, which
-# today is both of them; rclone is not installed anywhere either, so this job has never
-# done anything. It stays scheduled so that building the tier is the only step left.
+# 03:30 R2 media mirror (17.10). On a node without the drive it does no work and says which
+# case that is: [ OK ] when a usb-backup storage is defined for another node, FAIL when none
+# is defined anywhere — today, on both nodes, because no drive exists and rclone is installed
+# nowhere. It stays scheduled so that building the tier is the only step left.
 30 3 * * * root /usr/local/sbin/infra-report r2-backup >/dev/null
 
 # Both of the jobs above are wrapped in infra-report, not run bare. They used to be the only
@@ -86,12 +98,18 @@ CONF=/etc/infra-report.conf
 echo
 if [ -r "$CONF" ]; then
     echo "Ingest: $CONF present — the wrapper will report."
+    grep -q '^INFRA_PEER_ADDRESS=' "$CONF" ||
+        echo "  ...but without INFRA_PEER_ADDRESS (the OTHER node's LAN address), so cluster-health's lan-sample warns on every run — platform docs/waa/infra/OPERATIONS.md section 2.2."
 else
     echo "Ingest: WARNING — no $CONF on this host."
     echo "  infra-report is a silent pass-through: the checks still run and still mail, but the"
     echo "  app is told nothing. Create the file per platform docs/waa/infra/OPERATIONS.md"
     echo "  section 1, step 4 (INFRA_URL + INFRA_TOKEN, mode 600), then re-run one by hand."
 fi
+command -v sensors >/dev/null 2>&1 ||
+    echo "Sensors: WARNING — lm-sensors is not installed, so cluster-health's temperatures check warns on every run: apt install -y lm-sensors (Stage 2.4)."
+[ -e /var/lib/apt/periodic/update-success-stamp ] ||
+    echo "APT: the success stamp does not exist yet — run 'apt-get update' once, or package-updates warns until pve-daily-update.timer next succeeds."
 echo
 
 echo "Installed to /usr/local/sbin: cluster-health backup-verify pve-config-backup r2-backup node-return restore-drill create-vms infra-report"

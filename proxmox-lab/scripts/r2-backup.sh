@@ -39,22 +39,23 @@
 # must never hold a key that can delete production media. Setup: 17.6, then 17.10.
 # Both belong to the node that HOLDS the USB drive; the peer needs neither.
 #
-# Runs from cron at 03:30. On a node without the USB drive it exits 0 quietly, so
-# the same cron entry can be installed everywhere — and that convenience is the
-# trap: the branch never tests its own premise, which is that some OTHER node holds
-# the drive. On 2026-09-10 neither pve1 nor pve2 had /mnt/usb-backup at all, so both
-# took the quiet exit 0 and this tier had never run once — no /var/log/rclone-r2.log
-# on either host, rclone not even installed. backup-verify and cluster-health took
-# the same hatch, which is why nothing on the estate ever reported the R2 mirror
-# absent. Those two now ask the cluster-wide question (is any vzdump job scheduled
-# at all?) and fail loudly when the answer is no — in this repo; the copies under
-# /usr/local/sbin are the 2026-09-04 ones until 2.4 is re-run on that node. And it
-# answers for vzdump, not for this tier: backup-verify's `r2-mirror:` line still sits
-# past the USB gate.
-# No pmxcfs file answers "is anyone mirroring R2?", so this script stays silent by
-# design and the proof has to come from outside it: never count the tier as present
-# because the cron entry is installed — /var/log/rclone-r2.log must exist and end in
-# a transfer summary with no ERROR (Stage 22.2, the proof table).
+# Runs from cron at 03:30, the same entry on both nodes. On a node without the drive it
+# does no work — and it SAYS which case that is, because silence here is scored as a pass.
+# It used to `exit 0` with no output, assuming some OTHER node held the drive; on
+# 2026-09-10 neither did, both nodes took that exit, and this tier had never run once (no
+# /var/log/rclone-r2.log anywhere, rclone not even installed). Once the cron entry was
+# wrapped in infra-report, that empty exit became "pass — exit 0, no output" in the app
+# every night: the lie infra-report.sh's header warns about.
+#
+# So the driveless branch asks the one cluster-wide question pmxcfs can answer: is a
+# storage on $USB_MOUNT defined anywhere? /etc/pve/storage.cfg reads the same from either
+# node, and 17.2's `pvesm add dir usb-backup --path /mnt/usb-backup` is what writes it.
+# Defined = the node holding the drive runs the mirror; this node prints [ OK ] and exits
+# 0. Not defined = no node can be mirroring R2, which is a FAIL — the verdict
+# pve-config-backup and backup-verify already give the same missing drive. A defined
+# storage still proves only that a mirror is MEANT to run: whether it works is the holder's
+# own report and /var/log/rclone-r2.log ending in a transfer summary with no ERROR (Stage
+# 22.2, the proof table).
 #
 # Usage: r2-backup.sh          (no arguments, safe to re-run any time)
 
@@ -72,8 +73,12 @@ if ! mountpoint -q "$USB_MOUNT"; then
         echo "FAIL: $USB_MOUNT exists but nothing is mounted — the drive dropped off (17.2)" >&2
         exit 2
     fi
-    # No USB storage configured on this node — the mirror lives on the peer.
-    exit 0
+    if grep -qE "^[[:space:]]+path[[:space:]]+$USB_MOUNT/?[[:space:]]*\$" /etc/pve/storage.cfg 2>/dev/null; then
+        echo "[ OK ] r2-mirror: no drive on this node; a storage on $USB_MOUNT is defined cluster-wide, so the node holding it runs the mirror (17.10)"
+        exit 0
+    fi
+    echo "FAIL: no backup drive on this node and no storage on $USB_MOUNT defined anywhere in the cluster — nothing mirrors R2, so Cloudflare holds the only copy of all three buckets, app-fiscal included (17.2, 17.10)" >&2
+    exit 2
 fi
 
 # Two prerequisites, two different remedies — and one check used to report the first

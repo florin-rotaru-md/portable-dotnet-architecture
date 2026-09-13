@@ -86,6 +86,8 @@ df -h /                        # and again after
 #    (plain devops cannot read the dump dir — it is 0750 postgres:postgres)
 rsync -a --rsync-path='sudo -u postgres rsync' \
       devops@192.168.0.22:/opt/postgres/backups/ <a machine that is not this cluster>/
+#    …or, where the receiving machine has no rsync (Git Bash on the Windows workstation):
+ssh devops@192.168.0.22 'sudo -n tar -C /opt/postgres/backups -cf - .' > pg-backups-$(date +%Y%m%d).tar
 ```
 
 Neither is a tier, and neither survives losing the node. Record in [23.5](../operations/23-drill-book.md#235-the-drill-log) the day you started doing this and the day the drive replaced it: an interim measure nobody wrote down becomes a permanent one nobody knows about.

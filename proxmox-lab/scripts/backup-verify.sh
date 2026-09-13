@@ -35,7 +35,7 @@ VMS="1020 1021 1022 1023"
 CONFIG_HOSTS="pve1 pve2"
 MAX_AGE_H=26                    # nightly jobs → anything older than ~a day is stale
 MIN_SIZE_MB=100                 # a vzdump smaller than this is almost certainly broken
-PG_MIN_SIZE_MB=1                # likewise for a Postgres dump; the real ones are 12-22 MB
+PG_SHRINK_FLOOR_BYTES=65536     # a Postgres dump under half its predecessor warns, once that predecessor is past this
 USB_MOUNT=/mnt/usb-backup
 RCLONE_REMOTE=digi-crypt:
 RCLONE_LOG=/var/log/rclone-backup.log
@@ -246,31 +246,80 @@ CHECK_ID=postgres-dumps CHECK_CATEGORY=backups
 # relocates it to {{ postgres_backup_mount }}/postgres when a dedicated backup
 # disk is attached; PG_DUMP_DIR is only the fallback.
 #
-# Size is fetched alongside the timestamp, and it is not decoration. The vzdump tier
-# above has always paired freshness with plausibility — MIN_SIZE_MB, "almost certainly
-# broken" — while this block read mtime alone, so a pg_dump that died after creating its
-# output file left a fresh, tiny archive and this printed "[ OK ] pg-dump: 3h old". The
-# tier that most needs the plausibility test is this one: with no vzdump anywhere, the
-# nightly dump on 1022 has been the only surviving copy of the databases.
-PG_STAT=$(ssh -o BatchMode=yes -o ConnectTimeout=5 "devops@$PG_VM_IP" \
-    "sudo -n -u postgres sh -c 'd=\$(crontab -l 2>/dev/null | sed -n \"s|.*>> \\(.*\\)/cron\\.log.*|\\1|p\" | head -1); d=\${d:-$PG_DUMP_DIR}; f=\$(ls -t \"\$d\"/*.dump 2>/dev/null | head -1); [ -n \"\$f\" ] && stat -c \"%Y %s\" \"\$f\"'" 2>&1)
+# What proves a run, and what does not. This block used to take the single newest *.dump
+# by mtime and hold it to a 1 MB floor ("the real ones are 12-22 MB"), meant to catch a
+# pg_dump that died after creating its file. Both halves failed on 2026-09-12, reporting a
+# complete run as an aborted one: the 2026-09-05..07 database reset left dumps of 8 KB to
+# 570 KB, every one of them whole; and the nine files of a run share one mtime second, so
+# "newest" was whichever file `ls -t` listed first, never the run. An absolute size cannot
+# tell a small database from a truncated dump.
+#
+# The run says so itself instead. pg-backup.sh (roles/postgres) runs under `set -euo
+# pipefail`, stamps every file of one run with the same STAMP, and prints "Backup complete -
+# globals_<STAMP>.sql.gz + <N> database(s)" as its last act — a pg_dump that fails stops the
+# script before that line exists. So: the newest stamp is fresh, the completion line names
+# that stamp, and N dumps carry it. Size survives only as a comparison with the same
+# database's previous dump, and only as a WARN: a clean dump of a database that lost its
+# rows is still a clean dump, and the 7-day retention is what makes noticing it urgent.
+#
+# The remote half travels on stdin, not nested in the ssh argument: three layers of quoting
+# (ssh, sudo, sh -c) is where the previous version of this block lived.
+read -r -d '' PG_REMOTE << 'REMOTE'
+d=$(crontab -l 2>/dev/null | sed -n 's|.*>> \(.*\)/cron\.log.*|\1|p' | head -1)
+d=${d:-$1}
+echo "dir $d"
+grep 'Backup complete' "$d/cron.log" 2>/dev/null | tail -1 | sed 's/^/done /'
+find "$d" -maxdepth 1 -type f \( -name '*.dump' -o -name 'globals_*.sql.gz' \) -printf 'file %T@ %s %f\n' 2>/dev/null
+exit 0
+REMOTE
+PG_REPORT=$(printf '%s\n' "$PG_REMOTE" | ssh -o BatchMode=yes -o ConnectTimeout=5 "devops@$PG_VM_IP" \
+    "sudo -n -u postgres sh -s -- '$PG_DUMP_DIR'" 2>&1)
 PG_RC=$?
-PG_NEWEST_TS=$(echo "$PG_STAT" | awk 'NF == 2 {print $1}')
-PG_NEWEST_SZ=$(echo "$PG_STAT" | awk 'NF == 2 {print $2}')
-if [ "$PG_RC" -ne 0 ]; then
-    fail "pg-dump: could not reach $PG_VM_IP (ssh/sudo exit $PG_RC) — the state of the only surviving database copy is UNKNOWN: $(echo "$PG_STAT" | first_meaningful)"
-elif [ -z "$PG_NEWEST_TS" ]; then
-    fail "pg-dump: $PG_VM_IP answered but reported no .dump file at all — the nightly dump has never produced one (17.5)"
+PG_DIR=$(printf '%s\n' "$PG_REPORT" | sed -n 's/^dir //p' | head -1)
+PG_DONE=$(printf '%s\n' "$PG_REPORT" | sed -n 's/^done //p' | tail -1)
+# "<mtime> <bytes> <name>", one line per file. Every name ends in _<YYYYmmdd-HHMMSS>.dump or
+# .sql.gz, and those stamps sort as text, so the greatest one is the newest run.
+PG_FILES=$(printf '%s\n' "$PG_REPORT" | awk '$1 == "file" && NF == 4 {printf "%d %s %s\n", $2, $3, $4}')
+PG_STAMP=$(printf '%s\n' "$PG_FILES" | awk 'NF == 3 {
+    n = $3; sub(/\.dump$/, "", n); sub(/\.sql\.gz$/, "", n); s = substr(n, length(n) - 14)
+    if (length(s) == 15 && s ~ /^[0-9]+-[0-9]+$/) print s }' | sort | tail -1)
+if [ "$PG_RC" -ne 0 ] || [ -z "$PG_DIR" ]; then
+    fail "pg-dump: could not reach $PG_VM_IP (ssh/sudo exit $PG_RC) — the state of the only surviving database copy is UNKNOWN: $(printf '%s\n' "$PG_REPORT" | first_meaningful)"
+elif [ -z "$PG_STAMP" ]; then
+    fail "pg-dump: $PG_VM_IP answered but $PG_DIR holds no dump at all — the nightly dump has never produced one (17.5)"
 else
-    PG_AGE_H=$(( ($(date +%s) - PG_NEWEST_TS) / 3600 ))
-    PG_SIZE_MB=$(( ${PG_NEWEST_SZ:-0} / 1024 / 1024 ))
+    PG_NEWEST_TS=$(printf '%s\n' "$PG_FILES" | awk -v s="_$PG_STAMP." 'index($3, s) {print $1}' | sort -n | tail -1)
+    PG_AGE_H=$(( ($(date +%s) - ${PG_NEWEST_TS:-0}) / 3600 ))
+    PG_DONE_STAMP=$(printf '%s\n' "$PG_DONE" | sed -n 's/.*globals_\([0-9-]*\)\.sql\.gz.*/\1/p')
+    PG_DONE_COUNT=$(printf '%s\n' "$PG_DONE" | sed -n 's/.* + \([0-9][0-9]*\) database.*/\1/p')
+    PG_COUNT=$(printf '%s\n' "$PG_FILES" | awk -v s="_$PG_STAMP.dump" 'NF == 3 && substr($3, length($3) - length(s) + 1) == s' | wc -l)
+    PG_KB=$(printf '%s\n' "$PG_FILES" | awk -v s="_$PG_STAMP." 'index($3, s) {t += $2} END {printf "%d", t / 1024}')
     if [ "$PG_AGE_H" -gt "$MAX_AGE_H" ]; then
-        fail "pg-dump: newest dump is ${PG_AGE_H}h old — the nightly cron on 1022 stopped (17.5)"
-    elif [ "$PG_SIZE_MB" -lt "$PG_MIN_SIZE_MB" ]; then
-        fail "pg-dump: newest dump is only ${PG_NEWEST_SZ:-0} bytes — fresh but implausibly small, so the dump aborted after creating the file; inspect it before trusting it (17.5)"
+        fail "pg-dump: newest run ($PG_STAMP) is ${PG_AGE_H}h old — the nightly cron on 1022 stopped (17.5)"
+    elif [ "$PG_DONE_STAMP" != "$PG_STAMP" ]; then
+        fail "pg-dump: newest run ($PG_STAMP) never logged 'Backup complete' — pg-backup.sh stops at the first failed pg_dump, so at least one database has no dump from it (last completed run: ${PG_DONE_STAMP:-none}); tail $PG_DIR/cron.log (17.5)"
+    elif [ "$PG_COUNT" -ne "${PG_DONE_COUNT:-0}" ]; then
+        fail "pg-dump: run $PG_STAMP logged ${PG_DONE_COUNT:-?} database(s) but $PG_COUNT dump file(s) carry its stamp — a dump was removed after the run; inspect $PG_DIR (17.5)"
     else
-        ok "pg-dump: ${PG_AGE_H}h old, ${PG_SIZE_MB}MB"
+        ok "pg-dump: run $PG_STAMP complete — $PG_COUNT database(s), ${PG_AGE_H}h old, ${PG_KB} KB"
     fi
+    # Asked whatever the verdict above. For each database: this run's dump against the newest
+    # older dump of the same database. The name is <db>_<stamp>.dump and a database name may
+    # itself contain underscores, so the stamp is cut off by length, not at the last "_".
+    PG_SHRUNK=$(printf '%s\n' "$PG_FILES" | awk -v S="$PG_STAMP" -v floor="$PG_SHRINK_FLOOR_BYTES" '
+        NF == 3 && $3 ~ /\.dump$/ {
+            n = $3; sub(/\.dump$/, "", n)
+            s = substr(n, length(n) - 14); db = substr(n, 1, length(n) - 16)
+            if (length(s) != 15 || s !~ /^[0-9]+-[0-9]+$/ || db == "") next
+            if (s == S) cur[db] = $2 + 0
+            else if (s < S && s > seen[db]) { seen[db] = s; prev[db] = $2 + 0 }
+        }
+        END { for (db in cur) if ((db in prev) && prev[db] >= floor + 0 && cur[db] * 2 < prev[db]) print db, prev[db], cur[db] }')
+    # A here-string, not a pipe: warn() must set RC in this shell, not in a subshell.
+    while read -r db was now; do
+        [ -n "$db" ] || continue
+        warn "pg-dump: $db shrank from $was to $now bytes since its previous dump — a clean dump of a database that lost rows, or a deliberate purge; confirm which before retention rotates the larger dump away (17.5)"
+    done <<< "$PG_SHRUNK"
 fi
 
 [ -z "${INFRA_CHECKS_FILE:-}" ] || printf '@complete\n' >> "$INFRA_CHECKS_FILE"

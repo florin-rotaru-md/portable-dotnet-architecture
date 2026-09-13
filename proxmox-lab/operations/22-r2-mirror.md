@@ -80,14 +80,17 @@ not an error; a *missing* bucket is `NoSuchBucket` and is, so create it before a
   days, offsite follows the drive at the next 04:00 sync.
 - **Log:** `/var/log/rclone-r2.log`. **Watchdog:** the `r2-mirror:` line of `backup-verify` (07:30
   cron) — but only on the node that holds the drive. It is the last of the drive-dependent checks
-  and is not reached at all where `/mnt/usb-backup` is not mounted (`r2-backup` exits 0 quietly
-  there too, so a driveless node runs the 03:30 cron every night and produces neither a mirror nor
-  an error). Where the drive *is* mounted the script separates the two ways this tier can be absent:
-  no `r2/` directory reads `[ OK ] r2-mirror: not set up on this drive`, while an `r2/` directory
-  with no log is `[FAIL] … the 03:30 sync has never run`. **So the blind spot is the driveless node
-  — which is both of them tonight** — and the case after a drive swap ([22.3](#223-incidents), "USB
-  drive dead/lost") until the new drive is mounted. There, this tier is unwatched: prove it by hand
-  (22.2). A `[FAIL]` that does fire *does* reach you, but not by mail: `backup-verify` runs wrapped
+  and is not reached at all where `/mnt/usb-backup` is not mounted. There `r2-backup` answers
+  instead, from `/etc/pve/storage.cfg`: `[ OK ]` when a storage on `/mnt/usb-backup` is defined for
+  another node, `FAIL … nothing mirrors R2` when none is defined anywhere, and `FAIL … the drive
+  dropped off` when the mount point exists but is empty. Until 2026-09-12 it exited 0 with no
+  output, so a driveless node produced neither a mirror nor an error and the app scored that as a
+  pass. Where the drive *is* mounted the script separates the two ways this tier can be absent: no
+  `r2/` directory reads `[WARN] r2-mirror: not set up on this drive`, while an `r2/` directory with
+  no log is `[FAIL] … the 03:30 sync has never run`. **What no driveless node can see is whether the
+  holder's mirror works** — only the holder's own `r2-backup` report and its log say that, so after
+  a drive swap ([22.3](#223-incidents), "USB drive dead/lost") prove it by hand (22.2). A `[FAIL]`
+  that does fire *does* reach you, but not by mail: `backup-verify` runs wrapped
   in `infra-report`, whose POST to the app's infra monitor is the only channel currently arriving.
   Root mail is generated correctly on both nodes and then rejected outright by the recipient's
   provider, which takes out PVE's own vzdump, replication, HA and fencing notices — not this line
