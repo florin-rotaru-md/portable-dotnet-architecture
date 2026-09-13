@@ -226,7 +226,7 @@ cd /sys/class/firmware-attributes/hp-bioscfg/attributes
 grep -H . "Configure Storage Controller for VMD/current_value" "Power On When AC Detected/current_value" "Secure Boot/current_value"
 ```
 
-The same `current_value` file accepts a write while no BIOS setup password is set (none is, on pve2). Read `pending_reboot` afterwards, and re-read the value after the next boot before trusting it.
+**Reading is all it does here — change a value in F10 setup, at the console.** The firmware-attributes class documents `current_value` as writable, and on pve2 it is not: `echo Enable > "Power On When AC Detected/current_value"` fails with `write error: Invalid argument` and the value stays `Disable`, although no setup password is set, `Enable` is one of the attribute's `possible_values`, and the driver strips the trailing newline. The refusal is the firmware's, not the driver's validation: the kernel log shows `hp_bioscfg: Returned error 0x4, "Invalid command type"`, the BIOS's answer to the WMI set call, which the driver maps to `-EINVAL` (tried 2026-09-13, kernel 7.0.14-16-pve, BIOS 01.13.02). So set it in F10 setup, then prove it from Linux with the `grep` above — a change counts as made only once that read agrees.
 
 Then, before moving any workload back:
 
