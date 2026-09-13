@@ -6,7 +6,7 @@
 
 **pve1 (ThinkStation, F1 at boot):** VT-x → Enabled; VT-d → Enabled; **VMD/RST → Disabled** (otherwise Linux won't see the NVMe drives individually — on pve1 that means the one Kingston NVMe that becomes pool `db`; its other two drives are SATA SSDs and were never behind VMD, see [2.3](02-post-install.md#23-hardware-check)); **After Power Loss / Restore on AC → Power On** (so the node comes back by itself when power returns — the tail end of the long-outage chain in [Stage 4](04-ups.md#44-the-long-outage-timeline-end-to-end)); Secure Boot can stay on.
 
-**pve2 (ZBook, F10 at boot):** VT-x/VT-d → Enabled; RST/VMD → AHCI-NVMe if the option exists; also look for a "Wake on AC / Power on AC" setting → Enabled (so the laptop powers back on when power returns).
+**pve2 (ZBook, F10 at boot):** VT-x/VT-d → Enabled; **Configure Storage Controller for VMD → Disable** (HP's name for RST/VMD); **Power On When AC Detected → Enable** (so the laptop powers back on when power returns — after Stage 3's battery shutdown it stays off otherwise). Secure Boot is off on this node, as found 2026-09-13 — which is also why a pending dbx update is inert here ([16.3](../operations/16-maintenance.md#163-firmware--detect-always-flash-rarely)). These HP settings read back from Linux without a reboot; the command is in 16.3, *After every flash*. On 2026-09-13 *Power On When AC Detected* read `Disable`.
 
 **QDevice (Dell Pro 14, F2 at boot):** SATA/NVMe operation → **AHCI/NVMe, not "RAID On"** — Dell's default hides the disk from the Debian installer entirely; plus the same power-on-after-AC-loss setting. No VT-x/VT-d needed, it runs no VMs. Details and the rest of its build: [8.1](../cluster/08-qdevice.md#81-the-box-and-its-os).
 

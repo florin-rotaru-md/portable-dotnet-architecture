@@ -26,9 +26,15 @@ def command(args, timeout=15):
 
 
 def temperatures(document):
+    # A reading the hardware publishes no limit for is kept as a measurement and not judged. It
+    # used to make the whole check "unknown", and on a laptop node that is permanent: pve2's 13
+    # ACPI thermal zones never carry a max or crit, so the check warned every day beside 29
+    # readings it had judged perfectly well (2026-09-13). What is still not a pass is judging
+    # nothing at all — readings exist, and not one of them has a limit or an alarm flag.
     metrics = []
     rank = 0
-    unknown = False
+    unreadable = False
+    judged = 0
     for chip, sensors in document.items():
         if not isinstance(sensors, dict):
             continue
@@ -39,13 +45,14 @@ def temperatures(document):
                 if not re.fullmatch(r"temp\d+_input", key):
                     continue
                 if not isinstance(value, (int, float)) or not math.isfinite(value):
-                    unknown = True
+                    unreadable = True
                     continue
                 stem = key.removesuffix("_input")
                 high, critical = values.get(stem + "_max"), values.get(stem + "_crit")
                 high = high if isinstance(high, (float, int)) and math.isfinite(high) and high > 0 else None
                 critical = critical if isinstance(critical, (float, int)) and math.isfinite(critical) and critical > 0 else None
-                unknown |= high is None and critical is None
+                if high is not None or critical is not None or stem + "_crit_alarm" in values or stem + "_max_alarm" in values:
+                    judged += 1
                 if (critical is not None and value >= critical) or values.get(stem + "_crit_alarm") == 1:
                     rank = 2
                 elif (high is not None and value >= high) or values.get(stem + "_max_alarm") == 1:
@@ -55,9 +62,18 @@ def temperatures(document):
         return check("temperatures", "temperatures", "warn", "no temperature readings returned", observation="unknown")
     if len(metrics) > 64:
         raise ValueError("more than 64 temperature readings; refusing to drop evidence")
-    return check("temperatures", "temperatures", ["pass", "warn", "fail"][max(rank, int(unknown))],
-                 f"{len(metrics)} temperature readings; " + ("some hardware limits unavailable" if unknown else "hardware limits evaluated"),
-                 metrics, "unknown" if unknown else "observed")
+    if not judged:
+        return check("temperatures", "temperatures", "warn",
+                     f"{len(metrics)} temperature readings, none with a hardware limit; nothing could be judged",
+                     metrics, "unknown")
+    unjudged = len(metrics) - judged
+    detail = f"{len(metrics)} temperature readings; " + (
+        f"{judged} evaluated against hardware limits, {unjudged} without a published limit kept unjudged"
+        if unjudged else "hardware limits evaluated")
+    if unreadable:
+        detail += "; some readings were not numeric"
+    return check("temperatures", "temperatures", ["pass", "warn", "fail"][max(rank, int(unreadable))],
+                 detail, metrics, "unknown" if unreadable else "observed")
 
 
 def temperature_probe():

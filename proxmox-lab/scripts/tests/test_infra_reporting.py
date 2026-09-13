@@ -55,17 +55,37 @@ class InfraReportingTests(unittest.TestCase):
         self.assertEqual(72, metric["value"])
         self.assertEqual(100, metric["failureAbove"])
 
-    def test_empty_sensors_or_missing_limits_are_unknown(self):
+    def test_empty_sensors_or_no_limit_anywhere_are_unknown(self):
         for document in ({}, {"chip": {"cpu": {"temp1_input": 42}}}):
             result = probes.temperatures(document)
             self.assertEqual("unknown", result["observation"])
             self.assertEqual("warn", result["status"])
 
+    def test_readings_without_a_limit_are_kept_but_not_judged(self):
+        result = probes.temperatures({"coretemp-isa-0000": {"Package id 0": {"temp1_input": 50, "temp1_max": 80, "temp1_crit": 100}},
+                                      "acpitz-acpi-0": {"temp1": {"temp1_input": 27.8}}})
+        self.assertEqual("pass", result["status"])
+        self.assertEqual("observed", result["observation"])
+        self.assertIn("1 without a published limit", result["detail"])
+        unlimited = [metric for metric in result["metrics"] if metric["resource"].startswith("acpitz")]
+        self.assertEqual([(27.8, None, None)], [(m["value"], m["warningAbove"], m["failureAbove"]) for m in unlimited])
+
+    def test_alarm_flag_counts_as_a_limit(self):
+        result = probes.temperatures({"chip": {"cpu": {"temp1_input": 60, "temp1_crit_alarm": 1}}})
+        self.assertEqual("fail", result["status"])
+        self.assertEqual("observed", result["observation"])
+
     def test_critical_temperature_wins_over_missing_other_limits(self):
         result = probes.temperatures({"chip": {"cpu": {"temp1_input": 110, "temp1_crit": 100},
                                                "other": {"temp2_input": 42}}})
         self.assertEqual("fail", result["status"])
-        self.assertEqual("unknown", result["observation"])
+        self.assertEqual("observed", result["observation"])
+
+    def test_advisory_flag_survives_a_shell_record(self):
+        records = "firmware\tmaintenance\twarn\tobserved\ttrue\t1 device(s) with an update on LVFS\n@complete\n"
+        result = self.payload(records=records)
+        self.assertTrue(result["checks"][0]["advisory"])
+        self.assertEqual("maintenance", result["checks"][0]["category"])
 
     def test_partial_ping_loss_keeps_rtt_and_packet_count(self):
         output = "20 packets transmitted, 19 received, 5% packet loss, time 10ms\nrtt min/avg/max/mdev = 0.1/0.42/0.9/0.1 ms"

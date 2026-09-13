@@ -482,7 +482,30 @@ CHECK_ID=firmware CHECK_CATEGORY=maintenance
 # its own timer and this just reads the result. A machine LVFS doesn't cover
 # reports zero forever, which is NOT the same as being current — that one stays
 # a quarterly look at the vendor's page.
+#
+# A pending release is an ADVISORY warning. 16.3's policy is that "there's a newer version
+# out" is not a reason to flash, so a release on LVFS is information for the next planned
+# window rather than a fault: the app records it without turning the node yellow (platform
+# ADR-0015 D4b — observed maintenance warnings only). The branches that could not ask stay
+# plain warnings — no metadata, no device list, an unreadable answer — because those are
+# monitoring gaps, not maintenance facts.
+#
+# UEFI dbx is judged against Secure Boot. dbx is the list of revoked boot signatures, and the
+# firmware consults it only while Secure Boot is enforcing. pve2 runs with Secure Boot off, so
+# its pending dbx release protected nothing, could not be applied either, and still kept the
+# node warning after the 2026-09-13 BIOS flash had cleared everything else. With Secure Boot
+# off the release is named in the line instead of counted; with it on — or with its state
+# unreadable — it counts like any other device, and 16.3's "take dbx updates last" applies.
 BIOS_VER=$(have dmidecode && dmidecode -s bios-version 2>/dev/null | head -1)
+SB_VAR=/sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c
+SB_STATE=unknown
+if [ -r "$SB_VAR" ]; then
+    # efivarfs: four attribute bytes, then the one data byte — 1 enforcing, 0 not.
+    case "$(od -An -t u1 "$SB_VAR" 2>/dev/null | awk '{print $NF}')" in
+        1) SB_STATE=on ;;
+        0) SB_STATE=off ;;
+    esac
+fi
 if have fwupdmgr; then
     # `have` proves the binary exists; it does not prove the query worked, and those are
     # different claims. If the fwupd daemon is stopped or errors, --json emits an error
@@ -499,10 +522,31 @@ if have fwupdmgr; then
         warn "firmware: no LVFS metadata on this node, so 'nothing pending' would mean 'nothing known' — run 'fwupdmgr refresh' and re-check (16.3)"
     elif ! echo "$FW_OUT" | grep -q '"Devices"'; then
         warn "firmware: fwupdmgr did not return a device list, so pending updates are UNKNOWN rather than absent — check 'systemctl status fwupd': $(echo "$FW_OUT" | grep -v '^$' | head -1)"
-    elif [ "$(echo "$FW_OUT" | grep -c '"Releases"')" -gt 0 ]; then
-        warn "firmware: $(echo "$FW_OUT" | grep -c '"Releases"') device(s) with an update on LVFS — read 16.3 before flashing; it is a maintenance window, not an apt run"
+    # One line per device that has a release: plugin, name, running version, offered version.
+    # Decoded from the first brace, because stderr is merged into FW_OUT and a fwupd warning
+    # line can precede the JSON. Counting '"Releases"' by grep could not tell dbx from a BIOS.
+    elif ! FW_PENDING=$(printf '%s' "$FW_OUT" | python3 -c 'import json, sys
+text = sys.stdin.read()
+data, _ = json.JSONDecoder().raw_decode(text[text.index("{"):])
+for device in data.get("Devices", []):
+    releases = device.get("Releases") or []
+    if releases:
+        print("\t".join(str(field) for field in (device.get("Plugin") or "", device.get("Name") or "?",
+                                                   device.get("Version") or "?", releases[0].get("Version") or "?")))' 2>&1); then
+        CHECK_OBSERVATION=unknown warn "firmware: fwupdmgr answered but its device list could not be read, so pending updates are UNKNOWN rather than absent: $(echo "$FW_PENDING" | tail -1)"
     else
-        ok "firmware: nothing pending on LVFS${BIOS_VER:+ (BIOS $BIOS_VER)}"
+        FW_DBX_NOTE=""
+        if [ "$SB_STATE" = off ]; then
+            FW_DBX_NOTE=$(printf '%s\n' "$FW_PENDING" | awk -F '\t' '$1 == "uefi_dbx" {print "; UEFI dbx " $3 " -> " $4 " is available but inert: Secure Boot is off, so the firmware never reads it"; exit}')
+            FW_PENDING=$(printf '%s\n' "$FW_PENDING" | awk -F '\t' 'NF && $1 != "uefi_dbx"')
+        fi
+        FW_COUNT=$(printf '%s\n' "$FW_PENDING" | grep -c .)
+        if [ "$FW_COUNT" -gt 0 ]; then
+            FW_LIST=$(printf '%s\n' "$FW_PENDING" | awk -F '\t' 'NF {printf "%s%s %s -> %s", (n++ ? ", " : ""), $2, $3, $4}')
+            CHECK_ADVISORY=true warn "firmware: $FW_COUNT device(s) with an update on LVFS ($FW_LIST)$FW_DBX_NOTE — advisory: read 16.3 before flashing; it is a maintenance window, not an apt run, and a newer version alone is not a reason to flash"
+        else
+            ok "firmware: nothing pending on LVFS${BIOS_VER:+ (BIOS $BIOS_VER)}$FW_DBX_NOTE"
+        fi
     fi
 else
     warn "firmware: fwupd not installed — no detection at all on this node (2.2)"
