@@ -79,13 +79,11 @@ Both pve1 and pve2 run the jobs as root and require the same working rclone conf
   obscures stored passwords; that file is a credential. If the config itself is password-encrypted,
   cron also needs a protected non-interactive `RCLONE_CONFIG_PASS` source before any job is enabled.
 
-No WebDAV mount, FUSE package, Windows WebClient or WinFsp is required. The scripts use rclone's
-CLI directly rather than mounting remote storage.
+No mount or FUSE package is required. The scripts use rclone's CLI directly.
 
 ### Remote configuration
 
-Prefer rclone's dedicated Digi Storage provider; Digi documents it as faster than WebDAV,
-especially for many files. Run `rclone config` on a secured node and create:
+Use rclone's dedicated Digi Storage provider. Run `rclone config` on a secured node and create:
 
 | Remote | Selection | Required values |
 |---|---|---|
@@ -96,15 +94,7 @@ The dedicated provider selects the account's primary storage automatically; do n
 Cloud` path component. Create/use only the dedicated `OperationalBackup` directory through
 `digi-crypt:` after initial connectivity is proven. Configure pve2 with the same underlying path,
 crypt password, salt and filename settings; a newly generated crypt config cannot read pve1's data.
-
-WebDAV is a supported fallback. Create `digi-webdav` with type `webdav`, URL
-`https://storage.rcs-rds.ro/dav`, vendor `other`, the backup user's username and Digi account
-password, then point `digi-crypt` at
-`digi-webdav:OperationalBackup`. Plain WebDAV does not provide rclone hashes or reliable modification
-times, so rely on an upload/download comparison and restore tests. Do not switch an existing crypt
-remote between the API and WebDAV until the same encrypted directory has been read successfully
-through the proposed backend. References: [Digi WebDAV](https://storage.rcs-rds.ro/help/webdav),
-[rclone WebDAV](https://rclone.org/webdav/) and [rclone crypt](https://rclone.org/crypt/).
+Reference: [rclone crypt](https://rclone.org/crypt/).
 
 ### Capacity requirement
 
@@ -124,8 +114,6 @@ ceiling is 240 GB. On 2026-09-14 the four live ZFS volumes referenced about 14.4
 compressed 1022 image was 1.34 GB. This indicates ample current headroom but does not bound future
 database/media growth or prove how the provider reports the allocated private space. Check the
 actual allocation with `rclone about digi:` and the encrypted footprint with `rclone size digi-crypt:`.
-If `about` is unavailable through WebDAV, record the allocated/free capacity from the Business
-administration report instead.
 
 The Digi backend is case-insensitive. Backup names must remain unique without relying on case.
 
@@ -134,14 +122,12 @@ The Digi backend is case-insensitive. Backup names must remain unique without re
 Complete on **both** nodes before installing the schedules:
 
 ```bash
-backend=digi: # use digi-webdav: only for the documented fallback
 rclone version
 rclone config file
 rclone listremotes
-rclone lsd "$backend"
+rclone lsd digi:
 rclone lsf --max-depth 1 digi-crypt:
-# The native backend reports quota; WebDAV may not.
-[ "$backend" != "digi:" ] || rclone about "$backend"
+rclone about digi:
 
 probe=$(mktemp)
 restored=$(mktemp)
@@ -154,11 +140,11 @@ rclone deletefile "digi-crypt:$remote_probe"
 rm -f "$probe" "$restored"
 ```
 
-Expect the selected underlying remote (`digi:` or `digi-webdav:`) and `digi-crypt:` exactly in
-`listremotes`, successful listing, recorded allocated/free capacity, a byte-identical round trip and
-successful deletion. Confirm that the plaintext probe name and contents are absent when inspecting
-the underlying `OperationalBackup` path. Record rclone version, account allocation,
-configuration-file permissions and results without recording credentials.
+Expect `digi:` and `digi-crypt:` exactly in `listremotes`, successful listing, recorded
+allocated/free capacity, a byte-identical round trip and successful deletion. Confirm that the
+plaintext probe name and contents are absent when inspecting `digi:OperationalBackup`. Record
+rclone version, account allocation, configuration-file permissions and results without recording
+credentials.
 
 ## Backup activation
 
