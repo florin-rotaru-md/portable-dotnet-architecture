@@ -4,7 +4,7 @@
 
 ## Coverage
 
-Read-only verification on 2026-09-14:
+Verification evidence on 2026-09-14:
 
 | Layer | Observed | What it proves |
 |---|---|---|
@@ -13,8 +13,8 @@ Read-only verification on 2026-09-14:
 | Logical dumps | PostgreSQL user's cron at 05:15; recent files under `/opt/postgres/backups` | Local backup files exist; restore still needs verification |
 | VM image | Local 1022 archive dated 2026-09-13 on pve1 | One image exists, not complete fleet/offsite coverage |
 | WAL / PITR | `archive_mode=off`, `archive_timeout=0`, zero archived WAL | Continuous replay/PITR is unavailable in this installation |
-| Digi Storage | Business 300 GB plan acquired; account allocation and remote access not verified | Capacity is contracted, not yet usable or restore-tested |
-| rclone | Missing on pve1 and pve2 | No current job can upload to or verify Digi Storage |
+| Digi Storage | Business plan acquired; `rclone about digi:` on pve1 reports 300 GiB total/free | Account allocation and underlying access work on pve1; encrypted acceptance and restore remain open |
+| rclone | pve1: `1.60.1-DEV`, `digi:` and `digi-crypt:` configured; pve2 not configured | One-node setup only; scheduled two-node workflow is not active |
 | New offsite helpers | `pg-offsite` and `offsite-sync` absent from installed helper list | Repository workflow has not been installed on audited nodes |
 | R2 | Older `r2-backup` helper/cron still installed; no validated copy/restoration | Do not claim R2 backup coverage |
 | Host config | Archive helper/cron present | Job installation, not successful/decryptable offsite recovery |
@@ -92,9 +92,9 @@ Use rclone's dedicated Digi Storage provider. Run `rclone config` on a secured n
 | `digi-crypt` | `crypt` | Underlying path `digi:OperationalBackup`, standard filename encryption, directory encryption enabled, unique password and salt |
 
 The dedicated provider selects the account's primary storage automatically; do not add a `Digi
-Cloud` path component. Create/use only the dedicated `OperationalBackup` directory through
-`digi-crypt:` after initial connectivity is proven. Configure pve2 with the same underlying path,
-crypt password, salt and filename settings; a newly generated crypt config cannot read pve1's data.
+Cloud` path component. Create the empty `digi:OperationalBackup` container once, then read and write
+backup content only through `digi-crypt:`. Configure pve2 with the same underlying path, crypt
+password, salt and filename settings; a newly generated crypt config cannot read pve1's data.
 Reference: [rclone crypt](https://rclone.org/crypt/).
 
 #### Configure `digi` on pve1
@@ -128,6 +128,9 @@ The two `password>` entries are the password and confirmation prompts. Do not ch
 main menu and do not set `endpoint` or `mountid`. Confirm the underlying remote before creating the
 encrypted layer:
 
+The trailing colon is mandatory in every remote path: `digi:` means the configured remote, while
+`digi` means a local directory named `digi`.
+
 ```bash
 rclone listremotes
 rclone lsd digi:
@@ -160,6 +163,14 @@ The first generated value is the crypt password; the second is `password2`, the 
 both displayed values immediately into the protected recovery store. They are required to decrypt
 the backup if `rclone.conf` is lost. Keep data encryption enabled; the advanced default
 `no_data_encryption = false` must not be changed.
+
+Create the empty container before its first listing. Without this step, `rclone lsf digi-crypt:`
+returns `directory not found` even when both remotes are configured correctly:
+
+```bash
+rclone mkdir digi:OperationalBackup
+rclone lsf --max-depth 1 digi-crypt:
+```
 
 The effective configuration must have the values below; rclone may omit lines that use their
 defaults. Password fields are stored obscured:
@@ -208,11 +219,12 @@ Budget the remote before enabling scheduled uploads:
 + one largest in-flight upload
 ```
 
-Keep at least 20% of the provider allocation free after the retained set: for 300 GB, the operational
-ceiling is 240 GB. On 2026-09-14 the four live ZFS volumes referenced about 14.4 GB and the existing
-compressed 1022 image was 1.34 GB. This indicates ample current headroom but does not bound future
-database/media growth or prove how the provider reports the allocated private space. Check the
-actual allocation with `rclone about digi:` and the encrypted footprint with `rclone size digi-crypt:`.
+Keep at least 20% of the provider allocation free after the retained set. The contracted plan is
+marketed as 300 GB, while `rclone about digi:` reports 300 GiB; use a 240 GiB operational ceiling
+against that reported allocation. On 2026-09-14 the four live ZFS volumes referenced about 14.4 GB
+and the existing compressed 1022 image was 1.34 GB. This indicates ample current headroom but does
+not bound future database/media growth. Check the allocation with `rclone about digi:` and the
+encrypted footprint with `rclone size digi-crypt:`.
 
 The Digi backend is case-insensitive. Backup names must remain unique without relying on case.
 
@@ -221,22 +233,36 @@ The Digi backend is case-insensitive. Backup names must remain unique without re
 Complete on **both** nodes before installing the schedules:
 
 ```bash
-rclone version
-rclone config file
-rclone listremotes
-rclone lsd digi:
-rclone lsf --max-depth 1 digi-crypt:
-rclone about digi:
+(
+  set -euo pipefail
 
-probe=$(mktemp)
-restored=$(mktemp)
-remote_probe="checks/$(hostname)-$(date +%s).bin"
-head -c 1048576 /dev/urandom > "$probe"
-rclone copyto "$probe" "digi-crypt:$remote_probe"
-rclone copyto "digi-crypt:$remote_probe" "$restored"
-cmp "$probe" "$restored"
-rclone deletefile "digi-crypt:$remote_probe"
-rm -f "$probe" "$restored"
+  probe=$(mktemp)
+  restored=$(mktemp)
+  remote_probe="checks/$(hostname)-$(date +%s).bin"
+  cleanup() {
+    rclone deletefile "digi-crypt:$remote_probe" >/dev/null 2>&1 || true
+    rm -f "$probe" "$restored"
+  }
+  trap cleanup EXIT
+
+  rclone version
+  rclone config file
+  rclone listremotes
+  rclone lsd digi:
+  rclone about digi:
+  rclone mkdir digi:OperationalBackup
+  rclone lsf --max-depth 1 digi-crypt:
+
+  head -c 1048576 /dev/urandom > "$probe"
+  rclone copyto "$probe" "digi-crypt:$remote_probe"
+  rclone copyto "digi-crypt:$remote_probe" "$restored"
+  cmp "$probe" "$restored"
+  rclone deletefile "digi-crypt:$remote_probe"
+
+  trap - EXIT
+  rm -f "$probe" "$restored"
+  echo "PASS: encrypted Digi round trip and deletion"
+)
 ```
 
 Expect `digi:` and `digi-crypt:` exactly in `listremotes`, successful listing, recorded
