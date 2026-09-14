@@ -328,7 +328,8 @@
     mode:  '0750'
 
 # Schedules are policy, so they live in group_vars, in the VM's own clock (UTC on
-# the Proxmox build). The hypervisor pulls both results off the VM (17.4).
+# the Proxmox build). The hypervisor pulls both results off the VM; activation and verification are
+# defined in portable-dotnet-architecture/proxmox-lab/RECOVERY.md#backup-activation.
 - name: Install backup cron job
   cron:
     name:   "postgres nightly backup"

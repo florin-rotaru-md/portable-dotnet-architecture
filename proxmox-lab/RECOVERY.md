@@ -13,10 +13,11 @@ Verification evidence on 2026-09-14:
 | Logical dumps | PostgreSQL user's cron at 05:15; recent files under `/opt/postgres/backups` | Local backup files exist; restore still needs verification |
 | VM image | Local 1022 archive dated 2026-09-13 on pve1 | One image exists, not complete fleet/offsite coverage |
 | WAL / PITR | `archive_mode=off`, `archive_timeout=0`, zero archived WAL | Continuous replay/PITR is unavailable in this installation |
-| Digi Storage | Business plan acquired; `rclone about digi:` on pve1 reports 300 GiB total/free | Account allocation and underlying access work on pve1; encrypted acceptance and restore remain open |
-| rclone | pve1: `1.60.1-DEV`, `digi:` and `digi-crypt:` configured; pve2 not configured | One-node setup only; scheduled two-node workflow is not active |
-| New offsite helpers | `pg-offsite` and `offsite-sync` absent from installed helper list | Repository workflow has not been installed on audited nodes |
-| R2 | Older `r2-backup` helper/cron still installed; no validated copy/restoration | Do not claim R2 backup coverage |
+| Digi Storage | 300 GiB total/free; encrypted upload/download/delete passed on pve1 and pve2 | Account, allocation, encryption and access work on both nodes; workload backups and restore remain open |
+| rclone | `1.60.1-DEV`; `digi:` and `digi-crypt:` on both nodes; config owned by root, mode `0600` | The two-node storage prerequisite is complete |
+| New offsite helpers | pve1 has `pg-offsite` and `offsite-sync`; pve2 does not | Install one reviewed helper version and schedule on both nodes before enabling WAL |
+| VM image schedule | No cluster `vzdump` job | Existing image is manual; periodic VM coverage is absent |
+| R2 | No validated independent bucket copy/restoration | Do not claim R2 backup coverage |
 | Host config | Archive helper/cron present | Job installation, not successful/decryptable offsite recovery |
 | Inventory/vault | Plaintext on control; protected external copy not verified | Treat recovery as an open prerequisite |
 
@@ -273,23 +274,164 @@ credentials.
 
 ## Backup activation
 
-Apply as a separate planned infrastructure change:
+The Digi/rclone acceptance gate is complete on both nodes. Apply the remaining steps in one planned
+window. Enabling WAL restarts PostgreSQL; the current role can also install the latest minor package
+available from PGDG. Confirm application readiness after the playbook.
 
-1. Secure external recovery credentials and a protected copy of the installation inventory.
-2. Satisfy [Digi Storage and rclone](#digi-storage-and-rclone) on both nodes, including capacity
-   allocation and the encrypted round trip. Do not print config secrets.
-3. Review/apply native PostgreSQL archive/base/dump settings. This can require a database restart.
-   Verify runtime `archive_mode`, spool capacity and successful WAL archiving after real writes.
-4. Review/install current helper scripts on both nodes. `install-scripts.sh` changes cron and
-   removes the older R2 backup helper; it is not a read-only validation command.
-5. Verify the owner-following `pg-offsite` job, complete base/dump transfers and WAL upload before
-   local release. Verify `offsite-sync` for VM/config archives and the configured retention.
-6. Configure/check the intended VM image cadence. The presence of a helper does not create a
-   scheduled `vzdump` job. Staging capacity must fit the chosen images.
-7. Run `backup-verify` and inspect actual remote timestamps/counts. Restore/decrypt an external
-   copy into an isolated guest; prove application and fiscal recovery before declaring coverage.
-8. Decide and implement a separate R2 backup strategy if required; the new offsite scripts do not
-   claim to back up those buckets.
+### 1. Protect the recovery inputs
+
+Store these outside the cluster before changing PostgreSQL:
+
+- `/root/.config/rclone/rclone.conf` from either node;
+- clear crypt password and salt recorded during configuration;
+- `/home/devops/app-inventory`, including its vault;
+- host/root SSH recovery keys.
+
+Do not print or commit their contents.
+
+### 2. Install the same helper version on both nodes
+
+Copy the reviewed `proxmox-lab/scripts` directory to each node and run as root from that directory:
+
+```bash
+./install-scripts.sh
+```
+
+The installer replaces `/etc/cron.d/pve-helper-scripts` and removes the obsolete `r2-backup`
+helper. Verify on **both** pve1 and pve2:
+
+```bash
+command -v pg-offsite offsite-sync backup-verify pve-config-backup
+grep -E 'pg-offsite|offsite-sync|backup-verify|pve-config-backup' \
+  /etc/cron.d/pve-helper-scripts
+ssh -o BatchMode=yes devops@192.168.0.22 \
+  'sudo -n find /opt/postgres/backups -maxdepth 0 -type d -printf ok && sudo -n rsync --version >/dev/null'
+```
+
+The last command must print `ok` from each node. `/etc/infra-report.conf` is already present on both
+audited nodes. Keep this step immediately before the PostgreSQL apply: until WAL is enabled, the
+new `pg-offsite` cron can report that its source spool is absent.
+
+### 3. Enable PostgreSQL WAL and base backups
+
+On control (`192.168.0.20`), edit
+`/home/devops/app-inventory/group_vars/all/main.yml` and set:
+
+```yaml
+postgres_wal_archive_enabled: true
+postgres_archive_timeout: 60
+postgres_wal_spool_max_mb: 20480
+postgres_basebackup_weekday: "0"
+postgres_basebackup_hour: "2"
+postgres_basebackup_minute: "45"
+```
+
+The VM has about 989 GB free, so the 20 GB spool cap and initial base backup fit the current host.
+Keep the existing logical dump schedule at 05:15. Apply from the reviewed checkout on control:
+
+```bash
+cd /home/devops/src/portable-dotnet-architecture/native/infra/ansible
+export ANSIBLE_INVENTORY=/home/devops/app-inventory/hosts.ini
+ansible-playbook playbooks/bootstrap.yml --check --limit postgres --tags postgres
+ansible-playbook playbooks/bootstrap.yml         --limit postgres --tags postgres
+```
+
+Add `--ask-vault-pass` to both commands when the inventory vault is encrypted. After the apply,
+confirm application readiness, then verify on VM 1022:
+
+```bash
+sudo -u postgres psql -XAt -c 'show archive_mode;'
+sudo -u postgres psql -XAt -c 'show archive_timeout;'
+sudo -u postgres psql -XAt -c 'show archive_command;'
+sudo -u postgres crontab -l
+sudo -u postgres psql -XAt -c 'select pg_switch_wal();'
+sudo find /opt/postgres/wal-spool -maxdepth 1 -type f -name '*.zst' -printf '%f\n'
+sudo -u postgres /opt/postgres/scripts/pg-basebackup.sh
+```
+
+Required results: `archive_mode=on`, `archive_timeout=1min`, the managed archive command, nightly
+logical cron, weekly base cron, at least one compressed WAL file and a completed base directory
+with `backup_manifest`.
+
+### 4. Seed the PostgreSQL offsite tier
+
+VM 1022 currently runs on pve1. Run there:
+
+```bash
+pg-offsite --now
+tail -n 100 /var/log/pg-offsite.log
+rclone lsf --recursive digi-crypt:postgres
+```
+
+Require a WAL object, a complete base under `postgres/base/` and the latest complete logical dump
+run under `postgres/logical/`. `pg-offsite` must upload a WAL file before removing it from the VM
+spool. When VM 1022 moves, run this command on its new owner; cron is installed on both nodes and
+the non-owner exits without work.
+
+### 5. Schedule and seed VM images
+
+The cluster currently has no `vzdump` job. Create one from either Proxmox node:
+
+```bash
+pvesh create /cluster/backup \
+  --id quarterly-local-images \
+  --schedule '*-1,4,7,10-01 03:30' \
+  --storage local \
+  --vmid 1020,1021,1022,1023 \
+  --mode snapshot \
+  --compress zstd \
+  --prune-backups 'keep-last=1' \
+  --enabled 1
+pvesh get /cluster/backup --output-format yaml
+```
+
+The schedule is 03:30 on 1 January, April, July and October; its syntax was accepted by the live
+Proxmox parser. Run the job once immediately from **Datacenter -> Backup -> Run now** and require a
+successful image for all four VMs. The job keeps one local image per VM; `offsite-sync` keeps the
+newest two per VM on Digi.
+
+### 6. Upload images and host configuration
+
+Run on pve1 and pve2 after the initial VM job completes:
+
+```bash
+pve-config-backup
+offsite-sync
+```
+
+Then verify the remote inventory from either node:
+
+```bash
+rclone lsf --recursive digi-crypt:vzdump
+rclone lsf --recursive digi-crypt:config
+rclone size digi-crypt:
+```
+
+### 7. Close activation with verification and restore
+
+Run on both nodes:
+
+```bash
+backup-verify
+```
+
+Every check must be `[ OK ]`. A missing tier is not accepted as an initial warning. Finally, run on
+pve2, which currently has no local images:
+
+```bash
+image=$(rclone lsf --files-only digi-crypt:vzdump \
+  | grep '^vzdump-qemu-1021-.*\.vma\.zst$' | sort | tail -1)
+test -n "$image"
+rclone copyto "digi-crypt:vzdump/$image" "/var/lib/vz/dump/$image"
+restore-drill 1021
+rm -f "/var/lib/vz/dump/$image"
+```
+
+This proves remote download/decryption as well as an isolated VM restore. Validate an isolated
+logical database restore and the Fiscal counter/key-ring procedure before marking backup coverage
+active.
+
+R2 bucket contents remain outside this workflow and need a separate backup decision.
 
 Target responsibilities in code:
 
