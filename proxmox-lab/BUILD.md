@@ -178,7 +178,7 @@ Verify watchdog/fencing and capacity on the surviving node. Control/monitoring r
 manual after node loss. Reboot behavior is separately controlled by VM start-at-boot.
 
 Install/review [helper scripts](scripts/README.md), configure report credentials and verify actual
-receipt of reports. Complete [backup activation and restore checks](RECOVERY.md#backup-activation)
+receipt of reports. Complete [backup provisioning and restore checks](RECOVERY.md#backup-provisioning-and-rebuild)
 before declaring recovery protection. A working HA pair is not a backup.
 
 ## Laptop power recipes

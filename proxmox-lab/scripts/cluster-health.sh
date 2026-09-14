@@ -568,7 +568,7 @@ JOBS_LEGACY=$(grep -cE '^[^#]*[[:space:]]vzdump[[:space:]]' /etc/pve/vzdump.cron
 BACKUP_JOBS=$(( ${JOBS_MODERN:-0} + ${JOBS_LEGACY:-0} ))
 
 if [ "$BACKUP_JOBS" -eq 0 ]; then
-    fail "backup: NO vzdump job is scheduled anywhere in the cluster — no VM image is being taken; see RECOVERY.md#backup-activation"
+    fail "backup: NO vzdump job is scheduled anywhere in the cluster — no VM image is being taken; see RECOVERY.md#backup-provisioning-and-rebuild"
 else
     ok "backup: $BACKUP_JOBS vzdump job(s) scheduled cluster-wide"
 fi

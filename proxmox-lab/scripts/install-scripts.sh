@@ -16,8 +16,6 @@ for f in cluster-health.sh backup-verify.sh pve-config-backup.sh pg-offsite.sh o
     target=${f%.sh}
     install -m 755 "$f" "/usr/local/sbin/$target"
 done
-rm -f /usr/local/sbin/r2-backup     # not part of the documented backup tiers
-
 # APT success stamp. infra-host-metrics.py's package-updates probe trusts only
 # /var/lib/apt/periodic/update-success-stamp, and on Debian/PVE NOTHING writes that file:
 # the hook that does ships in Ubuntu's update-notifier-common, and apt.systemd.daily writes

@@ -10,24 +10,19 @@ Verification evidence on 2026-09-14:
 |---|---|---|
 | ZFS replication | 1022 every minute, other guests hourly; last sync successful | Peer copy for node loss, subject to last completed sync |
 | HA | 1021/1022 active with fencing | Restart orchestration; not recovery from corruption/deletion |
-| Logical dumps | PostgreSQL user's cron at 00:15; recent files under `/opt/postgres/backups` | Local backup files exist; restore still needs verification |
-| VM image | Local 1022 archive dated 2026-09-13 on pve1 | One image exists, not complete fleet/offsite coverage |
-| WAL / PITR | `archive_mode=on`, `archive_timeout=1min`; WAL archive command working, 7 archived / 0 failed; verified base backup exists | On-VM PITR source is active; offsite WAL/base upload and restore remain open |
-| Digi Storage | 300 GiB total/free; encrypted upload/download/delete passed on pve1 and pve2 | Account, allocation, encryption and access work on both nodes; workload backups and restore remain open |
+| Logical dumps | Nightly run is complete locally and on Digi | Scheduled backup works; isolated logical restore remains to be proved |
+| VM images | All four guests are stored locally and on Digi; VM 1021 restored from Digi in isolation | Download, decryption, restore and boot/agent proof passed; application-level checks remain |
+| WAL / PITR | `archive_mode=on`, `archive_timeout=1min`; 25 archived / 0 failed; newest WAL and verified base are on Digi | The source chain is active and offsite; an actual point-in-time restore remains to be proved |
+| Digi Storage | Encrypted WAL/base/dumps, four VM images and both host configs pass `backup-verify` on pve1 and pve2 | Scheduled offsite coverage is active and readable from both nodes |
 | rclone | `1.60.1-DEV`; `digi:` and `digi-crypt:` on both nodes; config owned by root, mode `0600` | The two-node storage prerequisite is complete |
-| New offsite helpers | pve1 has `pg-offsite` and `offsite-sync`; pve2 does not | Install one reviewed helper version and schedule on both nodes before enabling WAL |
-| VM image schedule | No cluster `vzdump` job | Existing image is manual; periodic VM coverage is absent |
-| R2 | No validated independent bucket copy/restoration | Do not claim R2 backup coverage |
-| Host config | Archive helper/cron present | Job installation, not successful/decryptable offsite recovery |
-| Inventory/vault | Plaintext on control; protected external copy not verified | Treat recovery as an open prerequisite |
-
-The repository's newer inventory/scripts describe a target backup system. They do not establish
-that it is running. Recheck this table after activation and an isolated restore, replacing the
-current state rather than appending a history.
+| Offsite helpers | Same helper chain and schedule on both nodes | Either node can service the current VM owner; daily verification passes |
+| VM image schedule | Enabled quarterly job for 1020-1023; one local and two Digi copies per VM | Periodic full-guest coverage is active |
+| Host config | Current pve1 and pve2 archives are on Digi | Hand-managed host configuration has encrypted offsite coverage |
+| Inventory/vault | Protected recovery copy outside the cluster confirmed during activation | Control-plane rebuild inputs are available independently |
 
 Single-disk pools rely on peer copies for disk loss. Replication also propagates corruption or
-deletion; it cannot replace an independent backup. R2 document markers live outside PostgreSQL but
-are not an independent backup of their own bucket.
+deletion; it cannot replace an independent backup. Application objects stored outside PostgreSQL
+need provider-side retention and recovery appropriate to each application.
 
 ## Digi Storage and rclone
 
@@ -272,11 +267,12 @@ plaintext probe name and contents are absent when inspecting `digi:OperationalBa
 rclone version, account allocation, configuration-file permissions and results without recording
 credentials.
 
-## Backup activation
+## Backup provisioning and rebuild
 
-The Digi/rclone acceptance gate is complete on both nodes. Apply the remaining steps in one planned
-window. Enabling WAL restarts PostgreSQL; the current role can also install the latest minor package
-available from PGDG. Confirm application readiness after the playbook.
+Use this sequence to rebuild the backup chain or to activate it in a replacement environment. In
+current production it is complete through the VM restore drill. Enabling WAL restarts PostgreSQL;
+the current role can also install the latest minor package available from PGDG. Confirm application
+readiness after the playbook.
 
 ### 1. Protect the recovery inputs
 
@@ -297,8 +293,7 @@ Copy the reviewed `proxmox-lab/scripts` directory to each node and run as root f
 ./install-scripts.sh
 ```
 
-The installer replaces `/etc/cron.d/pve-helper-scripts` and removes the obsolete `r2-backup`
-helper. Verify on **both** pve1 and pve2:
+The installer replaces `/etc/cron.d/pve-helper-scripts`. Verify on **both** pve1 and pve2:
 
 ```bash
 command -v pg-offsite offsite-sync backup-verify pve-config-backup
@@ -372,7 +367,7 @@ the non-owner exits without work.
 
 ### 5. Schedule and seed VM images
 
-The cluster currently has no `vzdump` job. Create one from either Proxmox node:
+Create or verify this job from either Proxmox node:
 
 ```bash
 pvesh create /cluster/backup \
@@ -418,7 +413,7 @@ backup-verify
 ```
 
 Every check must be `[ OK ]`. A missing tier is not accepted as an initial warning. Finally, run on
-pve2, which currently has no local images:
+a node without a local copy of the target image (`pve2` in the current topology):
 
 ```bash
 image=$(rclone lsf --files-only digi-crypt:vzdump \
@@ -429,11 +424,8 @@ restore-drill 1021
 rm -f "/var/lib/vz/dump/$image"
 ```
 
-This proves remote download/decryption as well as an isolated VM restore. Validate an isolated
-logical database restore and the Fiscal counter/key-ring procedure before marking backup coverage
-active.
-
-R2 bucket contents remain outside this workflow and need a separate backup decision.
+This proves remote download/decryption as well as an isolated VM restore. The remaining proofs are
+an isolated logical database restore, an actual PITR replay and the Fiscal counter/key-ring procedure.
 
 Target responsibilities in code:
 
@@ -464,8 +456,8 @@ Never rely on `StartNumber` or a fresh migration to restore legal numbering. `fi
 contain the keys used by `fiscal_app`; a newer ring retains old decryption keys, an older ring may not.
 
 PITR additionally requires a usable base older than the target and an unbroken WAL chain. Keep
-recovery isolated, set the explicit target and inspect whether replay reached it. It is **not
-available in the verified installation**. A base/WAL directory in a template cannot replace that chain.
+recovery isolated, set the explicit target and inspect whether replay reached it. The production
+source chain is active and offsite, but PITR recovery is not proved until that replay succeeds.
 
 ## VM or node loss
 
@@ -503,7 +495,7 @@ Before enabling exclusive reconciliation, include both host keys and all intende
 Test a second login before revoking the old one. Keep console access available during SSH changes.
 
 Back up the inventory/vault pair with restricted access; plaintext remains plaintext even when
-the file is named `vault.yml`. Include Cloudflare, R2, DB, repository and integration recovery
+the file is named `vault.yml`. Include edge, object-storage, DB, repository and integration recovery
 material. Host config archives can carry signing keys; encrypt them outside the host.
 
 ## Drill acceptance

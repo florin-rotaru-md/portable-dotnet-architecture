@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Weekly physical base backup: the starting point every archived WAL file replays onto
-# (portable-dotnet-architecture/proxmox-lab/RECOVERY.md#backup-activation). Managed by Ansible (roles/postgres).
+# (portable-dotnet-architecture/proxmox-lab/RECOVERY.md#backup-provisioning-and-rebuild). Managed by Ansible (roles/postgres).
 #
 # Written into <stamp>.partial and renamed only after pg_verifybackup has checked every file against
 # the manifest, so a directory without the suffix is a complete, verified backup — the only kind the

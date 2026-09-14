@@ -197,7 +197,7 @@ postgres_extra_cidrs: []
 # Point-in-time recovery: every completed WAL file is compressed into a spool on
 # the postgres host and a verified base backup is taken weekly. Something must
 # pull the spool off the host — on the Proxmox build the hypervisor does, every
-# minute (portable-dotnet-architecture/proxmox-lab/RECOVERY.md#backup-activation). Leave it off where
+# minute (portable-dotnet-architecture/proxmox-lab/RECOVERY.md#backup-provisioning-and-rebuild). Leave it off where
 # nothing pulls: the spool would grow to its cap, and then pg_wal would.
 postgres_wal_archive_enabled: false
 postgres_archive_timeout: 60          # seconds a segment holding writes may stay unfinished

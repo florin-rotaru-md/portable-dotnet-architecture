@@ -182,7 +182,7 @@
 # Point-in-time recovery for the whole cluster: every completed WAL file is
 # compressed into a local spool, and a verified physical base backup is taken
 # weekly. Nothing here ships anything off the VM — the hypervisor running it
-# pulls both and uploads them offsite (portable-dotnet-architecture/proxmox-lab/RECOVERY.md#backup-activation). Off by default: with nothing pulling, the spool grows until the archive
+# pulls both and uploads them offsite (portable-dotnet-architecture/proxmox-lab/RECOVERY.md#backup-provisioning-and-rebuild). Off by default: with nothing pulling, the spool grows until the archive
 # script refuses at postgres_wal_spool_max_mb, and then pg_wal grows instead.
 
 - name: Install zstd for WAL and base-backup compression
@@ -329,7 +329,7 @@
 
 # Schedules are policy, so they live in group_vars, in the VM's own clock (UTC on
 # the Proxmox build). The hypervisor pulls both results off the VM; activation and verification are
-# defined in portable-dotnet-architecture/proxmox-lab/RECOVERY.md#backup-activation.
+# defined in portable-dotnet-architecture/proxmox-lab/RECOVERY.md#backup-provisioning-and-rebuild.
 - name: Install backup cron job
   cron:
     name:   "postgres nightly backup"

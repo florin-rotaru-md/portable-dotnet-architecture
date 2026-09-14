@@ -23,10 +23,10 @@ Data pools are single disks, not mirrors.
 | Apply guest configuration | [Native provisioning](../native/README.md) |
 | Deploy/operate applications | [Platform operations](../../platform/docs/OPERATIONS.md) |
 
-**Recovery limit:** a 300 GB Digi Storage Business plan is acquired, but rclone and the new offsite
-helpers were not installed on the audited hosts, and WAL archiving was off. Local dumps/replication
-are present; do not claim PITR or verified offsite/R2 coverage until the
-[rclone requirements and restore checks](RECOVERY.md#digi-storage-and-rclone) pass.
+**Backup state:** encrypted Digi backups are active for PostgreSQL WAL/base/logical data, all four
+VM images and both host configurations. Daily verification passes on both nodes, and an isolated
+VM 1021 restore from Digi passed. The remaining recovery proofs are an isolated logical restore,
+an actual PITR replay and the Fiscal counter/key-ring procedure; see [Recovery](RECOVERY.md).
 
 `docker`, `k3s`, `k3s-proxmox` and `hyper-v` are alternative reference setups. They are outside this
 production operating path; do not mirror production documentation into them.

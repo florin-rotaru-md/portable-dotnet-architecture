@@ -5,10 +5,10 @@
 Scripts install on each Proxmox node in `/usr/local/sbin` without `.sh`; Python helpers install
 alongside them. VM services/scripts are owned by Ansible in `native/`.
 
-**Repository capability is not installed state.** On 2026-09-14 pve1 had the current
-`pg-offsite` / `offsite-sync` chain, while pve2 did not. Reinstall the same reviewed version on both.
-Follow [backup activation](../RECOVERY.md#backup-activation) before treating the schedule below as live.
-Review `install-scripts.sh` before applying: it changes cron and replaces older backup scheduling.
+Install the same reviewed helper version on both nodes. Production backup verification currently
+passes on both; use [backup provisioning](../RECOVERY.md#backup-provisioning-and-rebuild) when
+rebuilding or changing the chain. Review `install-scripts.sh` before applying because it rewrites
+the managed cron file.
 
 | Command | Purpose | Schedule written by current installer |
 |---|---|---|
