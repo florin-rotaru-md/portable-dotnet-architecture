@@ -8,6 +8,10 @@
 # hypervisor and offsite.
 set -euo pipefail
 
+# The caller may be an administrator whose current directory postgres cannot read.
+# The backup itself must not depend on that inherited directory.
+cd /
+
 DIR="{{ postgres_basebackup_dir | default('/opt/postgres/base') }}"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 WORK="$DIR/$STAMP.partial"

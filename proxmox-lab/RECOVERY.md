@@ -10,9 +10,9 @@ Verification evidence on 2026-09-14:
 |---|---|---|
 | ZFS replication | 1022 every minute, other guests hourly; last sync successful | Peer copy for node loss, subject to last completed sync |
 | HA | 1021/1022 active with fencing | Restart orchestration; not recovery from corruption/deletion |
-| Logical dumps | PostgreSQL user's cron at 05:15; recent files under `/opt/postgres/backups` | Local backup files exist; restore still needs verification |
+| Logical dumps | PostgreSQL user's cron at 00:15; recent files under `/opt/postgres/backups` | Local backup files exist; restore still needs verification |
 | VM image | Local 1022 archive dated 2026-09-13 on pve1 | One image exists, not complete fleet/offsite coverage |
-| WAL / PITR | `archive_mode=off`, `archive_timeout=0`, zero archived WAL | Continuous replay/PITR is unavailable in this installation |
+| WAL / PITR | `archive_mode=on`, `archive_timeout=1min`; WAL archive command working, 7 archived / 0 failed; verified base backup exists | On-VM PITR source is active; offsite WAL/base upload and restore remain open |
 | Digi Storage | 300 GiB total/free; encrypted upload/download/delete passed on pve1 and pve2 | Account, allocation, encryption and access work on both nodes; workload backups and restore remain open |
 | rclone | `1.60.1-DEV`; `digi:` and `digi-crypt:` on both nodes; config owned by root, mode `0600` | The two-node storage prerequisite is complete |
 | New offsite helpers | pve1 has `pg-offsite` and `offsite-sync`; pve2 does not | Install one reviewed helper version and schedule on both nodes before enabling WAL |
@@ -327,7 +327,7 @@ postgres_basebackup_minute: "45"
 ```
 
 The VM has about 989 GB free, so the 20 GB spool cap and initial base backup fit the current host.
-Keep the existing logical dump schedule at 05:15. Apply from the reviewed checkout on control:
+Keep the existing logical dump schedule at 00:15. Apply from the reviewed checkout on control:
 
 ```bash
 cd /home/devops/src/portable-dotnet-architecture/native/infra/ansible
@@ -346,7 +346,9 @@ sudo -u postgres psql -XAt -c 'show archive_command;'
 sudo -u postgres crontab -l
 sudo -u postgres psql -XAt -c 'select pg_switch_wal();'
 sudo find /opt/postgres/wal-spool -maxdepth 1 -type f -name '*.zst' -printf '%f\n'
-sudo -u postgres /opt/postgres/scripts/pg-basebackup.sh
+sudo -u postgres psql -XAt -c \
+  'select archived_count, failed_count, coalesce(last_archived_wal, chr(45)), coalesce(last_failed_wal, chr(45)) from pg_stat_archiver;'
+sudo -u postgres sh -c 'cd / && exec /opt/postgres/scripts/pg-basebackup.sh'
 ```
 
 Required results: `archive_mode=on`, `archive_timeout=1min`, the managed archive command, nightly
