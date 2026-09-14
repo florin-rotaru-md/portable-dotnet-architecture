@@ -75,9 +75,10 @@ Both pve1 and pve2 run the jobs as root and require the same working rclone conf
   base backup plus retry data. `/var/lib/vz/dump` must hold the local VM image before upload.
 - From the node owning VM 1022, `devops@192.168.0.22` must work non-interactively and `sudo -n`
   must permit the `find`, `rsync` and settled-WAL removal used by `pg-offsite`.
-- `rclone config file` must identify a root-owned, mode `0600` file available to cron. rclone only
-  obscures stored passwords; that file is a credential. If the config itself is password-encrypted,
-  cron also needs a protected non-interactive `RCLONE_CONFIG_PASS` source before any job is enabled.
+- `rclone config file` must identify `/root/.config/rclone/rclone.conf`, owned by root with mode
+  `0600`. rclone only obscures stored passwords; that file is a credential. Do not set a separate
+  rclone configuration password: unattended cron would then require another secret through
+  `RCLONE_CONFIG_PASS`. Keep a protected recovery copy of the file instead.
 
 No mount or FUSE package is required. The scripts use rclone's CLI directly.
 
@@ -95,6 +96,104 @@ Cloud` path component. Create/use only the dedicated `OperationalBackup` directo
 `digi-crypt:` after initial connectivity is proven. Configure pve2 with the same underlying path,
 crypt password, salt and filename settings; a newly generated crypt config cannot read pve1's data.
 Reference: [rclone crypt](https://rclone.org/crypt/).
+
+#### Configure `digi` on pve1
+
+Before starting, allocate capacity to the backup user and generate an application password at
+`https://storage.rcs-rds.ro/app/admin/preferences/password`. Store the username and application
+password in the protected recovery store. Run the following as root on pve1:
+
+```bash
+install -d -m 700 /root/.config/rclone
+rclone config
+```
+
+Use the text values below instead of numeric menu positions; numeric positions can change between
+rclone versions:
+
+```text
+n/s/q> n
+name> digi
+Storage> koofr
+provider> digistorage
+user> <DIGI_BACKUP_USERNAME>
+y/g> y
+password> <DIGI_RCLONE_APPLICATION_PASSWORD>
+password> <DIGI_RCLONE_APPLICATION_PASSWORD>
+Edit advanced config? y/n> n
+y/e/d> y
+```
+
+The two `password>` entries are the password and confirmation prompts. Do not choose `s` from the
+main menu and do not set `endpoint` or `mountid`. Confirm the underlying remote before creating the
+encrypted layer:
+
+```bash
+rclone listremotes
+rclone lsd digi:
+rclone about digi:
+```
+
+#### Configure `digi-crypt` on pve1
+
+Run `rclone config` again and use these values:
+
+```text
+e/n/d/r/c/s/q> n
+name> digi-crypt
+Storage> crypt
+remote> digi:OperationalBackup
+filename_encryption> standard
+directory_name_encryption> true
+y/g> g
+Bits> 128
+Use this password? y/n> y
+y/g/n> g
+Bits> 128
+Use this password? y/n> y
+Edit advanced config? y/n> n
+y/e/d> y
+e/n/d/r/c/s/q> q
+```
+
+The first generated value is the crypt password; the second is `password2`, the crypt salt. Copy
+both displayed values immediately into the protected recovery store. They are required to decrypt
+the backup if `rclone.conf` is lost. Keep data encryption enabled; the advanced default
+`no_data_encryption = false` must not be changed.
+
+The effective configuration must have the values below; rclone may omit lines that use their
+defaults. Password fields are stored obscured:
+
+```ini
+[digi]
+type = koofr
+provider = digistorage
+user = <DIGI_BACKUP_USERNAME>
+password = <OBSCURED_APPLICATION_PASSWORD>
+
+[digi-crypt]
+type = crypt
+remote = digi:OperationalBackup
+filename_encryption = standard
+directory_name_encryption = true
+password = <OBSCURED_CRYPT_PASSWORD>
+password2 = <OBSCURED_CRYPT_SALT>
+```
+
+Do not paste the real values into documentation, tickets or shell commands. Apply permissions and
+copy the complete configuration to pve2 so both nodes use exactly the same encryption keys:
+
+```bash
+chown root:root /root/.config/rclone/rclone.conf
+chmod 600 /root/.config/rclone/rclone.conf
+
+ssh root@192.168.0.12 'install -d -m 700 /root/.config/rclone'
+scp /root/.config/rclone/rclone.conf root@192.168.0.12:/root/.config/rclone/rclone.conf
+ssh root@192.168.0.12 \
+  'chown root:root /root/.config/rclone/rclone.conf && chmod 600 /root/.config/rclone/rclone.conf'
+```
+
+Run the [acceptance](#acceptance) commands on pve1 and pve2 after the copy.
 
 ### Capacity requirement
 
