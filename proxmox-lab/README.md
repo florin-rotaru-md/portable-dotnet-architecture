@@ -86,7 +86,7 @@ One command each for the daily question (`cluster-health`), the protection quest
 The whole build, in execution order, with the two deliberate "come back later" points made explicit. Tick as you go; every line links to its stage above.
 
 - [ ] **0** Preparation — BIOS (both nodes), USB stick, network plan, cabling, **the SSH keys (0.5)** into the password manager
-- [ ] **1** Install Proxmox — pve1, then pve2
+- [ ] **1** Install Proxmox — pve1, then pve2, with **`maxvz 0` in the installer options** and the root volume grown over the OS disk after the first boot
 - [ ] **2** Post-install — repos, upgrade, **microcode + `fwupd` (2.2)**, hardware check, **helper scripts (2.4)**, **each node's key pair (2.5)** — both nodes
 - [ ] **3** Laptop config — pve2 here; the QDevice gets the same 3.1/3.2 at Stage 8
 - [x] **4** UPS monitoring (NUT) — pve1 only; **not applicable on this build**: the UPS has no data port, NUT disabled ([4.6](setup/04-ups.md#46-disabled-on-this-build))
@@ -100,7 +100,7 @@ The whole build, in execution order, with the two deliberate "come back later" p
 - [ ] **12** Replication schedules per VM
 - [ ] **14** First live migration — the ping test, both directions
 - [ ] **15** HA for 1021/1022 only — 1020 and 1023 deliberately stay out, `shutdown_policy=migrate`, HA Rules left empty and **Failback + Auto-Rebalance unticked on both resources (15.5)**, **watchdog confirmed armed on both nodes (15.4)**, notifications proved from both nodes (15.3)
-- [ ] **17** Backups — `local-lvm` into `local` (17.2), Digi Storage + the rclone crypt remote on both nodes (17.3), WAL archiving and the first base backup (17.4), the quarterly image job (17.5), the first inventory copy (17.6)
+- [ ] **17** Backups — the `local` storage settings (17.2), Digi Storage + the rclone crypt remote on both nodes (17.3), WAL archiving and the first base backup (17.4), the quarterly image job (17.5), the first inventory copy (17.6)
 - [ ] **23** Pre-launch drills — the [drill book](operations/23-drill-book.md) sequence top to bottom (18.6's four failover tests, including the isolation drill that is the only proof fencing works, 17.9's first restore drill and a database point-in-time recovery), timed and logged
 - [ ] Go live 🎉
 

@@ -14,7 +14,7 @@ nvme0n1            259:0    0 476.9G  0 disk            ← the OS disk: has par
 ├─nvme0n1p2        259:2    0     1G  0 part /boot/efi     and pve-root / pve-swap LVs
 └─nvme0n1p3        259:3    0 475.9G  0 part               under it. DON'T touch it.
   ├─pve-swap       252:0    0     8G  0 lvm  [SWAP]
-  └─pve-root       252:1    0    96G  0 lvm  /
+  └─pve-root       252:1    0 467.9G  0 lvm  /
 nvme1n1            259:4    0   3.7T  0 disk            ← data disk → pool `db`
 nvme2n1            259:8    0   1.9T  0 disk            ← data disk → pool `apps`
 ```

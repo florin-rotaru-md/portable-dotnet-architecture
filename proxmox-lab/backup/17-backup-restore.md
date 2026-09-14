@@ -26,14 +26,12 @@ Every tier ends on Digi Storage, encrypted client-side, and passes through local
 
 ## 17.2 Local staging — `local` on each node
 
-Backups are written to the node's `local` storage (`/var/lib/vz`, on the `pve/root` volume) before they go offsite. The installer's `local-lvm` thin pool holds nothing on this build — every VM disk lives on the ZFS pools — so its space is given to `local`. Check it is empty first, then on **each node**:
+Backups are written to the node's `local` storage (`/var/lib/vz`, on the `pve/root` volume) before they go offsite. Every VM disk lives on the ZFS pools, so the OS disk is laid out for this at installation: no `local-lvm` thin pool, and `pve/root` grown over the whole disk ([Stage 1](../setup/01-installation.md), steps 2 and 7). Confirm it on **each node**:
 
 ```bash
-lvs -a pve                               # data: Data% 0.00, and no thin volumes listed under it
-pvesm remove local-lvm                   # once, from either node — the storage list is cluster-wide
-lvremove -y pve/data
-lvextend -r -l +100%FREE pve/root        # grows the ext4 root online
-df -h /                                  # ~350G on pve1, ~460G on pve2
+lvs pve                                  # root and swap only
+pvesm status                             # local, apps, db — and no local-lvm
+df -h /                                  # ~360G on pve1, ~465G on pve2
 ```
 
 Then, once, the storage settings that make `local` the backup target and bound what it keeps:
@@ -290,7 +288,7 @@ Decryption is transparent as long as `digi-crypt` has the right passwords — th
 
 The order matters:
 
-1. Install Proxmox on the replacement hardware (Stages 1–2), and give `local-lvm`'s space to `local` (17.2).
+1. Install Proxmox on the replacement hardware (Stages 1–2) — Stage 1's disk layout included, so `local` has the room the restores stage in (17.2).
 2. Recreate the ZFS pools with the **same names**, `apps` and `db` (Stage 6).
 3. Install rclone and rebuild `digi-crypt` from the password manager (17.3) — **the step that needs the crypt passwords you stored outside the lab**.
 4. Bring the cluster back (Stages 7–8) using the host-configuration archives on Digi (17.6) as the reference.

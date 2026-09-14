@@ -3,6 +3,7 @@
 *Part of the [Proxmox lab guide](README.md).*
 
 - **An NVMe drive isn't visible at install** → VMD/RST in BIOS (Stage 0.1).
+- **`pvesm status` lists `local-lvm`, or `df -h /` shows about 96 G** → the node was installed with the installer's default disk layout rather than Stage 1's `maxvz 0`, so a thin pool holds most of the OS disk and `local`, where backups stage ([17.2](backup/17-backup-restore.md#172-local-staging--local-on-each-node)), gets a quarter of it. Nothing belongs in that pool — every VM disk is on the ZFS pools — so check it is empty and hand its space to root, online: `lvs -a pve` (no thin volumes under `data`), `pvesm remove local-lvm` (once, from either node: the storage list is cluster-wide), then on the node `lvremove -y pve/data && lvextend -r -l +100%FREE pve/root && df -h /`.
 - **A node stopped seeing its NVMe drives, or won't boot, right after a BIOS update** → the flash reset the settings to defaults and VMD/RST came back on. Redo Stage 0.1 in full — VT-x/VT-d and "restore on AC" are gone too, and the last one fails silently until the next power cut (16.3, "After every flash").
 - **A node is unreachable after a BIOS update, both corosync rings down** → the NICs were renamed, so `/etc/network/interfaces` now configures nothing. Physical console, then the same fix as a disk transplant: new names in, `ifreload -a` (19.3 step 5 / 16.3).
 - **Replication fails** → does a pool with the same name exist on the target? Does it have space? (`zpool list`)
