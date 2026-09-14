@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # infra-report — runs a helper script unchanged, then POSTs its outcome to the
-# app's infra monitor (platform ADR-0015, POST /api/infra/reports).
+# app's infra monitor (platform/docs/ARCHITECTURE.md#probes-and-infrastructure, POST /api/infra/reports).
 #
 #   infra-report cluster-health --quiet
 #
@@ -29,7 +29,7 @@
 # for …" up to 26 hours later, pointing at a dead cron rather than at this file.
 # A rename cost four days of blind ingest exactly this way (2026-09-04): write
 # the new file, verify a report lands, and only then remove the old one —
-# platform docs/waa/infra/OPERATIONS.md §1.6.
+# platform/docs/waa/OPERATIONS.md#infrastructure-and-application-probes.
 #
 # THE MIRROR OF THAT HAZARD IS WORSE, because the app's own backstop cannot catch it. A
 # missing config file stops reports, and the freshness check eventually says "silent for …".

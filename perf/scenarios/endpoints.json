@@ -125,7 +125,7 @@
       "'everything drains at once' figure is printed too, but it does not decide the verdict.",
       "",
       "Keep this in step with the connection strings in the live inventory. It is the same table as",
-      "platform/docs/fiscal/OPERATIONS.md 1.1, which is where the arithmetic is explained."
+      "platform/docs/OPERATIONS.md#connection-budget, which is where the arithmetic is explained."
     ],
     "drainSeconds": 32,
     "deployments": [
@@ -140,9 +140,9 @@
       {
         "name": "fiscal",
         "pools": { "app": 16, "dataProtection": 2 },
-        "note": "Headless — no users database (ADR-0032 D13). 16 here is the connection-string Maximum Pool Size, not FiscalDbContextExtensions.AppPoolSize, which is a DbContext instance pool and caps no connection; they are deliberately set to the same number."
+        "note": "Headless — no users database. 16 here is the connection-string Maximum Pool Size, not FiscalDbContextExtensions.AppPoolSize, which is a DbContext instance pool and caps no connection; they are deliberately set to the same number."
       }
     ],
-    "note": "api.educa.ro is not in this list because it is not deployed. At its proposed 32 + 8 + 2 = 42 it takes steady to 224 and the worst case to 306 of 637, and the sum of the per-role CONNECTION LIMITs to 448 of 637 usable. Both fit since max_connections moved 400 -> 640 on 2026-09-03, and the second number is why it moved: option Full's per-role CONNECTION LIMITs did not fit under the old 397. Add its entry here in the same edit that adds it to the live inventory."
+    "note": "Educa is not deployed. Proposed pools of 32 + 8 + 2 = 42 would take the steady ceiling to 224 and the largest single deployment overlap to 306 of 637 usable connections. Runtime applications connect as postgres; per-role CONNECTION LIMITs do not isolate these superuser sessions. Add Educa here when adding it to the live inventory, and verify actual connection strings."
   }
 }

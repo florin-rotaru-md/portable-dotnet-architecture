@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Name arithmetic for the backup tiers (proxmox-lab/backup/17-backup-restore.md).
+"""Name arithmetic for the backup tiers (portable-dotnet-architecture/proxmox-lab/RECOVERY.md).
 
 Reads names on stdin and prints the ones the caller should delete, or the newest one and its age.
 It never lists, deletes or uploads anything itself, so every retention rule is testable without a

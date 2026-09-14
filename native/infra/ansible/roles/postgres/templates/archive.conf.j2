@@ -1,5 +1,5 @@
 # Managed by Ansible (roles/postgres) — continuous WAL archiving.
-# Procedure and recovery: proxmox-lab/backup/17-backup-restore.md, 17.4.
+# Procedure and recovery: portable-dotnet-architecture/proxmox-lab/RECOVERY.md#backup-activation.
 #
 # Every completed WAL file is compressed into {{ postgres_wal_spool_dir | default('/opt/postgres/wal-spool') }}, from where the
 # hypervisor running this VM pulls it and uploads it offsite. archive_timeout bounds how long a

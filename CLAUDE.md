@@ -1,40 +1,20 @@
-# CLAUDE.md
+# Infrastructure working rules
 
-Infrastructure for the Waa/Educa platform. The application repositories are siblings:
-`platform/` (backend, start at `platform/docs/START-HERE.md`) and `ui/waa-src/` (frontend).
+Start at [Proxmox](proxmox-lab/README.md) for hosts and [native](native/README.md) for VM provisioning.
+Application operation is owned by [platform](../platform/docs/OPERATIONS.md); frontends are in
+the sibling `ui` repository (`waa-src`, `educa-src`).
 
-## What is live, and what is a reference
-
-- **`native/infra/ansible`** — everything inside the VMs: users, .NET runtime, Nginx, PostgreSQL,
-  the blue/green deploy script, cloudflared. This is what production runs.
-- **`proxmox-lab/`** — the two hosts those VMs live on: cluster, QDevice, ZFS replication, HA,
-  backups to Digi Storage, the drill book. A build-and-operate guide, written to be followed
-  top-to-bottom the first time and used by symptom afterwards (see its README's *Reading paths*).
-- **`perf/`** — load-testing harness; applies to whichever setup is running.
-- **`docker/`, `k3s/`, `k3s-proxmox/`, `hyper-v/`** — alternatives. Nothing serves traffic from
-  them. They are kept as references and their example files are mirrored **by hand**, which is why
-  they drift.
-
-## Rules that are easy to get wrong here
-
-- **The inventory is not in this repository.** It lives at `d:/git/ansible/inventory` on the
-  workstation and `~/app-inventory` on the control VM, deliberately outside the clone so a
-  `git pull` cannot collide with operator edits. `vault.yml` there is **plaintext** and holds real
-  credentials — treat a copy of that directory as a credential.
-- **A `group_vars` or role change must be mirrored** into `native/example` and the other setups'
-  example files. Nothing enforces it; `hyper-v/example` has already drifted hundreds of lines from
-  the `native` one it is supposed to mirror.
-- **The hosts are hand-managed and this guide is their documentation** — there is no Ansible for
-  Proxmox itself. If you change a host, the guide is where that change is recorded, in the same
-  commit.
-- **The `native` postgres role is the only PostgreSQL configuration.** A hand-written
-  `postgres.md` used to sit at the root with a pasted stock `postgresql.conf`; it did strictly less
-  than the role (no tuning, no observability, no backups, no WAL archiving) and was deleted. Tuning
-  lives in `roles/postgres/templates/tuning.conf.j2`, derived from the VM's RAM.
-- Application-side operations (deploy order, restart-required settings, reading a failed boot) live
-  in `platform/docs/OPERATIONS.md` §1 and §5, not here.
-
-## Citing across repositories
-
-Prefix the path: `platform/docs/adr/0015-…md`, `waa-src/cloudflare/README.md`. An unqualified
-`docs/…` is ambiguous between three repositories and has already gone stale twice.
+- `native/infra/ansible` owns users, runtime, Nginx, PostgreSQL, deploy scripts and tunnel inside VMs.
+- `proxmox-lab` owns hand-managed hosts, quorum, ZFS, HA, maintenance and recovery. Update the owning
+  guide with host changes; distinguish repository targets from verified installed behavior.
+- `perf` contains the load harness. `docker`, `k3s`, `k3s-proxmox` and `hyper-v` are alternatives.
+- Inventory is outside Git: workstation `D:/git/ansible/inventory`, control `~/app-inventory`.
+  Workstation files are heredoc recipes. `vault.yml` is plaintext; protect every copy as a credential.
+- Reflect role/input changes in `native/example` and the corresponding alternative examples when
+  applicable. Check them explicitly; they are maintained by hand.
+- The native postgres role owns PostgreSQL configuration. Inspect runtime before declaring tuning,
+  archiving or backup behavior active. Recovery acceptance is in [Recovery](proxmox-lab/RECOVERY.md).
+- Use workspace-qualified source citations, for example `platform/docs/ARCHITECTURE.md#storage`
+  or `ui/waa-src/cloudflare/README.md#public-media`. Use relative Markdown links in documents.
+- Keep current procedures and constraints. Consolidate obsolete plans and update their source refs;
+  do not add a second history or status tracker.

@@ -73,7 +73,7 @@ export const options = {
         },
     },
     thresholds: {
-        ...baseThresholds(p95),
+      ...baseThresholds(p95),
         // The whole promise of blue/green, expressed as a gate. The probe feeds it
         // too — a readiness 5xx, a connection failure or a 5 s timeout during the
         // swap lands here — so there is no separate 'checks' threshold: the harness

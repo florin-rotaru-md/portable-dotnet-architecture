@@ -75,7 +75,7 @@ cp inventory/group_vars/all/main.yml.example  ~/app-inventory/group_vars/all/mai
 cp inventory/group_vars/all/vault.yml.example ~/app-inventory/group_vars/all/vault.yml
 
 echo 'export ANSIBLE_INVENTORY=~/app-inventory/hosts.ini' >> ~/.bashrc && . ~/.bashrc
-#   ...or pass -i ~/app-inventory/hosts.ini per command.
+# ...or pass -i ~/app-inventory/hosts.ini per command.
 
 vim ~/app-inventory/hosts.ini   # set IPs from terraform output
 ```

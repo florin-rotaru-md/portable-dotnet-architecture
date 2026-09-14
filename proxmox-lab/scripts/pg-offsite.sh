@@ -2,7 +2,7 @@
 # pg-offsite.sh — every minute on both nodes. On the node running VM 1022 ("the active node"), pull what
 # the postgres role spools in the VM — WAL files, the weekly base backup, the nightly logical dumps — into
 # local staging, upload it to Digi Storage, and only then release it from the VM
-# (proxmox-lab/backup/17-backup-restore.md, 17.4). The other node exits at once, so the job follows the
+# (portable-dotnet-architecture/proxmox-lab/RECOVERY.md). The other node exits at once, so the job follows the
 # database through a migration or an HA failover without anyone moving it.
 #
 # A WAL file leaves the VM's spool only after its upload succeeded and it is settled here; until then
@@ -51,7 +51,7 @@ pull() {  # <remote dir> <local dir> [rsync filter args...]
     rsync -a --timeout=60 -e "$SSH" --rsync-path='sudo -n rsync' "$@" "devops@$PG_VM_IP:$src/" "$dst/"
 }
 
-command -v rclone > /dev/null || { fail "rclone is not installed on this node (17.3)"; exit 1; }
+command -v rclone > /dev/null || { fail "rclone is not installed; see RECOVERY.md#digi-storage-and-rclone"; exit 1; }
 umask 077
 mkdir -p "$STAGE/wal/incoming" "$STAGE/base/incoming" "$STAGE/logical/incoming"
 

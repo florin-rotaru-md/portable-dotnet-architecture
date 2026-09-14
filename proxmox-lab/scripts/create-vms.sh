@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# create-vms.sh — Stage 10's four clones as one attended command: clone from
+# create-vms.sh — portable-dotnet-architecture/proxmox-lab/BUILD.md#guests-and-native-provisioning's four clones as one attended command: clone from
 # template 9000, set CPU/RAM, set the static IP, grow the disk, set start-at-boot
 # — in the right order (disks are grown BEFORE first boot, so cloud-init's
 # growpart finds the final size on its first run).
 #
-# The table below is the same table as 10-vms.md — if you change one, change
+# The table below is the same table as portable-dotnet-architecture/proxmox-lab/BUILD.md#guests-and-native-provisioning — if you change one, change
 # the other. Idempotent: a VM ID that already exists is skipped, so a re-run
 # finishes an interrupted first run without touching what's done.
 #
@@ -27,7 +27,7 @@ VMS="\
 
 # 1023's 4 cores / 8192 MB are the machine's numbers, not the plan's. This table said
 # 2/4096 for weeks while the VM ran on twice both, and the header's sync rule did not
-# catch it: that rule keeps this file and 10-vms.md identical, and they were — identically
+# catch it: that rule keeps this file and portable-dotnet-architecture/proxmox-lab/BUILD.md#guests-and-native-provisioning identical, and they were — identically
 # wrong. Nothing compares either one to the hypervisor. The table is what a rebuild gets
 # (scripts/README.md, "rebuilding VMs after a disaster"), and the loop below prints
 # [ OK ] for whatever it reads, so a stale row hands Loki and Grafana half their CPU and
@@ -40,22 +40,22 @@ confirm() { read -r -p "$1 [y/N] " a </dev/tty; [ "$a" = "y" ] || [ "$a" = "Y" ]
 
 # ── Preconditions ─────────────────────────────────────────────────────────────
 if ! qm config "$TEMPLATE" 2>/dev/null | grep -q '^template: 1'; then
-    echo "[STOP] VM $TEMPLATE is not a template on this node — build it first (Stage 9), or run this on the node that has it." >&2
+    echo "[STOP] VM $TEMPLATE is not a template on this node — build it first (portable-dotnet-architecture/proxmox-lab/BUILD.md#vm-template), or run this on the node that has it." >&2
     exit 2
 fi
 for storage in apps db; do
     pvesm status --storage "$storage" >/dev/null 2>&1 \
-        || { echo "[STOP] storage '$storage' not available here (Stage 6)." >&2; exit 2; }
+        || { echo "[STOP] storage '$storage' not available here (portable-dotnet-architecture/proxmox-lab/BUILD.md#storage-and-cluster)." >&2; exit 2; }
 done
 
 # The table's addresses assume this node's LAN is the same /24. Get that wrong
 # and the VMs boot onto a subnet nobody routes — silently, because the Cloud-Init
-# tab keeps showing the address you asked for (10-vms.md, "First boot").
+# tab keeps showing the address you asked for (portable-dotnet-architecture/proxmox-lab/BUILD.md#guests-and-native-provisioning, "First boot").
 node_cidr=$(ip -4 -o addr show dev vmbr0 2>/dev/null | awk 'NR==1{print $4}') || true
 if [ -n "${node_cidr:-}" ] && [ "${node_cidr%.*}" != "${GATEWAY%.*}" ]; then
     echo "[WARN] vmbr0 is ${node_cidr}, but this script assigns ${GATEWAY%.*}.x with gateway ${GATEWAY}."
     echo "       Adapt GATEWAY and the IP column below to your LAN first, or the VMs"
-    echo "       come up unreachable. See 10-vms.md, 'First boot'."
+    echo "       come up unreachable. See portable-dotnet-architecture/proxmox-lab/BUILD.md#guests-and-native-provisioning, 'First boot'."
     confirm "Continue anyway?" || exit 0
 fi
 
@@ -75,7 +75,7 @@ while read -r id name storage cores ram disk ip boot; do
         --ipconfig0 "ip=${ip}/24,gw=${GATEWAY}" >/dev/null
     [ "$disk" != "-" ] && qm resize "$id" scsi0 "$disk"
     # Start at boot: without it a node reboot leaves the VM stopped, and only the
-    # two HA VMs would ever come back on their own (10-vms.md, "Start at boot").
+    # two HA VMs would ever come back on their own (portable-dotnet-architecture/proxmox-lab/BUILD.md#guests-and-native-provisioning, "Start at boot").
     if [ "$boot" = "-" ]; then
         qm set "$id" --onboot 0 >/dev/null
     else
@@ -85,7 +85,7 @@ while read -r id name storage cores ram disk ip boot; do
 done <<< "$VMS"
 
 # CPU type is deliberately NOT touched: clones inherit x86-64-v3 from the
-# template, and that is the setting that keeps live migration safe (Stage 9.3).
+# template, and that is the setting that keeps live migration safe (portable-dotnet-architecture/proxmox-lab/BUILD.md#vm-template).
 
 # ── Start (separately — creation is complete either way) ──────────────────────
 if confirm "Start all four now (first boot: cloud-init sets IPs and grows the disks)?"; then
@@ -93,7 +93,7 @@ if confirm "Start all four now (first boot: cloud-init sets IPs and grows the di
         [ -n "$id" ] || continue
         # One line per VM, always: the create loop above already promises that with its
         # [SKIP], and the prompt says "all four". The old one-liner printed nothing for a
-        # VM it did not start, so the documented recovery run (10-vms.md: "qm stop 1020 &&
+        # VM it did not start, so the documented recovery run (portable-dotnet-architecture/proxmox-lab/BUILD.md#guests-and-native-provisioning: "qm stop 1020 &&
         # qm destroy 1020 && create-vms") answered "start all four" with one [ OK ] line
         # and no word about the other three. In a list of four, silence reads as success.
         st=$(qm status "$id" 2>&1) || true   # rc=2 if the VM is gone; a bare assignment would trip set -e and end the loop here
@@ -112,7 +112,7 @@ if confirm "Start all four now (first boot: cloud-init sets IPs and grows the di
     echo "Cloud-Init tab shows what was offered, not what was accepted:"
     echo "    for id in 1020 1021 1022 1023; do qm agent \$id network-get-interfaces; done"
     echo
-    echo "Then continue Stage 10 (control node, SSH keys). The clones are key-only from"
+    echo "Then continue portable-dotnet-architecture/proxmox-lab/BUILD.md#guests-and-native-provisioning (control node, SSH keys). The clones are key-only from"
     echo "first boot and the seeded key is this node's, so log in from here:"
     echo "    ssh devops@192.168.0.20"
 else

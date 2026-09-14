@@ -182,8 +182,7 @@
 # Point-in-time recovery for the whole cluster: every completed WAL file is
 # compressed into a local spool, and a verified physical base backup is taken
 # weekly. Nothing here ships anything off the VM — the hypervisor running it
-# pulls both and uploads them offsite (proxmox-lab/backup/17-backup-restore.md,
-# 17.4). Off by default: with nothing pulling, the spool grows until the archive
+# pulls both and uploads them offsite (portable-dotnet-architecture/proxmox-lab/RECOVERY.md#backup-activation). Off by default: with nothing pulling, the spool grows until the archive
 # script refuses at postgres_wal_spool_max_mb, and then pg_wal grows instead.
 
 - name: Install zstd for WAL and base-backup compression

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# restore-drill.sh — the 17.9 drill as one command: restore the newest archive of one
+# restore-drill.sh — run the documented isolated VM restore as one command: restore the newest archive of one
 # VM to a spare ID, with the NIC disconnected, boot it, prove the guest agent answers,
 # report, destroy.
 #
@@ -14,7 +14,7 @@
 #
 # Run on either node: it restores the newest image of that VM in /var/lib/vz/dump
 # there. Storage `local` keeps one image per VM, on the node that ran the guest; to
-# drill an image from Digi, copy it into that directory first (17.7 E), which makes the
+# drill an image from Digi, copy it into that directory first, which makes the
 # drill a proof of the offsite tier too. Results append to /var/log/restore-drill.log.
 # On failure the drill VM is KEPT for inspection.
 #
@@ -49,7 +49,7 @@ fi
 TARGET=$((VMID + 900))          # 1020→1920, 1021→1921, 1022→1922, 1023→1923
 
 ARCHIVE=$(ls -1t "$DUMP"/vzdump-qemu-"$VMID"-*.vma.zst 2>/dev/null | head -1)
-[ -n "$ARCHIVE" ] || { echo "FAIL: no image of VM $VMID in $DUMP on this node — copy one from Digi first: rclone lsf digi-crypt:vzdump | grep qemu-$VMID, then rclone copy digi-crypt:vzdump/<name> $DUMP/ (17.7 E)" >&2; exit 2; }
+[ -n "$ARCHIVE" ] || { echo "FAIL: no image of VM $VMID in $DUMP on this node — copy one from Digi first: rclone lsf digi-crypt:vzdump | grep qemu-$VMID, then rclone copy digi-crypt:vzdump/<name> $DUMP/; see RECOVERY.md#drill-acceptance" >&2; exit 2; }
 if qm status "$TARGET" >/dev/null 2>&1; then
     echo "FAIL: VM ID $TARGET already exists — a previous drill wasn't cleaned up (qm stop $TARGET && qm destroy $TARGET)" >&2
     exit 2
@@ -66,12 +66,12 @@ fail() {
     exit 1
 }
 
-# Restore to the spare ID; --unique regenerates the MAC so nothing collides (17.7 A)
+# Restore to the spare ID; --unique regenerates the MAC so nothing collides.
 qmrestore "$ARCHIVE" "$TARGET" --storage "$STORAGE" --unique >/dev/null || fail "qmrestore returned an error"
 RESTORE_S=$(( $(date +%s) - START ))
 
 # Belt and suspenders on top of --unique: boot with the NIC link down, so the
-# clone can never fight the original for its static IP (17.7 A / 20.3 step 0)
+# clone can never fight the original for its static IP.
 NET0=$(qm config "$TARGET" | awk -F': ' '/^net0:/ {print $2}')
 [ -n "$NET0" ] && qm set "$TARGET" --net0 "${NET0},link_down=1" >/dev/null
 

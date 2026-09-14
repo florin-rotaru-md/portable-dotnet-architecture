@@ -12,10 +12,10 @@
 # token secrets in plaintext; each node's pve-ssl.key is in there too. PVE rotates authkey.key daily,
 # so KEEP=14 below means fourteen days of valid signing keys in one directory. Hence the umask and the
 # chmod below, and hence offsite-sync uploads these archives only through the encrypted digi-crypt:
-# remote (17.3). Never copy one anywhere that is not encrypted.
+# remote. Never copy one anywhere that is not encrypted.
 #
 # Runs on BOTH nodes via cron (02:40, wrapped in infra-report). The archive stays in
-# /var/backups/pve-config, on the node it describes; offsite-sync uploads it to Digi at 05:00 (17.6).
+# /var/backups/pve-config, on the node it describes; offsite-sync uploads it to Digi at 05:00.
 #
 # Usage: pve-config-backup.sh          (no arguments, safe to re-run any time)
 

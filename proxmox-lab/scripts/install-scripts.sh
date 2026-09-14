@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # install-scripts.sh — installs the helper scripts on this node and schedules
-# the recurring ones. Run on BOTH nodes, from this directory (Stage 2.4):
+# the recurring ones. Run on BOTH nodes, from this directory (portable-dotnet-architecture/proxmox-lab/BUILD.md#hardware-and-firmware):
 #
 #   cd ~/src/portable-dotnet-architecture/proxmox-lab/scripts
-#   ./install-scripts.sh
+# ./install-scripts.sh
 #
 # Idempotent — re-run it after a git pull to pick up script updates.
 # Scripts land in /usr/local/sbin without the .sh suffix, so the commands read
@@ -16,7 +16,7 @@ for f in cluster-health.sh backup-verify.sh pve-config-backup.sh pg-offsite.sh o
     target=${f%.sh}
     install -m 755 "$f" "/usr/local/sbin/$target"
 done
-rm -f /usr/local/sbin/r2-backup     # not part of the tiers (17.1)
+rm -f /usr/local/sbin/r2-backup     # not part of the documented backup tiers
 
 # APT success stamp. infra-host-metrics.py's package-updates probe trusts only
 # /var/lib/apt/periodic/update-success-stamp, and on Debian/PVE NOTHING writes that file:
@@ -53,17 +53,17 @@ MAILTO=root
 # exactly this line — the helpers simply never copied it.
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
-# 02:40 host-config archive (both nodes), kept locally; offsite-sync uploads it at 05:00 (17.6).
+# 02:40 host-config archive (both nodes), kept locally; offsite-sync uploads it at 05:00.
 40 2 * * * root /usr/local/sbin/infra-report pve-config-backup >/dev/null
 
 # Every minute: Postgres WAL, the weekly base and the nightly dumps, pulled off VM 1022 and
-# uploaded to Digi (17.4). It acts only on the node running 1022 and exits at once on the
+# uploaded to Digi. It acts only on the node running 1022 and exits at once on the
 # other, so it follows the database through a migration or a failover. Not wrapped in
 # infra-report — 1440 reports a day would drown the ingest; backup-verify proves each
 # morning that it kept up.
 * * * * * root /usr/local/sbin/pg-offsite >> /var/log/pg-offsite.log 2>&1
 
-# 05:00 VM images and host-config archives to Digi, with their offsite retention (17.5, 17.6).
+# 05:00 VM images and host-config archives to Digi, with their offsite retention.
 0 5 * * * root /usr/local/sbin/infra-report offsite-sync >/dev/null
 
 # The two nightly copy jobs are wrapped in infra-report rather than run bare: their failure
@@ -74,7 +74,7 @@ PATH=/usr/sbin:/usr/bin:/sbin:/bin
 # sync window has passed. infra-report passes output and exit code through
 # untouched (so the mail behaviour is unchanged) and POSTs the outcome to the
 # app's infra monitor — a no-op until /etc/infra-report.conf exists
-# (ADR-0015 in the app repo).
+# (platform/docs/ARCHITECTURE.md#probes-and-infrastructure in the app repo).
 #
 # 07:07 rather than 07:00 because the `*:0` replication jobs fire at HH:00:00-:09,
 # and a check at 07:00:01 kept catching a normal in-flight sync and calling it a
@@ -101,28 +101,29 @@ EOF
 # On 2026-09-04 a routine run of THIS script did exactly that on both nodes, swapping in a wrapper
 # that reads a path neither node had, and ingest went dark for four days with nothing saying so.
 # Hence this guard: installing the wrapper is the last moment anything says the config is missing.
-# Creating it: platform docs/waa/infra/OPERATIONS.md section 1, step 4.
+# Creating it: platform/docs/waa/OPERATIONS.md#infrastructure-and-application-probes.
 CONF=/etc/infra-report.conf
 
 echo
 if [ -r "$CONF" ]; then
     echo "Ingest: $CONF present — the wrapper will report."
     grep -q '^INFRA_PEER_ADDRESS=' "$CONF" ||
-        echo "  ...but without INFRA_PEER_ADDRESS (the OTHER node's LAN address), so cluster-health's lan-sample warns on every run — platform docs/waa/infra/OPERATIONS.md section 2.2."
+        echo "...but without INFRA_PEER_ADDRESS (the OTHER node's LAN address), so cluster-health's lan-sample warns on every run — platform/docs/waa/OPERATIONS.md#infrastructure-and-application-probes."
 else
     echo "Ingest: WARNING — no $CONF on this host."
     echo "  infra-report is a silent pass-through: the checks still run and still mail, but the"
-    echo "  app is told nothing. Create the file per platform docs/waa/infra/OPERATIONS.md"
+    echo "  app is told nothing. Create the file per platform/docs/waa/OPERATIONS.md#infrastructure-and-application-probes"
     echo "  section 1, step 4 (INFRA_URL + INFRA_TOKEN, mode 600), then re-run one by hand."
 fi
 command -v sensors >/dev/null 2>&1 ||
-    echo "Sensors: WARNING — lm-sensors is not installed, so cluster-health's temperatures check warns on every run: apt install -y lm-sensors (Stage 2.4)."
+    echo "Sensors: WARNING — lm-sensors is not installed, so cluster-health's temperatures check warns on every run: apt install -y lm-sensors (portable-dotnet-architecture/proxmox-lab/BUILD.md#hardware-and-firmware)."
 [ -e /var/lib/apt/periodic/update-success-stamp ] ||
     echo "APT: the success stamp does not exist yet — run 'apt-get update' once, or package-updates warns until pve-daily-update.timer next succeeds."
 if ! command -v rclone >/dev/null 2>&1; then
-    echo "Offsite: WARNING — rclone is not installed, so pg-offsite and offsite-sync upload nothing: apt install -y rclone, then 17.3."
+    echo "Offsite: WARNING — rclone is not installed, so pg-offsite and offsite-sync upload nothing."
+    echo "  Install/configure it per proxmox-lab/RECOVERY.md#digi-storage-and-rclone, then rerun this installer."
 elif ! rclone listremotes 2>/dev/null | grep -qx 'digi-crypt:'; then
-    echo "Offsite: WARNING — the 'digi-crypt:' remote is not configured on this node; both upload jobs fail until it is (17.3)."
+    echo "Offsite: WARNING — 'digi-crypt:' is missing; both upload jobs fail until the encrypted remote passes the documented acceptance check."
 fi
 echo
 

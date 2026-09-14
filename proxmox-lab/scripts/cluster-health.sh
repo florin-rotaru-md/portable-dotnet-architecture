@@ -37,7 +37,7 @@ CAPACITY_WARN=80          # % pool usage that triggers a warning
 SNAPSHOT_WARN_GB=50       # a single snapshot pinning more than this → warning
 NVME_WEAR_WARN=85         # % NVMe endurance used
 REPL_STALE_H=26           # a recurring replication job silent this long → the scheduler died
-AUTOSTART_VMS="1021 1022 1023"   # must have onboot=1 (10-vms.md); 1020 is manual by design
+AUTOSTART_VMS="1021 1022 1023"   # must have onboot=1 (portable-dotnet-architecture/proxmox-lab/BUILD.md#guests-and-native-provisioning); 1020 is manual by design
 
 # Corosync links that are plugged in on purpose and unplugged again afterwards, so
 # "disconnected" is their resting state rather than an incident. Link 1 is the 10G
@@ -169,7 +169,7 @@ if require zpool "zfs"; then
     for pool in $POOLS; do
         CAP=$(zpool list -H -o capacity "$pool" 2>/dev/null | tr -d '%')
         if [ -z "$CAP" ]; then
-            fail "zfs: pool '$pool' not found — replication has nowhere to go (Stage 6)"
+            fail "zfs: pool '$pool' not found — replication has nowhere to go (portable-dotnet-architecture/proxmox-lab/BUILD.md#storage-and-cluster)"
         elif [ "$CAP" -ge "$CAPACITY_WARN" ]; then
             warn "zfs: pool '$pool' at ${CAP}% — investigate before it becomes an outage (pinned snapshots? see 16.2)"
         else
@@ -292,7 +292,7 @@ EOF
     elif [ "${JOBS_CLUSTER:-0}" -gt 0 ]; then
         ok "replication: no jobs run on this node; $JOBS_CLUSTER configured cluster-wide and owned by the peer (replication.cfg)"
     else
-        fail "replication: NO replication job exists anywhere in the cluster — a node loss would lose everything since the last backup (Stage 12)"
+        fail "replication: NO replication job exists anywhere in the cluster — a node loss would lose everything since the last backup (portable-dotnet-architecture/proxmox-lab/BUILD.md#replication-and-ha)"
     fi
 fi
 
@@ -308,7 +308,7 @@ if require ha-manager "ha"; then
     HA_SERVICES=$(echo "$HA_STATUS" | grep -c '^service')
     HA_BAD=$(echo "$HA_STATUS" | grep '^service' | grep -v started || true)
     if [ "${HA_SERVICES:-0}" -eq 0 ]; then
-        warn "ha: no HA services at all — nothing is being restarted automatically after a node loss (Stage 15)"
+        warn "ha: no HA services at all — nothing is being restarted automatically after a node loss (portable-dotnet-architecture/proxmox-lab/BUILD.md#replication-and-ha)"
     elif [ -n "$HA_BAD" ]; then
         warn "ha: not all services started: $(echo "$HA_BAD" | tr '\n' ' ')"
     else
@@ -317,10 +317,10 @@ if require ha-manager "ha"; then
 fi
 
 # Placement flags. `failback` and `auto-rebalance` both default to 1 and come
-# back on silently every time a resource is re-added (17.7 step 2, 19.2 step 8).
+# back on silently every time a resource is re-added.
 # On, they let the cluster move a guest by itself the moment a node affinity
 # rule or CRS rebalancing is switched on — and on this build a guest that drifts
-# to pve2 stops being backed up (15.5). Cluster-wide config: either node sees it.
+# to pve2 stops being backed up. Cluster-wide config: either node sees it.
 # `have`, not `require`: if ha-manager is missing the check above has already said so
 # once and loudly, and a second FAIL for the same cause is noise. The zero-resource
 # case is likewise already covered above — this block is the only one in the script
@@ -331,7 +331,7 @@ if [ "${HA_COUNT:-0}" -gt 0 ]; then
     FB=$(echo "$HA_CONF" | grep -c 'failback 0')
     AR=$(echo "$HA_CONF" | grep -c 'auto-rebalance 0')
     if [ "$FB" -lt "$HA_COUNT" ] || [ "$AR" -lt "$HA_COUNT" ]; then
-        warn "ha: placement flags not cleared on every resource (failback $FB/$HA_COUNT, auto-rebalance $AR/$HA_COUNT) — ha-manager config, then 15.5"
+        warn "ha: placement flags not cleared on every resource (failback $FB/$HA_COUNT, auto-rebalance $AR/$HA_COUNT) — see BUILD.md#replication-and-ha"
     else
         ok "ha: placement flags cleared on all $HA_COUNT resources"
     fi
@@ -357,7 +357,7 @@ fi
 CHECK_ID=autostart CHECK_CATEGORY=guests
 # HA guests are started by the HA stack; every other VM comes back after a node
 # reboot only if onboot is set. Nothing else surfaces a missing flag — you find
-# out the next time you reboot (10-vms.md, "Start at boot"). Node-local: VMs
+# out the next time you reboot (portable-dotnet-architecture/proxmox-lab/BUILD.md#guests-and-native-provisioning, "Start at boot"). Node-local: VMs
 # living on the peer are its own run's business.
 #
 # The `|| continue` below is load-bearing and was also the trap: it means "this VM is
@@ -374,7 +374,7 @@ if require qm "autostart"; then
         echo "$CONF" | grep -q '^onboot: 1' || NO_ONBOOT="$NO_ONBOOT $id"
     done
     if [ -n "$NO_ONBOOT" ]; then
-        warn "autostart:$NO_ONBOOT would stay stopped after a node reboot — qm set <id> --onboot 1 (Stage 10)"
+        warn "autostart:$NO_ONBOOT would stay stopped after a node reboot — qm set <id> --onboot 1 (portable-dotnet-architecture/proxmox-lab/BUILD.md#guests-and-native-provisioning)"
     elif [ "$CHECKED" -eq 0 ]; then
         ok "autostart: none of the VMs ($AUTOSTART_VMS) live on this node — the peer's run covers them"
     else
@@ -484,7 +484,7 @@ CHECK_ID=firmware CHECK_CATEGORY=maintenance
 # A pending release is an ADVISORY warning. 16.3's policy is that "there's a newer version
 # out" is not a reason to flash, so a release on LVFS is information for the next planned
 # window rather than a fault: the app records it without turning the node yellow (platform
-# ADR-0015 D4b — observed maintenance warnings only). The branches that could not ask stay
+# platform/docs/ARCHITECTURE.md#probes-and-infrastructure — observed maintenance warnings only). The branches that could not ask stay
 # plain warnings — no metadata, no device list, an unreadable answer — because those are
 # monitoring gaps, not maintenance facts.
 #
@@ -568,7 +568,7 @@ JOBS_LEGACY=$(grep -cE '^[^#]*[[:space:]]vzdump[[:space:]]' /etc/pve/vzdump.cron
 BACKUP_JOBS=$(( ${JOBS_MODERN:-0} + ${JOBS_LEGACY:-0} ))
 
 if [ "$BACKUP_JOBS" -eq 0 ]; then
-    fail "backup: NO vzdump job is scheduled anywhere in the cluster — no VM image is being taken (17.5)"
+    fail "backup: NO vzdump job is scheduled anywhere in the cluster — no VM image is being taken; see RECOVERY.md#backup-activation"
 else
     ok "backup: $BACKUP_JOBS vzdump job(s) scheduled cluster-wide"
 fi
@@ -615,12 +615,12 @@ if require smartctl "disks"; then
                         print 100 - $4; exit }')
             fi
             if [ -n "$WEAR" ] && [ "$WEAR" -ge "$NVME_WEAR_WARN" ] 2>/dev/null; then
-                warn "disk: $dev at ${WEAR}% endurance used — plan a replacement (Stage 19)"
+                warn "disk: $dev at ${WEAR}% endurance used — plan a replacement (portable-dotnet-architecture/proxmox-lab/RECOVERY.md#vm-or-node-loss)"
             else
                 ok "disk: $dev healthy${WEAR:+ (${WEAR}% endurance used)}"
             fi
         elif echo "$SMART_OUT" | grep -qiE 'self-assessment test result'; then
-            fail "disk: $dev SMART health check FAILED — the drive is reporting a problem, run smartctl -a $dev now (Stage 19)"
+            fail "disk: $dev SMART health check FAILED — the drive is reporting a problem, run smartctl -a $dev now (portable-dotnet-architecture/proxmox-lab/RECOVERY.md#vm-or-node-loss)"
         else
             fail "disk: $dev — smartctl returned no health verdict, so this disk is UNKNOWN, not healthy: $(echo "$SMART_OUT" | grep -vE '^[[:space:]]*$' | head -1)"
         fi
@@ -641,14 +641,14 @@ elif [ -n "$NUT_MODE" ] && command -v upsc >/dev/null 2>&1; then
     case "$UPS_STATUS" in
         OL*)  ok "power: UPS on line power" ;;
         OB*)  warn "power: RUNNING ON UPS BATTERY — an outage is in progress (4.4 timeline applies)" ;;
-        "")   warn "power: NUT enabled but not answering — the UPS safety net is offline (Stage 4)" ;;
+        "")   warn "power: NUT enabled but not answering — the UPS safety net is offline (portable-dotnet-architecture/proxmox-lab/BUILD.md#laptop-power)" ;;
         *)    warn "power: UPS status '$UPS_STATUS'" ;;
     esac
 fi
 for ac in /sys/class/power_supply/AC*/online; do
     [ -e "$ac" ] || continue
     if [ "$(cat "$ac")" = "0" ]; then
-        warn "power: laptop is ON BATTERY — clean shutdown at 10% (Stage 3.2)"
+        warn "power: laptop is ON BATTERY — clean shutdown at 10% (portable-dotnet-architecture/proxmox-lab/BUILD.md#laptop-power)"
     else
         ok "power: laptop on AC"
     fi

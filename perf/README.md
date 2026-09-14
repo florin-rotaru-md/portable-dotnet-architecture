@@ -68,7 +68,7 @@ Both matter, for different questions.
 
 The compose environment mirrors the Ansible role's `conf.d` layout, so [`postgres/conf.d/10-tuning.conf`](postgres/conf.d/10-tuning.conf) is the only file that differs from a real host — and `--inventory` cross-checks the one value that matters (`max_connections`), refusing to run on a mismatch.
 
-For the VM clone, the procedure already exists: [`proxmox-lab/operations/20-upgrades.md`](../proxmox-lab/operations/20-upgrades.md) clones VM 1022 onto a spare IP. Point `PGHOST` at the clone and skip `load-drill.sh up` entirely. Use the clone's *own* rendered `10-tuning.conf` — its RAM-derived values are the real ones.
+For the VM clone, the procedure already exists: [`portable-dotnet-architecture/proxmox-lab/OPERATIONS.md#updates-and-firmware`](../proxmox-lab/OPERATIONS.md#updates-and-firmware) clones VM 1022 onto a spare IP. Point `PGHOST` at the clone and skip `load-drill.sh up` entirely. Use the clone's *own* rendered `10-tuning.conf` — its RAM-derived values are the real ones.
 
 ## Restoring data
 

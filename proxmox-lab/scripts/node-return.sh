@@ -18,7 +18,7 @@
 # which on pve2 answers "Host key verification failed" and aborts before Gate 1, and its
 # link check is one grep for `disconnected` over the whole of corosync-cfgtool, so the 10G
 # cable being unplugged by design (5.2) hard-exits Gate 1 on every run, --check included.
-# Re-run Stage 2.4 on the node BEFORE you need this, not while a node is down.
+# Re-run portable-dotnet-architecture/proxmox-lab/BUILD.md#hardware-and-firmware on the node BEFORE you need this, not while a node is down.
 #
 # Usage: node-return [--check]
 #   --check   report the state of every gate and exit — change nothing
@@ -85,7 +85,7 @@ reboot_pending() {
 # Walking every ring address instead of pinning ring 0 is what keeps this script runnable
 # on the day it is needed most. 5.2 makes the 10G cable's resting state "unplugged", so a
 # cluster numbered the other way round — or one rejoined with its links crossed, which the
-# join API accepts without complaint (19-node-replacement.md 6) — carries its peer address
+# join API accepts without complaint (portable-dotnet-architecture/proxmox-lab/RECOVERY.md#vm-or-node-loss 6) — carries its peer address
 # on a cable that is out, and this script's very first act, the SSH below, would fail. It
 # would abort at the peer check on the exact machine it exists to bring back. Ring 1 also
 # covers the inverse: the day ring 0 is the one that is down.
@@ -112,7 +112,7 @@ PEER_ADDRS=$(awk -v me="$HOST" '
 # pve2 has neither an entry for pve1 nor the legacy /etc/ssh/ssh_known_hosts symlink that
 # pve1 happens to carry, so from pve2 that call answers "Host key verification failed",
 # exit 255 (reproduced 2026-09-10) — and pve2 is the node this procedure runs on most,
-# being the laptop failover node that goes away and comes back (03-laptop-node.md; the
+# being the laptop failover node that goes away and comes back (portable-dotnet-architecture/proxmox-lab/BUILD.md#laptop-power; the
 # README gives it "role: failover"). The old message blamed the network ("can't reach the
 # peer node"), sending the operator to cabling and switches while the cluster was quorate
 # and PVE's own migration worked fine. The probe is `ssh true` and not ping for the same
@@ -227,7 +227,7 @@ say "Gate 2 — version alignment (the one that bites)"
 # i.e. manufacturing the exact skew the gate exists to prevent — and finally re-compared
 # the still-unchanged running kernel and exited 2 with "still skewed after upgrade". No
 # amount of upgrading could pass it, and every attempt made the real divergence worse.
-# Compare what 16-maintenance.md 16.2 step 2 compares: the package list, minus the
+# Compare what portable-dotnet-architecture/proxmox-lab/OPERATIONS.md#planned-maintenance compares: the package list, minus the
 # running-kernel parenthetical and the per-kernel -pve-signed lines (those differ until
 # both nodes have rebooted; the kernel is Gate 1's business, above).
 PKGSET="pveversion -v | grep -v '^proxmox-kernel-[0-9].*-pve-signed:' | sed 's/ (running kernel: .*)//'"

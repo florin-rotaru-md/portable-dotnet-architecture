@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # offsite-sync.sh — nightly on both nodes (05:00, wrapped in infra-report): upload this node's VM images
 # and host-config archives to Digi Storage and apply their offsite retention
-# (proxmox-lab/backup/17-backup-restore.md, 17.5 and 17.6). Postgres travels on its own, every minute,
+# (portable-dotnet-architecture/proxmox-lab/RECOVERY.md). Postgres travels on its own, every minute,
 # with pg-offsite.
 #
 # Each node uploads what only it holds: vzdump writes a guest's image on the node running that guest,
@@ -29,11 +29,11 @@ fail() { printf '[FAIL] %s\n' "$1"; RC=1; }
 rcl()  { timeout 7200 rclone "$@"; }
 
 if ! command -v rclone > /dev/null; then
-    fail "offsite: rclone is not installed on this node, nothing was uploaded (17.3)"
+    fail "offsite: rclone is not installed; see RECOVERY.md#digi-storage-and-rclone"
     exit 1
 fi
 if ! rclone listremotes 2> /dev/null | grep -qx "$REMOTE"; then
-    fail "offsite: rclone remote '$REMOTE' is not configured on this node, nothing was uploaded (17.3)"
+    fail "offsite: rclone remote '$REMOTE' is missing; see RECOVERY.md#digi-storage-and-rclone"
     exit 1
 fi
 TMP=$(mktemp -d)
@@ -66,7 +66,7 @@ fi
 
 # ── This node's configuration archives ───────────────────────────────────────
 if ! ls "$CONFIG"/pve-config-"$HOST"-*.tar.gz > /dev/null 2>&1; then
-    fail "config: no archive in $CONFIG — pve-config-backup has not run on this node (17.6)"
+    fail "config: no archive in $CONFIG — pve-config-backup has not run on this node"
 elif rcl copy "$CONFIG" "${REMOTE}config/$HOST" --include "pve-config-$HOST-*.tar.gz" "${RCLONE_OPTS[@]}"; then
     ok "config: archives are on Digi under config/$HOST"
     rcl lsf --files-only "${REMOTE}config/$HOST" 2> /dev/null | python3 "$RETENTION" older-than "$CONFIG_DAYS" > "$TMP/config"

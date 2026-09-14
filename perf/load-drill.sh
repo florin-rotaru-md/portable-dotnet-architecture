@@ -86,7 +86,7 @@ case "$SCENARIO" in
             if $COMPOSE exec -T postgres pg_isready -q -h localhost 2>/dev/null; then
                 ok "Postgres up on port ${PGPORT:-55432}."
                 echo "Restore a dump into it, point the app's connection strings at it, then:"
-                echo "  ./load-drill.sh steady --base-url http://127.0.0.1:5000"
+                echo "./load-drill.sh steady --base-url http://127.0.0.1:5000"
                 exit 0
             fi
             sleep 1

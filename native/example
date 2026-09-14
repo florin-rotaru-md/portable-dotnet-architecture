@@ -64,7 +64,7 @@ mkdir -p ~/src && cd ~/src && \
 git clone https://github.com/florin-rotaru-md/portable-dotnet-architecture
 
 # The inventory lives OUTSIDE the clone, so `git pull` on this control node is never a
-# conflict against your own edits. See native/README.md § Configure.
+# conflict against your own edits. See portable-dotnet-architecture/native/README.md#inputs.
 mkdir -p ~/app-inventory/group_vars/all && \
 echo 'export ANSIBLE_INVENTORY=~/app-inventory/hosts.ini' >> ~/.bashrc && . ~/.bashrc
 
@@ -197,7 +197,7 @@ postgres_extra_cidrs: []
 # Point-in-time recovery: every completed WAL file is compressed into a spool on
 # the postgres host and a verified base backup is taken weekly. Something must
 # pull the spool off the host — on the Proxmox build the hypervisor does, every
-# minute (proxmox-lab/backup/17-backup-restore.md, 17.4). Leave it off where
+# minute (portable-dotnet-architecture/proxmox-lab/RECOVERY.md#backup-activation). Leave it off where
 # nothing pulls: the spool would grow to its cap, and then pg_wal would.
 postgres_wal_archive_enabled: false
 postgres_archive_timeout: 60          # seconds a segment holding writes may stay unfinished

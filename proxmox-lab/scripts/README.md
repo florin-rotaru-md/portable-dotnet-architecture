@@ -1,60 +1,51 @@
-# Helper scripts
+# Proxmox helpers
 
-*Part of the [Proxmox lab guide](../README.md).*
+[Operations](../OPERATIONS.md) · [Recovery](../RECOVERY.md) · [Build](../BUILD.md)
 
-Host-side scripts for the operations you do often (or under stress), so they take one command instead of a remembered sequence. Installed on **both nodes** in [Stage 2.4](../setup/02-post-install.md#24-install-the-helper-scripts-both-nodes) — into `/usr/local/sbin`, without the `.sh` suffix. Everything inside the VMs already has its own scripts via Ansible (`deploy.sh`, `rollback.sh`, `pg-backup.sh`, …); these cover the hypervisor side, which is otherwise hand-typed.
+Scripts install on each Proxmox node in `/usr/local/sbin` without `.sh`; Python helpers install
+alongside them. VM services/scripts are owned by Ansible in `native/`.
 
-Design rules, should you add more: one script = one question or one procedure; `[ OK ] / [WARN] / [FAIL]` lines, not walls of text; exit codes cron can act on; every message points at the guide section that explains it; anything that changes state asks first; and **every check guards the tool it shells out to (`command -v`) and reports a missing one as its own `[FAIL] <check>: '<tool>' is not on PATH — this check DID NOT RUN`, never as a verdict.** A check that greps the empty output of a binary that was not there does not fail loudly, it *passes wrongly* — or fails wrongly, depending on which way the grep points; both happened here on the same morning ([the rule these checks obey](#the-rule-these-checks-obey)). The guard is worth having even with the cron `PATH` fixed, because it also covers a package that genuinely is not installed — `rclone` until [17.3](../backup/17-backup-restore.md#173-offsite--digi-storage) is done — which no `PATH` line can conjure: `backup-verify` reports that as `[FAIL] offsite: rclone is not installed on this node, so nothing on Digi could be checked from here`, which is a different sentence from a stale copy and takes a different fix.
+**Repository capability is not installed state.** On 2026-09-14 the nodes had older helpers and
+`r2-backup` cron entries; the current `pg-offsite` / `offsite-sync` chain was not installed.
+Follow [backup activation](../RECOVERY.md#backup-activation) before treating the schedule below as live.
+Review `install-scripts.sh` before applying: it changes cron and replaces older backup scheduling.
 
-| Command | Answers / does | When |
+| Command | Purpose | Schedule written by current installer |
 |---|---|---|
-| [`cluster-health`](cluster-health.sh) | "Is the cluster fine?" — quorum, corosync rings judged per link (`ON_DEMAND_LINKS` separates the cable that is *meant* to be out from a ring that died), ZFS health + capacity + pinned snapshots, replication (disabled, never-synced and stale jobs — `SYNCING` is a sync in flight, not a fault), HA, the fencing watchdog ([15.4](../ha/15-ha.md#154-the-watchdog--what-fencing-actually-rests-on) — the one HA component that fails silently), start-at-boot flags on the non-HA VMs, version skew against the peer **and** the running kernel against the newest installed one, clock, the cluster-wide "is any `vzdump` job scheduled at all" question, SMART on **every** physical disk `lsblk` reports (not an `/dev/nvme?n1` glob — pve1's `apps` pool is a SATA SSD and holds three of the four guests), plain node-to-node `ssh` as a human types it — separate from the PVE path, which carries its own known-hosts file and works regardless, pending firmware ([16.3](../operations/16-maintenance.md#163-firmware--detect-always-flash-rarely) — it reports, it never flashes; the warning is *advisory*, because a newer version alone is not a reason to flash, and a pending UEFI dbx release is named in the line rather than counted while Secure Boot is off, since the firmware then never reads it), UPS/battery state. The [18.7](../ha/18-failover.md#187-health-checks-worth-running-periodically) list plus the easy-to-forget ones | Cron **07:07** daily — the seven minutes are tidiness, not the fix: job `1022-0` runs `*/1`, so no cron minute dodges a sync, and what stopped the false alarm is `SYNCING` no longer counting as a failure (see below). By hand any time something feels off — it's the first command of every investigation |
-| [`backup-verify`](backup-verify.sh) | "Am I protected *right now*?" — asked of Digi, where every tier ends: the newest WAL file Postgres archived is there, the newest weekly base is younger than 8 days, the newest complete logical-dump run is there (a run proves itself by its `Backup complete` line and its dump count; a dump below half its predecessor warns), every VM has an image younger than 93 days, every node's config archive is from last night. Two questions go to VM 1022 instead, because Digi cannot see them: is `archive_command` failing (`pg_stat_archiver`), and is the spool draining — plus a warning for `*.diverged-*` WAL files a failover leaves ([17.4](../backup/17-backup-restore.md#174-postgres--continuous-wal-and-a-weekly-base)). Without rclone and the `digi-crypt:` remote it says so and skips only the Digi questions | Cron 07:30 daily on **both** nodes — each run checks the whole estate; by hand before anything risky |
-| [`pve-config-backup`](pve-config-backup.sh) | Archives the host's hand-managed configuration (`/etc/pve`, network, fstab, NUT, cron and logrotate files, systemd units, `/usr/local/{bin,sbin}`, manifests) into `/var/backups/pve-config`, 14 kept. The archive carries the cluster's signing keys, so it leaves the node only through the encrypted remote ([17.6](../backup/17-backup-restore.md#176-host-configuration-and-the-ansible-inventory)) | Cron 02:40 nightly, both nodes; `offsite-sync` uploads it at 05:00 |
-| [`pg-offsite`](pg-offsite.sh) | Moves the Postgres tiers off VM 1022 ([17.4](../backup/17-backup-restore.md#174-postgres--continuous-wal-and-a-weekly-base)): every minute it pulls the spooled WAL files, uploads them to `digi-crypt:postgres/wal/`, and only then releases them from the VM's spool; every 15 minutes it does the same for completed base backups and completed dump runs, and applies the Postgres retention on the node and on Digi. It acts only on the node running 1022 and exits at once on the other, so it follows the database through a migration or a failover. `--now` runs the 15-minute pass immediately | Cron every minute, both nodes; logs to `/var/log/pg-offsite.log`, not to the app — `backup-verify` proves each morning that it kept up |
-| [`offsite-sync`](offsite-sync.sh) | Uploads this node's VM images (`/var/lib/vz/dump`) and configuration archives to Digi and applies their offsite retention: the newest 2 images per VM, pruned only by the node running 1022 so two nodes never race, and 30 days of configuration archives ([17.5](../backup/17-backup-restore.md#175-vm-images--quarterly-and-on-demand), [17.6](../backup/17-backup-restore.md#176-host-configuration-and-the-ansible-inventory)). A missing rclone or remote is a `[FAIL]`, never a silent skip | Cron 05:00 nightly, both nodes; by hand right after an on-demand image |
-| [`node-return`](node-return.sh) | The [16.2](../operations/16-maintenance.md#162-returning-a-node-after-a-long-outage-days-to-weeks) procedure with the ordering enforced: rejoin-health gates → version alignment → replication catch-up → only then offers migration. Refuses to skip ahead | Attended, on the returning node, after any outage longer than a few hours. `--check` = report only |
-| [`restore-drill`](restore-drill.sh) | The [17.9](../backup/17-backup-restore.md#179-restore-drills) drill: the newest image of one VM in this node's `/var/lib/vz/dump` → spare VM ID, NIC down → boot → guest-agent proof → destroy, logging the measured RTO to `/var/log/restore-drill.log`. With no local image it names the `rclone copy` that fetches one from Digi | Attended, on either node — quarterly after the image job, and after any storage or backup change. **Nothing schedules it**: it is deliberately left out of the cron file, so the quarterly drill is a promise your calendar keeps or nobody does. Rotates through the VMs by month; `restore-drill 1022` picks one explicitly |
-| [`create-vms`](create-vms.sh) | [Stage 10](../vms/10-vms.md)'s four clones in one attended run: clone from the template, CPU/RAM, static IP, disk growth, start-at-boot — resize *and* IP guaranteed before first boot, which is what stops the clones from taking a DHCP lease they'd then keep. Warns if the node's LAN doesn't match the table's `/24`. Idempotent: existing VM IDs are skipped, so a re-run completes an interrupted one | Attended, on pve1: first build, and again when rebuilding VMs after a disaster (17.7 F) |
-| [`infra-report`](infra-report.sh) | Runs each reporting job and POSTs its outcome to the app (`POST /api/infra/reports`, platform ADR-0015). The exit code is unchanged; stderr is merged into stdout, so `>/dev/null` on the two nightly copy jobs discards what cron would otherwise mail. The app stores a severity-first summary plus each received line separately (up to 200 lines, 512 characters each); expand the report for the retained evidence. `cluster-health` and `backup-verify` use 0/1/2 for pass/warn/fail; the app recognizes their warning exit code, while nonzero exits from the copy jobs fail. Silent pass-through until `/etc/infra-report.conf` provides `INFRA_URL` and `INFRA_TOKEN`; the app expects `cluster-health`, `backup-verify`, `pve-config-backup` and `offsite-sync` from both nodes. Setup and effective-config checks: `platform/docs/waa/infra/OPERATIONS.md` §1 and §2.1 | Used by the four reporting cron entries; `pg-offsite` is not wrapped — a report a minute would drown the ingest |
-| [`backup-retention.py`](backup-retention.py) | The name arithmetic behind every retention rule and age check: which WAL files precede a base, which images exceed the newest N per VM, which stamped names are older than N days, how old the newest of a kind is. It reads names and prints names — it never lists, deletes or uploads anything — so the rules are unit-tested (`tests/test_backup_retention.py`) | Called by `pg-offsite`, `offsite-sync` and `backup-verify` |
+| [cluster-health](cluster-health.sh) | Quorum, links, ZFS/disks, replication, HA/watchdog, versions and host measurements | Daily 07:07 |
+| [backup-verify](backup-verify.sh) | Verify copies on encrypted offsite remote plus database archiver/spool | Daily 07:30 |
+| [pve-config-backup](pve-config-backup.sh) | Archive host configuration and custom units/scripts; 14 local copies | Daily 02:40 |
+| [pg-offsite](pg-offsite.sh) | Pull WAL; upload before removing VM spool; completed base/dump runs every 15 min | Every minute; `--now` forces full pass |
+| [offsite-sync](offsite-sync.sh) | Upload VM images/config archives; apply offsite retention | Daily 05:00 |
+| [node-return](node-return.sh) | Health, versions and replication catch-up before migration | Attended; `--check` is read-only |
+| [restore-drill](restore-drill.sh) | Restore image into spare VM with NIC down, boot/agent proof, cleanup and measured RTO | Attended, quarterly and after backup changes |
+| [create-vms](create-vms.sh) | Clone reviewed template into known VM IDs; size/address before boot | Attended build/recovery |
+| [infra-report](infra-report.sh) | Wrap job output and publish structured evidence to app | Wrapper for four reporting cron jobs |
+| [backup-retention.py](backup-retention.py) | Pure filename/age/retention calculations; no upload/delete | Called by backup scripts |
 
-The cron entries live in `/etc/cron.d/pve-helper-scripts` (written by [`install-scripts.sh`](install-scripts.sh)) with `MAILTO=root` **and `PATH=/usr/sbin:/usr/bin:/sbin:/bin`**. `MAILTO` is there because the recurring jobs run `--quiet`, printing only problems — so a healthy day sends no mail and a bad one sends exactly what's wrong. `PATH` is the line that cost days to learn, and why it exists is [below](#the-rule-these-checks-obey). **A node keeps its old cron file and its old scripts until `install-scripts.sh` is re-run there** — so after every pull, run it on both and confirm with `grep -E 'PATH|cluster-health' /etc/cron.d/pve-helper-scripts`; to see what the line buys, compare a hand run against the environment cron actually gave you — `env -i PATH=/usr/bin:/bin /usr/local/sbin/cluster-health --quiet`. Make sure root's mail actually reaches you — that's the same [notification target](../ha/15-ha.md#153-notifications) the backup and replication jobs depend on, and it needs the `system-mail` type to survive whatever matcher you configure there. 15.3 has the one-line proof to run on both nodes.
+## Install and verify
 
-> **Verify that mail delivery, not just mail generation.** On 2026-09-10 both nodes were generating the mail correctly, handing it to postfix correctly, and having every single message rejected by the recipient's provider — `550 5.7.1 … blocked using Spamhaus` on the home IP — after which postfix discarded it. Nothing was left in `/var/mail/root` or the queue to notice. Everything on the sending side looked healthy, which is precisely why "I configured MAILTO" is not the same claim as "an alert reaches me": the only proof is a message you actually received. The infra-report POST to the app was, for that whole period, the only channel that worked.
+1. Complete the [Digi account, capacity, host and rclone requirements](../RECOVERY.md#digi-storage-and-rclone)
+   on both nodes. Preserve a protected recovery copy of the rclone and crypt secrets.
+2. Prove `digi-crypt:` with the documented encrypted upload/download/delete check on both nodes.
+3. Review the checked-out changes and apply the installer on each node within the relevant
+   operations window. The installer does not install or configure rclone.
+4. Inspect `/etc/cron.d/pve-helper-scripts` and installed helper versions on **both** nodes.
+5. Confirm cron `PATH=/usr/sbin:/usr/bin:/sbin:/bin`. A missing external tool is a failed observation.
+6. Run `pg-offsite --now`, `offsite-sync` and `backup-verify`; inspect logs and remote objects.
+7. Prove an isolated restore/decryption and actual report receipt. Local send success does not prove
+   recipient delivery.
 
-## The rule these checks obey
+`/etc/infra-report.conf` supplies `INFRA_URL`, `INFRA_TOKEN` and `INFRA_PEER_ADDRESS`. Keep it private.
+The wrapper's exit code remains the job's exit code. Quiet mode still writes structured evidence;
+an incomplete collector remains incomplete. Install all helper files as one version.
 
-The app also receives **structured evidence** (platform ADR-0015 D4b). `infra-report` creates a
-private sidecar; `cluster-health` and `backup-verify` write passing checks there even with `--quiet`,
-and confirm completion. `infra-report-payload.py` groups stable check identifiers and serializes the
-bounded results. Missing completion reports an incomplete collector. Install the shell scripts and
-their helper files together on both nodes; version-1 reports remain readable as unstructured data.
+Health readings carry their timestamps and represent the scheduled sample. `SYNCING` is an in-flight
+replication, not an error. Link 1 is optional/on-demand; Link 0 is required. Disk checks cover SATA
+and NVMe. Missing commands, empty output and unreachable peers cannot establish a passing result.
 
-`infra-host-metrics.py`, called by `cluster-health`, adds read-only failed-unit counts, temperature
-values judged against the hardware's own thresholds (a reading with no published threshold is kept
-and not judged; only a node where *no* reading has one warns), cached APT update counts and a
-20-packet LAN sample. It requires
-`INFRA_PEER_ADDRESS` for the peer's LAN address, supplied by `/etc/infra-report.conf` through the
-wrapper. Unavailable tools/data warn; the collector changes no packages, sensors or network settings,
-so two prerequisites are the operator's: `lm-sensors` (Stage 2.4), and the APT success stamp, which
-nothing on Debian writes until `install-scripts.sh` installs its hook. Daily
-host measurements retain their own timestamps and must not be read as continuous monitoring.
-Prerequisites, exact thresholds, rollout order and effective app configuration live in
-`platform/docs/waa/infra/OPERATIONS.md` §2.2. Parser regression checks:
-`python3 -B -m unittest discover -s tests -v` from this directory.
+Parser/retention verification from this directory:
 
-Both recurring checks were rewritten on 2026-09-10 around one invariant, learned by watching them get it wrong for days: **a check may only report what it actually observed.**
-
-An empty result set is not a pass. A command that did not run is not a pass. A question about the peer that this node cannot answer is not a pass. Three concrete consequences, each of which had already bitten:
-
-- **The cron file sets `PATH`.** Cron's default is `/usr/bin:/bin`, which excludes `/usr/sbin` — home to `smartctl`, `corosync-cfgtool`, `ha-manager`, `qm`, `dmidecode` and `lsmod`. Missing tools failed in *both* directions at once: with no `smartctl` output to grep, four healthy NVMe drives reported `[FAIL]`; with no `corosync-cfgtool` output to grep, a link that had been down for six days reported `[ OK ]`. The nightly mail screamed about the disks and reassured about the ring. `/etc/pve/vzdump.cron`, which PVE generates itself, has carried the `PATH` line all along.
-- **Every external tool is guarded.** A tool that is not on `PATH` now produces a `[FAIL]` naming the tool and saying the check did not run — never a verdict about hardware nothing spoke to.
-- **Cluster-wide questions are asked cluster-wide.** "Is a vzdump job scheduled?" reads `jobs.cfg` / `vzdump.cron` out of pmxcfs, which answers for the whole cluster from either node, and `backup-verify` asks Digi for the newest copy of each tier rather than the staging a tier passes through — a node can only vouch for what it can see.
-
-Two related details, same theme:
-
-- **07:07, not 07:00.** The replication jobs are scheduled `*:0` and fire at `HH:00:00`–`:09`. A check at `07:00:01` caught a normal in-flight sync and called it a failure nearly every morning. `cluster-health` no longer treats `SYNCING` as a fault — `/usr/share/perl5/PVE/CLI/pvesr.pm` builds that column as `$state = $job->{pid} ? "SYNCING" : $job->{error} // 'OK'`, so the column is exactly one of `SYNCING` (a sync holds a pid *right now*), `OK`, or the literal error text. That is the repair; the seven minutes are not. Job `1022-0` is scheduled `*/1` and fires 1440 times a day, so no cron minute dodges a sync — moving off the top of the hour only stops the check racing the `*:0` jobs, which is hygiene on top of a fix that was already made.
-- **On-demand corosync links are expected to be down.** `ON_DEMAND_LINKS` at the top of `cluster-health` lists them; link 1 is the 10G cable that is only plugged in for a migration ([5.2](../setup/05-network.md#52-the-10g-direct-link--plugged-in-on-demand-not-left-connected)). Link 0 is deliberately not in that list.
-
-What is deliberately **not** here: anything that belongs to Ansible (in-VM state — [the ownership boundary](../operations/20-upgrades.md#205-the-same-pattern-applied-elsewhere)), and unattended versions of `node-return`/`restore-drill`/`create-vms` — procedures that move or create VMs deserve a human watching.
+```bash
+python3 -B -m unittest discover -s tests -v
+```
