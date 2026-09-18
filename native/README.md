@@ -58,6 +58,13 @@ ansible-playbook playbooks/deploy.yml -e app=myapp
 
 Use `--ask-vault-pass` when the selected inventory is encrypted. A complete initial bootstrap can
 deploy every configured app automatically; verify the `applications` list and dependency order first.
+
+An application definition carries its config bundle and repository token, and Ansible prints a
+loop's `item` with every `assert` result and with any item that fails; `loop_control.label` only
+shortens the header line. The validation and deploy tasks therefore loop over application names
+or positions and look the definition up in a task variable. Role tasks that still loop over
+`native_apps` print the whole definition when an item fails, and `-v` prints it always: treat the
+output of a failed or verbose run as a credential, and keep new loops off the definitions.
 Application code release and host configuration apply are different operations. Pulling this repository
 alone updates neither installed templates nor services. App migrations create/update application
 schemas; Ansible installs/tunes PostgreSQL and makes PostGIS available to new spatial databases.

@@ -47,31 +47,38 @@
           set_fact:
             native_apps: "{{ applications }}"
 
+        # Looped by position, never over the application dicts: `assert` prints its `item` in
+        # full on every run (`loop_control.label` only shortens the header line), and an
+        # application dict carries its whole config bundle and repo_token — the JWT signing key
+        # and the token used to be printed by every bootstrap. A name may be what is missing,
+        # so the position is the one handle that always exists.
         - name: Validate application definitions
+          vars:
+            native_app: "{{ native_apps[item] }}"
           assert:
             that:
-              - item.name is defined
-              - item.name | string | trim | length > 0
-              - item.assembly is defined
-              - item.assembly | string | trim | length > 0
-              - item.domain is defined
-              - item.domain | string | trim | length > 0
-              - item.port_blue is defined
-              - item.port_green is defined
-              - item.drain_seconds is defined
-              - (item.drain_seconds | int) > 0
-              - (item.port_blue | int) > 0
-              - (item.port_green | int) > 0
-              - (item.port_blue | int) != (item.port_green | int)
-              - item.repo_url | default('') | length == 0 or (item.repo_token | default('') | string | trim | length > 0)
-              - item.repo_token is not defined or (item.repo_token | string | trim | length == 0) or (item.repo_token | string | trim != 'ghp_...')
+              - native_app.name is defined
+              - native_app.name | string | trim | length > 0
+              - native_app.assembly is defined
+              - native_app.assembly | string | trim | length > 0
+              - native_app.domain is defined
+              - native_app.domain | string | trim | length > 0
+              - native_app.port_blue is defined
+              - native_app.port_green is defined
+              - native_app.drain_seconds is defined
+              - (native_app.drain_seconds | int) > 0
+              - (native_app.port_blue | int) > 0
+              - (native_app.port_green | int) > 0
+              - (native_app.port_blue | int) != (native_app.port_green | int)
+              - native_app.repo_url | default('') | length == 0 or (native_app.repo_token | default('') | string | trim | length > 0)
+              - native_app.repo_token is not defined or (native_app.repo_token | string | trim | length == 0) or (native_app.repo_token | string | trim != 'ghp_...')
             fail_msg: >-
-              Invalid application configuration for {{ item.name }}. Verify required fields,
-              ports, and repository credentials. For repository-based auto-deploy,
-              set a real GitHub token in vault.yml (not placeholder ghp_...).
-          loop: "{{ native_apps }}"
+              Invalid application configuration for {{ native_app.name | default('application #' ~ item) }}.
+              Verify required fields, ports, and repository credentials. For repository-based
+              auto-deploy, set a real GitHub token in vault.yml (not placeholder ghp_...).
+          loop: "{{ range(0, native_apps | length) | list }}"
           loop_control:
-            label: "{{ item.name }}"
+            label: "{{ native_app.name | default('application #' ~ item) }}"
 
         - name: Collect all slot ports
           set_fact:

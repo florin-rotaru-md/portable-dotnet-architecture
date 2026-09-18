@@ -43,40 +43,46 @@
         fail_msg: >-
           No application with repo_url + project_path matched{% if app is defined %} name '{{ app }}'{% endif %}.
 
+    # Both loops below run over application NAMES, never over the application dicts. A loop's
+    # `item` is part of every result Ansible prints — always for `assert`, and for any module the
+    # moment an item fails — and `loop_control.label` only shortens the header line above it. An
+    # application dict carries its whole config bundle and repo_token, so looping over the dicts
+    # printed the JWT signing key, the bundle's other secrets and the token on every deploy.
     - name: Validate repository credentials
+      vars:
+        deploy_app: "{{ deploy_apps | selectattr('name', 'equalto', item) | first }}"
       assert:
         that:
-          - item.repo_token | default('') | string | trim | length > 0
-          - item.repo_token | string | trim != 'ghp_...'
+          - deploy_app.repo_token | default('') | string | trim | length > 0
+          - deploy_app.repo_token | string | trim != 'ghp_...'
         fail_msg: >-
-          Invalid repo_token for {{ item.name }}. Set a real token in vault.yml
+          Invalid repo_token for {{ item }}. Set a real token in vault.yml
           (fine-grained PAT, Contents read-only) — not empty, not the placeholder.
-      loop: "{{ deploy_apps }}"
-      loop_control:
-        label: "{{ item.name }}"
+      loop: "{{ deploy_apps | map(attribute='name') | list }}"
 
   tasks:
     - name: Run deploy.sh (build → idle slot → health check → switch)
+      vars:
+        deploy_app: "{{ deploy_apps | selectattr('name', 'equalto', item) | first }}"
       command:
         argv:
-          - "{{ apps_root }}/{{ item.name }}/scripts/deploy.sh"
+          - "{{ apps_root }}/{{ item }}/scripts/deploy.sh"
           - --repo-url
-          - "{{ item.repo_url }}"
+          - "{{ deploy_app.repo_url }}"
           - --branch
-          - "{{ item.repo_branch | default('master') }}"
+          - "{{ deploy_app.repo_branch | default('master') }}"
           - --project-path
-          - "{{ item.project_path }}"
+          - "{{ deploy_app.project_path }}"
       environment:
-        APP_REPO_TOKEN: "{{ item.repo_token }}"
+        APP_REPO_TOKEN: "{{ deploy_app.repo_token }}"
       become_user: "{{ app_user }}"
-      loop: "{{ deploy_apps }}"
-      loop_control:
-        label: "{{ item.name }}"
+      loop: "{{ deploy_apps | map(attribute='name') | list }}"
       register: deploy_results
 
     - name: Deploy summary
       debug:
-        msg: "{{ item.stdout_lines | default(['(no output)']) | last }}"
+        # `true`: an empty list counts as missing too — what a --check run leaves behind.
+        msg: "{{ item.stdout_lines | default(['(no output)'], true) | last }}"
       loop: "{{ deploy_results.results }}"
       loop_control:
-        label: "{{ item.item.name }}"
+        label: "{{ item.item }}"
