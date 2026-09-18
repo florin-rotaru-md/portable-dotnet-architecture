@@ -73,6 +73,13 @@ zpool status
 Thin provisioning makes discard return space. Existing thick volumes are not converted by the
 storage flag. Single-disk ZFS detects corruption but cannot repair from a second local copy.
 
+The installer registers `local-lvm` over the thin pool `pve/data`. Guests here live on `apps` and
+`db`, and both nodes gave that pool's space to `root`. Remove the definition with the pool
+(`pvesm remove local-lvm`; it edits `storage.cfg` only): an enabled storage without its backing
+volume stays `inactive`, `pvestatd` logs the missing volume every cycle, and the application
+monitor fails `storage` for each node that lists it. `pvesm status` must show `local`, `apps` and
+`db` active on both nodes and nothing inactive.
+
 Create the cluster on pve1 and join empty pve2 using the Proxmox cluster UI. Specify LAN as Link 0
 and direct network as Link 1 on both ends. Joining replaces pve2's cluster configuration; recheck
 storage availability on both nodes afterwards.
