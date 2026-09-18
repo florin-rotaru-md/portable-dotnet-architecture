@@ -34,6 +34,8 @@ VZDUMP_MAX_AGE_D=93                     # quarterly images plus slack
 BASE_MAX_AGE_D=8                        # weekly base plus slack
 CONFIG_MAX_AGE_H=30                     # 02:40 archive, 05:00 upload
 SPOOL_MAX_AGE_MIN=15                    # pg-offsite drains the spool every minute
+WAL_UPLOAD_WAIT_S=${WAL_UPLOAD_WAIT_S:-150}     # two pg-offsite cycles plus an upload, before "not on Digi" is said
+WAL_UPLOAD_POLL_S=${WAL_UPLOAD_POLL_S:-15}
 LOGICAL_MAX_AGE_H=26                    # nightly logical dump
 LOGICAL_UPLOAD_GRACE_H=1                # a run younger than this may not have been pulled yet
 PG_SHRINK_FLOOR_BYTES=65536             # a dump under half its predecessor warns, once that predecessor is past this
@@ -122,13 +124,33 @@ if [ "${DIVERGED:-0}" -gt 0 ]; then
 fi
 
 CHECK_ID=pg-wal-offsite CHECK_CATEGORY=backups
+# The newest archived file is, by construction, the one least likely to be offsite yet: archive_timeout
+# closes a segment every minute and pg-offsite uploads on the minute, so at any instant the newest file
+# is about half a minute old and still in the spool. Looking once is a coin toss — this script starts at
+# hh:30:00, the same second as a pg-offsite run that is uploading that very file — and because it runs
+# once a day, a lost toss sat on the dashboard as a [WARN] until the next morning. So the file is given
+# the time two upload cycles take before anything is said about it. Still absent after that is a real
+# delay, and the verdicts are the old ones: a warning inside the spool's drain window, a failure past it.
+wal_on_digi() { rcl lsf --files-only "${REMOTE}postgres/wal" --include "$1.zst" 2>/dev/null | grep -qx "$1.zst"; }
 if [ "$OFFSITE" = 1 ] && [ -n "${A_LAST:-}" ]; then
-    if rcl lsf --files-only "${REMOTE}postgres/wal" --include "$A_LAST.zst" 2>/dev/null | grep -qx "$A_LAST.zst"; then
+    WAL_T0=$SECONDS
+    WAL_FOUND=0
+    while :; do
+        if wal_on_digi "$A_LAST"; then
+            WAL_FOUND=1
+            break
+        fi
+        [ $((SECONDS - WAL_T0)) -ge "$WAL_UPLOAD_WAIT_S" ] && break
+        sleep "$WAL_UPLOAD_POLL_S"
+    done
+    WAL_WAITED=$((SECONDS - WAL_T0))
+    WAL_AGE_S=$(( A_NOW - A_LAST_T + WAL_WAITED ))
+    if [ "$WAL_FOUND" = 1 ]; then
         ok "pg-wal-offsite: newest archived WAL file $A_LAST is on Digi"
-    elif [ $(( A_NOW - A_LAST_T )) -lt $((SPOOL_MAX_AGE_MIN * 60)) ]; then
-        warn "pg-wal-offsite: newest archived WAL file $A_LAST is not on Digi yet ($(( (A_NOW - A_LAST_T) / 60 )) min old)"
+    elif [ "$WAL_AGE_S" -lt $((SPOOL_MAX_AGE_MIN * 60)) ]; then
+        warn "pg-wal-offsite: newest archived WAL file $A_LAST is still not on Digi $(( WAL_AGE_S / 60 )) min after it was archived (watched for ${WAL_WAITED}s) — pg-offsite uploads every minute; on the node running 1022: tail /var/log/pg-offsite.log"
     else
-        fail "pg-wal-offsite: newest archived WAL file $A_LAST is NOT on Digi, $(( (A_NOW - A_LAST_T) / 60 )) min after it was archived"
+        fail "pg-wal-offsite: newest archived WAL file $A_LAST is NOT on Digi, $(( WAL_AGE_S / 60 )) min after it was archived"
     fi
 fi
 

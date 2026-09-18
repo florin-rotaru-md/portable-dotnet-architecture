@@ -43,6 +43,9 @@ an incomplete collector remains incomplete. Install all helper files as one vers
 Health readings carry their timestamps and represent the scheduled sample. `SYNCING` is an in-flight
 replication, not an error. Link 1 is optional/on-demand; Link 0 is required. Disk checks cover SATA
 and NVMe. Missing commands, empty output and unreachable peers cannot establish a passing result.
+`backup-verify` waits up to `WAL_UPLOAD_WAIT_S` (150 s) for the newest archived WAL file to reach the
+offsite remote before judging it: that file is normally still inside `pg-offsite`'s one-minute cycle,
+and a daily sample would otherwise pin a routine in-flight upload on the dashboard as a warning.
 
 Parser/retention verification from this directory:
 
