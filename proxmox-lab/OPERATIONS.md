@@ -106,6 +106,7 @@ Script reports and PVE native notifications are separate paths; verify receipt f
 | Healthy pool, failed VM disk | Single-disk pool limitations; do not infer redundancy from ONLINE |
 | Node returned after long outage | Version/kernel drift and incomplete replica catch-up |
 | Missing morning report | Installed cron, PATH, required binary, ingest config and transport |
+| Monitor fails `storage` on `<name>@<node> unavailable` | `pvesm status`: an inactive storage, often an installer default whose backing volume was removed (`local-lvm` without `pve/data`). Confirm no guest, job or replication names it (`grep -rl <name> /etc/pve`), then `pvesm remove <name>`; it edits `storage.cfg` only |
 | Backup check fails | [Coverage and recovery](RECOVERY.md); never suppress merely because replication is green |
 
 ## Recurring work
