@@ -8,7 +8,7 @@ the sibling `ui` repository (`waa-src`, `educa-src`).
 - `proxmox-lab` owns hand-managed hosts, quorum, ZFS, HA, maintenance and recovery. Update the owning
   guide with host changes; distinguish repository targets from verified installed behavior.
 - `perf` contains the load harness. `docker`, `k3s`, `k3s-proxmox` and `hyper-v` are alternatives.
-- Inventory is outside Git: workstation `D:/git/ansible/inventory`, control `~/app-inventory`.
+- Inventory is outside Git: workstation `D:/git/production/ansible/inventory`, control `~/app-inventory`.
   Workstation files are heredoc recipes. `vault.yml` is plaintext; protect every copy as a credential.
 - Reflect role/input changes in `native/example` and the corresponding alternative examples when
   applicable. Check them explicitly; they are maintained by hand.

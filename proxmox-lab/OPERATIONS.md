@@ -68,7 +68,9 @@ Never start a second copy of a guest to recover a migration. Check current HA/ta
 - Rehearse PostgreSQL major upgrades on an isolated restored VM; app/DP databases and extensions
   must all pass migration/restore checks. A new version is not a configuration-only change.
 - `cloudflared` is pinned/managed by the native role; connector restart affects public routing.
-  Verify both public APIs afterwards. Application release does not upgrade it automatically.
+  Verify both public APIs afterwards. Application release does not upgrade it automatically: it
+  moves with the inventory's `cloudflared_version` and the connector scope of the
+  [inventory procedure](../../platform/docs/OPERATIONS.md#inventory).
 - Inspect firmware updates and reason for applying them. AC, battery, secure boot, storage mode,
   virtualization and power-on-after-loss settings need verification after a flash.
 
