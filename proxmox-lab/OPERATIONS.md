@@ -76,6 +76,22 @@ PostgreSQL config/package changes can restart the cluster. Scope Ansible so an a
 not accidentally apply the postgres role. Do not merge host, database-major and application changes
 into one unobservable maintenance step.
 
+Guest packages, one VM at a time: control and monitoring, then the database, then the app VM.
+
+1. `sudo apt-get update`, then read `apt list --upgradable`: no kernel or PostgreSQL major
+   surprise.
+2. On `.21`, hold `cloudflared` for the run (`apt-mark hold cloudflared`, `unhold` after). Its
+   package is not held, so an upgrade would move it past the inventory's `cloudflared_version`.
+3. Upgrade non-interactively, keeping Ansible's files:
+   `sudo env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get -y upgrade --with-new-pkgs
+   -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold`.
+4. Reboot only where `/var/run/reboot-required` exists. Ubuntu phases some updates per machine
+   ("deferred due to phasing"): leave them, they arrive with their phase.
+5. needrestart restarts every service a changed library maps, PostgreSQL included, even with no
+   PostgreSQL package in the list. Both APIs then answer readiness 503 until their pools
+   reconnect, so poll them after `.22`. After `.21`, check Nginx, cloudflared and alloy, each
+   app's active slot, both public APIs and Fiscal's loopback readiness.
+
 ## Notification and probe health
 
 Host scripts emit `[ OK ]`, `[WARN]`, `[FAIL]` and meaningful exit codes. Missing tools mean

@@ -160,7 +160,7 @@ filesystem growth before creating production guests.
 
 | VM | Address | RAM | Disk / storage | HA |
 |---|---|---|---|---|
-| 1020 control | .20 | 4 GB | 32 GB / apps | Manual recovery |
+| 1020 control | .20 | 4 GB | 32 GB / apps | Manual recovery; manual start (`qm start 1020` before a deploy) |
 | 1021 app | .21 | 8 GB | 128 GB / apps | Yes |
 | 1022 postgres | .22 | 32 GB | 1024 GB / db | Yes |
 | 1023 monitoring | .23 | 8 GB | 320 GB / apps | Manual recovery; start at boot |
