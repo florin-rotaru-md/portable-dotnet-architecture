@@ -100,9 +100,11 @@ the [release and rollback acceptance checks](../../platform/docs/OPERATIONS.md#r
 
 An app that a sibling addresses by name declares `resolve_locally: true`; today that is `fiscal`,
 which both Waa APIs reach at `http://fiscal.waa.ro/`. Its domain must resolve to `127.0.0.1` on the
-app VM. Otherwise the call leaves the machine: Cloudflare answers the plain-HTTP request with a 301
-to https. The client follows it, so the API key crosses a plaintext first hop and a POST arrives
-as a GET.
+app VM. Otherwise the name resolves to Cloudflare. The Waa client then refuses to connect: it only
+connects to loopback or private addresses and never follows a redirect
+([wire contract](../../platform/docs/fiscal/ARCHITECTURE.md#wire-contract)). Invoicing waits as an
+outage until the name resolves locally again. Before that client guard, the API key crossed a
+plaintext hop to the edge and a POST followed the edge's 301 as a GET.
 
 `/usr/local/sbin/ensure-local-domains` owns that block in `/etc/hosts`. It prints `written` or
 `unchanged`, and it fails when the name still resolves elsewhere. The nginx role renders it and
@@ -127,9 +129,6 @@ Alternatives that were not chosen:
 - `manage_etc_hosts: false` in a custom Proxmox user-data (`qm set --cicustom`). It is a host-side
   change, lost when the cloud-init drive is regenerated.
 - The block in `/etc/cloud/templates/hosts.debian.tmpl`. That keeps a second copy of the list.
-
-The client-side guard is open work in
-[Fiscal operations](../../platform/docs/fiscal/OPERATIONS.md#open-operational-work).
 
 ## Tunnel and logs
 

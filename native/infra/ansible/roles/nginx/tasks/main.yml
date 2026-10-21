@@ -23,9 +23,10 @@
 # ledger at `Fiscal:Endpoint = http://fiscal.waa.ro/` (platform Apps/Waa/Waa.Server/appsettings.waa.ro.json),
 # deliberately by NAME rather than by loopback port, because a FiscalServer deploy switches nginx
 # from one slot to the other and an app pinned to a slot port would lose its drain mid-switch.
-# Without the entry the name resolves publicly, and what answers is not a refusal but Cloudflare:
-# a 301 to https that HttpClient follows, carrying the key over a plaintext first hop and turning a
-# POST into a GET (seen 2026-10-09 → 2026-10-21, platform/docs/fiscal/OPERATIONS.md#open-operational-work).
+# Without the entry the name resolves publicly, to Cloudflare. Until 2026-10-21 the client then
+# followed the edge's 301 to https, carrying the key over a plaintext first hop and turning a POST
+# into a GET (seen 2026-10-09 → 2026-10-21); it now refuses any non-private address, so the same
+# fault stops invoicing instead (platform/docs/fiscal/ARCHITECTURE.md#wire-contract).
 #
 # Until 2026-09-07 the entry was a line somebody typed into /etc/hosts by hand. Nothing here
 # managed it, so a rebuilt VM came back without it and the first symptom would have been invoices

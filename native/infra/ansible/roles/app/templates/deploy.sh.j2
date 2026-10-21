@@ -169,7 +169,8 @@ echo "────────────────────────�
 # A sibling app reaches the apps on this host by NAME (Waa's `Fiscal:Endpoint` is
 # http://fiscal.waa.ro/), and that name stays on the machine only while /etc/hosts carries the
 # nginx role's block — which cloud-init rewrites away on every boot. Re-asserted on every deploy,
-# before anything is built, so a release never lands on a host whose sibling calls leave it. The
+# before anything is built, so a release never lands on a host whose sibling calls cannot reach
+# their callee (the Waa client refuses a name that resolves off the host's network). The
 # script owns the list and the format (roles/nginx/templates/ensure-local-domains.sh.j2) and fails
 # when the name still resolves elsewhere after the write.
 LOCAL_DOMAINS_SCRIPT=/usr/local/sbin/ensure-local-domains
