@@ -71,9 +71,10 @@ schemas; Ansible installs/tunes PostgreSQL and makes PostGIS available to new sp
 
 ## Runtime contract
 
-`deploy.sh` publishes into the idle slot, starts it, polls `/.well-known/ready`, validates/reloads
-Nginx, enables the serving slot, drains, then stops/disables the old slot. Exactly one slot per app
-must be enabled after release. A freshly provisioned app has no enabled slot before first publish.
+`deploy.sh` first asserts local name resolution (below), then publishes into the idle slot, starts
+it, polls `/.well-known/ready`, validates/reloads Nginx, enables the serving slot, drains, then
+stops/disables the old slot. Exactly one slot per app must be enabled after release. A freshly
+provisioned app has no enabled slot before first publish.
 
 ```text
 /opt/apps/<app>/
@@ -85,6 +86,7 @@ must be enabled after release. A freshly provisioned app has no enabled slot bef
   runtime/active-slot
   runtime/deploy-history.log
   scripts/                  deploy, rollback, health-check, switch-nginx, current-slot
+/usr/local/sbin/ensure-local-domains   host-wide; rendered by the nginx role
 ```
 
 On the app VM, later deploys can use `sudo -u devops /opt/apps/<app>/scripts/deploy.sh`.
@@ -92,6 +94,30 @@ Token resolution is command argument → `APP_REPO_TOKEN` → private `config/re
 rendered file over command-line secrets. Reapply the app role after rotating its inventory token.
 `rollback.sh` switches code slots; it does not undo schema changes or shared configuration. Use
 the [release and rollback acceptance checks](../../platform/docs/OPERATIONS.md#release).
+
+### Local name resolution
+
+An app that a sibling addresses by name declares `resolve_locally: true`; today that is `fiscal`,
+which both Waa APIs reach at `http://fiscal.waa.ro/`. Its domain must resolve to `127.0.0.1` on the
+app VM. Otherwise the call leaves the machine: Cloudflare answers the plain-HTTP request with a 301
+to https. The client follows it, so the API key crosses a plaintext first hop and a POST arrives
+as a GET.
+
+`/usr/local/sbin/ensure-local-domains` owns that block in `/etc/hosts`. The nginx role renders and
+runs it on every bootstrap, and every `deploy.sh` runs it again before building. It prints
+`written` or `unchanged`, and it fails when the name still resolves elsewhere. A deploy stops
+when the script is missing; render it with `bootstrap.yml --tags nginx`.
+
+Cloud-init on the Ubuntu cloud image keeps `manage_etc_hosts: true` and regenerates `/etc/hosts` at
+every boot. A reboot therefore drops the block until the next deploy or bootstrap. That happened
+with the 2026-10-09 package-update reboot and went unnoticed until 2026-10-21. After rebooting the
+app VM, run `sudo /usr/local/sbin/ensure-local-domains`.
+
+Open: stop cloud-init from owning the file, so a reboot keeps the block. Two ways: a
+`/etc/cloud/cloud.cfg.d/` drop-in with `manage_etc_hosts: false`, or the block added to
+`/etc/cloud/templates/hosts.debian.tmpl`. Until then the deploy-time assertion is the guard. The
+client-side guard is open work in
+[Fiscal operations](../../platform/docs/fiscal/OPERATIONS.md#open-operational-work).
 
 ## Tunnel and logs
 

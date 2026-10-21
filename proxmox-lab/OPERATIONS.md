@@ -93,6 +93,10 @@ Guest packages, one VM at a time: control and monitoring, then the database, the
    PostgreSQL package in the list. Both APIs then answer readiness 503 until their pools
    reconnect, so poll them after `.22`. After `.21`, check Nginx, cloudflared and alloy, each
    app's active slot, both public APIs and Fiscal's loopback readiness.
+6. If `.21` rebooted, run `sudo /usr/local/sbin/ensure-local-domains`. It must end with
+   `fiscal.waa.ro → 127.0.0.1`. Cloud-init rewrote `/etc/hosts` at boot, and without that line
+   the Waa → ledger calls go out over the Internet
+   ([local name resolution](../native/README.md#local-name-resolution)).
 
 ## Notification and probe health
 

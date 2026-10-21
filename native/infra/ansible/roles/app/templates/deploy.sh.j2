@@ -165,6 +165,20 @@ echo "Branch:       $REPO_BRANCH"
 echo "Project:      $PROJECT_PATH"
 echo "──────────────────────────────────────"
 
+# ── Local name resolution ─────────────────────────────────────────────────────
+# A sibling app reaches the apps on this host by NAME (Waa's `Fiscal:Endpoint` is
+# http://fiscal.waa.ro/), and that name stays on the machine only while /etc/hosts carries the
+# nginx role's block — which cloud-init rewrites away on every boot. Re-asserted on every deploy,
+# before anything is built, so a release never lands on a host whose sibling calls leave it. The
+# script owns the list and the format (roles/nginx/templates/ensure-local-domains.sh.j2) and fails
+# when the name still resolves elsewhere after the write.
+LOCAL_DOMAINS_SCRIPT=/usr/local/sbin/ensure-local-domains
+if [ ! -x "$LOCAL_DOMAINS_SCRIPT" ]; then
+  echo "Error: $LOCAL_DOMAINS_SCRIPT is missing. Re-run bootstrap.yml with the nginx tag; it renders the script." >&2
+  exit 1
+fi
+sudo "$LOCAL_DOMAINS_SCRIPT"
+
 # ── Clone / pull repo (private GitHub repo; token required) ──────────────────
 if [ -z "$REPO_TOKEN" ]; then
   echo "Error: GitHub token is required for repository deploys. Pass --token, set APP_REPO_TOKEN, or re-run the playbook so config/repo-token is rendered from vault.yml." >&2

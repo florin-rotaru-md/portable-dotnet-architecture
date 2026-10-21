@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# ensure-local-domains — make every app domain that a sibling app addresses by NAME resolve to
+# this host, and prove it does.
+#
+# Rendered by the nginx role, which runs it on every bootstrap; every app's deploy.sh runs it again
+# before it builds. Both paths write through this one script, so it owns the domain list and the
+# block's format — the markers are the ones the role's former blockinfile task wrote, so an
+# existing block is recognised and replaced, never duplicated.
+#
+# Why a deploy re-asserts it: /etc/hosts is not ours to keep. The Ubuntu cloud image runs
+# cloud-init with `manage_etc_hosts: true`, which regenerates the file from its template on every
+# boot. The reboot that followed the 2026-10-09 package update dropped the block that way, and
+# until 2026-10-21 `http://fiscal.waa.ro/` resolved to Cloudflare: the ledger calls left the
+# machine with their key on a plaintext first hop and came back through the tunnel after a 301 —
+# and a POST that follows a 301 arrives as a GET.
+#
+# Prints one line, "written" or "unchanged". Exits non-zero when a listed domain still resolves
+# to anything but 127.0.0.1 after the write: the check is the resolver's answer, not the file's
+# content, because that answer is what the app's HttpClient gets.
+set -euo pipefail
+
+HOSTS_FILE=/etc/hosts
+BEGIN_MARKER="# BEGIN ANSIBLE MANAGED - app domains addressed from this host"
+END_MARKER="# END ANSIBLE MANAGED - app domains addressed from this host"
+DOMAINS="{{ local_domains | join(' ') }}"
+
+if [ "$(id -u)" -ne 0 ]; then
+  echo "ensure-local-domains: run it as root (sudo)." >&2
+  exit 1
+fi
+
+desired=$(mktemp)
+trap 'rm -f "$desired"' EXIT
+
+# The file as it stands minus our block, then the block at the end, where blockinfile put it.
+# An empty list leaves no block at all.
+awk -v begin="$BEGIN_MARKER" -v end="$END_MARKER" \
+  '$0 == begin { skip = 1; next } $0 == end { skip = 0; next } !skip' "$HOSTS_FILE" > "$desired"
+
+if [ -n "$DOMAINS" ]; then
+  {
+    echo "$BEGIN_MARKER"
+    for domain in $DOMAINS; do
+      echo "127.0.0.1 $domain"
+    done
+    echo "$END_MARKER"
+  } >> "$desired"
+fi
+
+if cmp -s "$desired" "$HOSTS_FILE"; then
+  state="unchanged"
+else
+  # Written in place rather than replaced, so the file keeps its inode, owner and mode.
+  cat "$desired" > "$HOSTS_FILE"
+  state="written"
+fi
+
+for domain in $DOMAINS; do
+  addresses=$(getent ahosts "$domain" | awk '{ print $1 }' | sort -u | tr '\n' ' ')
+
+  if [ "$addresses" != "127.0.0.1 " ]; then
+    echo "ensure-local-domains: $domain resolves to ${addresses:-nothing}instead of 127.0.0.1 only." >&2
+    exit 1
+  fi
+done
+
+echo "local domains ${state}${DOMAINS:+ ($DOMAINS → 127.0.0.1)}"

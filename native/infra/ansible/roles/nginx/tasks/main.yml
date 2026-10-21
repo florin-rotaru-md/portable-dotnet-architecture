@@ -19,15 +19,23 @@
 
 
 # An app that a SIBLING app addresses by name over the local hop needs that name to resolve to
-# this host, or the call leaves the machine, arrives at the public ingress and is refused by
-# whatever guards it. That is not hypothetical: api.waa.ro reaches the ledger at
-# `Fiscal:Endpoint = http://fiscal.waa.ro/` (platform Apps/Waa/Waa.Server/appsettings.waa.ro.json),
+# this host, or the call leaves the machine. That is not hypothetical: both Waa APIs reach the
+# ledger at `Fiscal:Endpoint = http://fiscal.waa.ro/` (platform Apps/Waa/Waa.Server/appsettings.waa.ro.json),
 # deliberately by NAME rather than by loopback port, because a FiscalServer deploy switches nginx
 # from one slot to the other and an app pinned to a slot port would lose its drain mid-switch.
+# Without the entry the name resolves publicly, and what answers is not a refusal but Cloudflare:
+# a 301 to https that HttpClient follows, carrying the key over a plaintext first hop and turning a
+# POST into a GET (seen 2026-10-09 → 2026-10-21, platform/docs/fiscal/OPERATIONS.md#open-operational-work).
 #
 # Until 2026-09-07 the entry was a line somebody typed into /etc/hosts by hand. Nothing here
 # managed it, so a rebuilt VM came back without it and the first symptom would have been invoices
 # failing to reach the ledger — at whatever moment the rebuild happened to be.
+#
+# Writing it once is not enough either: cloud-init regenerates /etc/hosts on every boot
+# (`manage_etc_hosts: true` on the Ubuntu cloud image), so a reboot drops it. The script below is
+# therefore rendered as a host command and run twice over: here on every bootstrap, and by every
+# app's deploy.sh before it builds (roles/app/templates/deploy.sh.j2). It owns the list and the
+# block's format; neither caller writes the file itself.
 #
 # It is opt-in per app rather than applied to every domain, because making a domain resolve locally
 # is a behaviour change for anything on this host that means to reach it through the public path.
@@ -36,20 +44,21 @@
 # Portability, since this deployment is expected to move to a cloud host: in that world the same
 # rule is a private DNS record or a service name, and the flag comes off. What must not change is
 # that the caller keeps addressing the callee by NAME.
-- name: Resolve locally-addressed app domains to this host
+- name: Render the local-domain resolver
   vars:
     local_domains: "{{ native_apps | selectattr('resolve_locally', 'defined') | selectattr('resolve_locally') | map(attribute='domain') | list }}"
-  blockinfile:
-    path:   /etc/hosts
-    marker: "# {mark} ANSIBLE MANAGED - app domains addressed from this host"
-    block: |
-      {% for domain in local_domains %}
-      127.0.0.1 {{ domain }}
-      {% endfor %}
-    state: "{{ 'present' if local_domains | length > 0 else 'absent' }}"
-    owner:  root
-    group:  root
-    mode:   '0644'
+  template:
+    src:   ensure-local-domains.sh.j2
+    dest:  /usr/local/sbin/ensure-local-domains
+    owner: root
+    group: root
+    mode:  '0755'
+
+# Skipped under --check like any command; the template task above shows the list it would apply.
+- name: Resolve locally-addressed app domains to this host
+  command: /usr/local/sbin/ensure-local-domains
+  register: local_domains_result
+  changed_when: "'written' in local_domains_result.stdout"
 
 - name: Validate nginx config
   command: nginx -t
