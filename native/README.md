@@ -87,6 +87,7 @@ provisioned app has no enabled slot before first publish.
   runtime/deploy-history.log
   scripts/                  deploy, rollback, health-check, switch-nginx, current-slot
 /usr/local/sbin/ensure-local-domains   host-wide; rendered by the nginx role
+/etc/systemd/system/ensure-local-domains.service   runs it at boot
 ```
 
 On the app VM, later deploys can use `sudo -u devops /opt/apps/<app>/scripts/deploy.sh`.
@@ -103,20 +104,31 @@ app VM. Otherwise the call leaves the machine: Cloudflare answers the plain-HTTP
 to https. The client follows it, so the API key crosses a plaintext first hop and a POST arrives
 as a GET.
 
-`/usr/local/sbin/ensure-local-domains` owns that block in `/etc/hosts`. The nginx role renders and
-runs it on every bootstrap, and every `deploy.sh` runs it again before building. It prints
-`written` or `unchanged`, and it fails when the name still resolves elsewhere. A deploy stops
-when the script is missing; render it with `bootstrap.yml --tags nginx`.
+`/usr/local/sbin/ensure-local-domains` owns that block in `/etc/hosts`. It prints `written` or
+`unchanged`, and it fails when the name still resolves elsewhere. The nginx role renders it and
+runs it three ways:
 
-Cloud-init on the Ubuntu cloud image keeps `manage_etc_hosts: true` and regenerates `/etc/hosts` at
-every boot. A reboot therefore drops the block until the next deploy or bootstrap. That happened
-with the 2026-10-09 package-update reboot and went unnoticed until 2026-10-21. After rebooting the
-app VM, run `sudo /usr/local/sbin/ensure-local-domains`.
+- at every boot, through `ensure-local-domains.service`;
+- on every bootstrap;
+- from every `deploy.sh`, before building. A deploy stops when the script is missing; render it
+  with `bootstrap.yml --tags nginx`.
 
-Open: stop cloud-init from owning the file, so a reboot keeps the block. Two ways: a
-`/etc/cloud/cloud.cfg.d/` drop-in with `manage_etc_hosts: false`, or the block added to
-`/etc/cloud/templates/hosts.debian.tmpl`. Until then the deploy-time assertion is the guard. The
-client-side guard is open work in
+The boot run exists because cloud-init regenerates `/etc/hosts` from its template at every boot.
+`manage_etc_hosts: true` comes from Proxmox's NoCloud user-data. User-data outranks
+`/etc/cloud/cloud.cfg.d/`, so a drop-in inside the VM cannot turn it off. Before the unit existed,
+the 2026-10-09 package-update reboot dropped the block, and that went unnoticed until 2026-10-21.
+
+The unit runs after cloud-init's init stage (`cloud-init-network.service`), which is where
+`update_etc_hosts` rewrites the file. It runs before every app slot unit. It only orders and does
+not block: a failed run leaves the slots to start and is in `journalctl -u ensure-local-domains -b`.
+
+Alternatives that were not chosen:
+
+- `manage_etc_hosts: false` in a custom Proxmox user-data (`qm set --cicustom`). It is a host-side
+  change, lost when the cloud-init drive is regenerated.
+- The block in `/etc/cloud/templates/hosts.debian.tmpl`. That keeps a second copy of the list.
+
+The client-side guard is open work in
 [Fiscal operations](../../platform/docs/fiscal/OPERATIONS.md#open-operational-work).
 
 ## Tunnel and logs

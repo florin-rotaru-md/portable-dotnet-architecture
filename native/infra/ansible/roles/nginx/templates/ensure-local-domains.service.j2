@@ -1,0 +1,23 @@
+# Rendered by the nginx role (roles/nginx/tasks/main.yml); the script it runs owns the domain list
+# and the /etc/hosts block (ensure-local-domains.sh.j2).
+#
+# cloud-init regenerates /etc/hosts from its template on every boot: Proxmox's NoCloud user-data
+# sets `manage_etc_hosts: true`, and user-data outranks anything under /etc/cloud, so the file
+# cannot be kept by configuring cloud-init from inside the VM. Its update_etc_hosts module runs in
+# the init stage (cloud-init-network.service; cloud-init.service before cloud-init 24.3). This
+# unit runs after it and before every app slot, so no slot makes its first call to a sibling
+# through the public path. Ordering only: a failed run is logged and leaves the slots to start.
+[Unit]
+Description=Resolve sibling-addressed app domains to this host
+After=local-fs.target cloud-init-network.service cloud-init.service
+Before={% for app in native_apps %}{{ app.name }}-blue.service {{ app.name }}-green.service {% endfor %}
+
+ConditionPathExists=/usr/local/sbin/ensure-local-domains
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/ensure-local-domains
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

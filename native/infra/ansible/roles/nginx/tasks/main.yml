@@ -32,10 +32,12 @@
 # failing to reach the ledger — at whatever moment the rebuild happened to be.
 #
 # Writing it once is not enough either: cloud-init regenerates /etc/hosts on every boot
-# (`manage_etc_hosts: true` on the Ubuntu cloud image), so a reboot drops it. The script below is
-# therefore rendered as a host command and run twice over: here on every bootstrap, and by every
-# app's deploy.sh before it builds (roles/app/templates/deploy.sh.j2). It owns the list and the
-# block's format; neither caller writes the file itself.
+# (`manage_etc_hosts: true` comes from Proxmox's NoCloud user-data, which outranks anything under
+# /etc/cloud), so a reboot drops it. The script below is therefore rendered as a host command and
+# run three ways: at every boot by its own unit, ordered after cloud-init and before the app slots;
+# here on every bootstrap; and by every app's deploy.sh before it builds
+# (roles/app/templates/deploy.sh.j2). It owns the list and the block's format; no caller writes
+# the file itself.
 #
 # It is opt-in per app rather than applied to every domain, because making a domain resolve locally
 # is a behaviour change for anything on this host that means to reach it through the public path.
@@ -59,6 +61,28 @@
   command: /usr/local/sbin/ensure-local-domains
   register: local_domains_result
   changed_when: "'written' in local_domains_result.stdout"
+
+# The boot-time run: after cloud-init's rewrite, before any app slot starts.
+- name: Install the boot-time local-domain unit
+  template:
+    src:   ensure-local-domains.service.j2
+    dest:  /etc/systemd/system/ensure-local-domains.service
+    owner: root
+    group: root
+    mode:  '0644'
+  register: local_domains_unit
+
+# Started as well as enabled, so `systemctl status` and its journal answer from the first bootstrap
+# rather than from the first reboot. RemainAfterExit keeps a later bootstrap from re-running it;
+# the command task above is the bootstrap's own run. Under --check a unit that is only about to be
+# written does not exist yet, and systemd would refuse to find it.
+- name: Enable the boot-time local-domain unit
+  systemd:
+    name:          ensure-local-domains.service
+    enabled:       true
+    state:         started
+    daemon_reload: "{{ local_domains_unit is changed }}"
+  when: not (ansible_check_mode and local_domains_unit is changed)
 
 - name: Validate nginx config
   command: nginx -t

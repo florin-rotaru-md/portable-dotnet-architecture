@@ -2,13 +2,14 @@
 # ensure-local-domains — make every app domain that a sibling app addresses by NAME resolve to
 # this host, and prove it does.
 #
-# Rendered by the nginx role, which runs it on every bootstrap; every app's deploy.sh runs it again
-# before it builds. Both paths write through this one script, so it owns the domain list and the
-# block's format — the markers are the ones the role's former blockinfile task wrote, so an
-# existing block is recognised and replaced, never duplicated.
+# Rendered by the nginx role. It runs at every boot (ensure-local-domains.service, after
+# cloud-init and before the app slots), on every bootstrap, and from every app's deploy.sh before
+# it builds. All three write through this one script, so it owns the domain list and the block's
+# format — the markers are the ones the role's former blockinfile task wrote, so an existing block
+# is recognised and replaced, never duplicated.
 #
-# Why a deploy re-asserts it: /etc/hosts is not ours to keep. The Ubuntu cloud image runs
-# cloud-init with `manage_etc_hosts: true`, which regenerates the file from its template on every
+# Why it is re-asserted: /etc/hosts is not ours to keep. Proxmox's NoCloud user-data sets
+# cloud-init's `manage_etc_hosts: true`, which regenerates the file from its template on every
 # boot. The reboot that followed the 2026-10-09 package update dropped the block that way, and
 # until 2026-10-21 `http://fiscal.waa.ro/` resolved to Cloudflare: the ledger calls left the
 # machine with their key on a plaintext first hop and came back through the tunnel after a 301 —
