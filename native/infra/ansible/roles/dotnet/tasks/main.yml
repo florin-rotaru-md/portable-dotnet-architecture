@@ -1,29 +1,17 @@
 ---
-- name: Add Microsoft apt signing key
-  get_url:
-    url:  https://packages.microsoft.com/keys/microsoft.asc
-    dest: /usr/share/keyrings/microsoft.asc
-    mode: '0644'
-
-- name: Add Microsoft apt repository
-  apt_repository:
-    repo: >-
-      deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft.asc]
-      https://packages.microsoft.com/repos/microsoft-ubuntu-{{ ansible_facts['distribution_release'] }}-prod
-      {{ ansible_facts['distribution_release'] }} main
-    state:    present
-    filename: microsoft
-  ignore_errors: true   # fall back to packages.microsoft.com/ubuntu if distro-specific repo missing
-
-- name: Add packages.microsoft.com/ubuntu repo (fallback)
-  apt_repository:
-    repo: >-
-      deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft.asc]
-      https://packages.microsoft.com/ubuntu/22.04/prod
-      jammy main
-    state:    present
-    filename: microsoft-ubuntu
-  when: ansible_facts['distribution_release'] not in ['jammy', 'noble']
+# .NET comes from the distribution archive: Ubuntu 26.04 carries dotnet-sdk-10.0 itself, and
+# Microsoft's feed for 26.04 publishes no .NET packages. The two feeds must not both offer the
+# same packages (a host that mixes them ends up with hostfxr from one and the SDK from the
+# other), so the role keeps no Microsoft source. A dotnet_version the archive does not carry
+# fails the install below.
+- name: Remove the Microsoft apt sources and key
+  file:
+    path:  "{{ item }}"
+    state: absent
+  loop:
+    - /etc/apt/sources.list.d/microsoft.list
+    - /etc/apt/sources.list.d/microsoft-ubuntu.list
+    - /usr/share/keyrings/microsoft.asc
 
 - name: Install .NET SDK
   apt:

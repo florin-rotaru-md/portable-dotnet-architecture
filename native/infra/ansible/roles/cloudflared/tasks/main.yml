@@ -9,27 +9,26 @@
       and encrypt the file with ansible-vault if needed.
   no_log: true
 
-- name: Add Cloudflare apt signing key
-  get_url:
-    url:  https://pkg.cloudflare.com/cloudflare-main.gpg
-    dest: /usr/share/keyrings/cloudflare-main.gpg
-    mode: '0644'
+# apt refuses every update while a one-line .list and a .sources file name the same source
+# with different keys, so the .list form and its key go before the .sources file is written.
+- name: Remove the one-line Cloudflare source and its key
+  file:
+    path:  "{{ item }}"
+    state: absent
+  loop:
+    - /etc/apt/sources.list.d/cloudflared.list
+    - /etc/apt/sources.list.d/cloudflared-any.list
+    - /usr/share/keyrings/cloudflare-main.gpg
 
+# `any`, not the release codename: Cloudflare publishes the same package for every release
+# there, while its per-release suites stop at noble/bookworm and a newer host finds none.
 - name: Add Cloudflare apt repository
-  apt_repository:
-    repo: "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared {{ ansible_facts['distribution_release'] }} main"
-    state:    present
-    filename: cloudflared
-  ignore_errors: true   # fall back to generic Cloudflare repo if distro-specific repo missing
-
-- name: Add Cloudflare apt repository (fallback)
-  apt_repository:
-    repo: >-
-      deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg]
-      https://pkg.cloudflare.com/cloudflared any main
-    state:    present
-    filename: cloudflared-any
-  when: ansible_facts['distribution_release'] not in ['bookworm', 'focal', 'jammy', 'noble']
+  deb822_repository:
+    name:       cloudflared
+    uris:       https://pkg.cloudflare.com/cloudflared
+    suites:     any
+    components: main
+    signed_by:  https://pkg.cloudflare.com/cloudflare-main.gpg
 
 # Pinned on purpose when cloudflared_version is set. This is the only public
 # ingress, the service runs with --no-autoupdate, and unattended-upgrades does

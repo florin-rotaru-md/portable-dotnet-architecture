@@ -12,39 +12,38 @@
 #     operational decision, applied by a playbook run, not something that changes under a running
 #     service.
 
-- name: Ensure apt keyring directory exists
-  file:
-    path:  /etc/apt/keyrings
-    state: directory
-    mode:  '0755'
-
 - name: Install fonts for headless rendering
   apt:
     name:  "{{ headless_browser_fonts }}"
     state: present
     update_cache: true
 
-# ── amd64: Google Chrome from Google's repository ─────────────────────────────
-- name: Add Google Chrome signing key
-  get_url:
-    url:  https://dl.google.com/linux/linux_signing_key.pub
-    dest: /etc/apt/keyrings/google-chrome.asc
-    mode: '0644'
+# ── amd64: Google Chrome, with the apt source its package maintains ───────────
+# The package owns its source: its postinst and daily cron job rewrite google-chrome.sources
+# and /usr/share/keyrings/google-chrome.gpg, and delete a google-chrome.list. A source written
+# here would be rewritten under the role, so the role installs Google's .deb once and later
+# versions arrive through that source, like every other package upgrade.
+- name: Remove the role-written Chrome source and key
+  file:
+    path:  "{{ item }}"
+    state: absent
+  loop:
+    - /etc/apt/sources.list.d/google-chrome.list
+    - /etc/apt/keyrings/google-chrome.asc
   when: ansible_facts['architecture'] == 'x86_64'
 
-- name: Add Google Chrome apt repository
-  apt_repository:
-    repo:     "deb [arch=amd64 signed-by=/etc/apt/keyrings/google-chrome.asc] https://dl.google.com/linux/chrome/deb/ stable main"
-    filename: google-chrome
-    state:    present
-    update_cache: true
+- name: Check whether Google Chrome is installed
+  stat:
+    path: "{{ headless_browser_path_amd64 }}"
+  register: google_chrome_binary
   when: ansible_facts['architecture'] == 'x86_64'
 
 - name: Install Google Chrome
   apt:
-    name:  google-chrome-stable
-    state: present
-  when: ansible_facts['architecture'] == 'x86_64'
+    deb: https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+  when:
+    - ansible_facts['architecture'] == 'x86_64'
+    - not google_chrome_binary.stat.exists
 
 # ── everything else (arm64): distribution Chromium ────────────────────────────
 # Google publishes no Chrome build for arm64. On Debian `chromium` is a real .deb; on Ubuntu arm64

@@ -10,17 +10,23 @@
       encrypt the file with ansible-vault if needed.
   no_log: true
 
-- name: Add PostgreSQL apt signing key
-  get_url:
-    url:  https://www.postgresql.org/media/keys/ACCC4CF8.asc
-    dest: /usr/share/keyrings/postgresql.asc
-    mode: '0644'
+# apt refuses every update while a one-line .list and a .sources file name the same source
+# with different keys, so the .list form and its key go before the .sources file is written.
+- name: Remove the one-line PGDG source and its key
+  file:
+    path:  "{{ item }}"
+    state: absent
+  loop:
+    - /etc/apt/sources.list.d/pgdg.list
+    - /usr/share/keyrings/postgresql.asc
 
 - name: Add PostgreSQL apt repository
-  apt_repository:
-    repo: "deb [signed-by=/usr/share/keyrings/postgresql.asc] http://apt.postgresql.org/pub/repos/apt {{ ansible_facts['distribution_release'] }}-pgdg main"
-    state:    present
-    filename: pgdg
+  deb822_repository:
+    name:       pgdg
+    uris:       http://apt.postgresql.org/pub/repos/apt
+    suites:     "{{ ansible_facts['distribution_release'] }}-pgdg"
+    components: main
+    signed_by:  https://www.postgresql.org/media/keys/ACCC4CF8.asc
 
 # state: latest so any playbook run converges to the current minor release.
 # It can never cross a major boundary — the package name embeds the major.

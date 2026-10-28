@@ -9,35 +9,23 @@
       is missing or empty.
   when: (monitoring_target | default('app')) == 'monitoring'
 
-- name: Install Grafana apt keyring dependencies
-  apt:
-    name:
-      - apt-transport-https
-      - software-properties-common
-    state: present
-    update_cache: true
-
-- name: Ensure keyring directory exists
+# apt refuses every update while a one-line .list and a .sources file name the same source
+# with different keys, so the .list form and its key go before the .sources file is written.
+- name: Remove the one-line Grafana source and its key
   file:
-    path: /etc/apt/keyrings
-    state: directory
-    owner: root
-    group: root
-    mode: "0755"
-
-- name: Install Grafana repository key
-  shell: |
-    set -euo pipefail
-    curl -fsSL https://apt.grafana.com/gpg.key | gpg --dearmor -o /etc/apt/keyrings/grafana.gpg
-  args:
-    executable: /bin/bash
-    creates: /etc/apt/keyrings/grafana.gpg
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/apt/sources.list.d/grafana.list
+    - /etc/apt/keyrings/grafana.gpg
 
 - name: Add Grafana apt repository
-  apt_repository:
-    repo: "deb [signed-by=/etc/apt/keyrings/grafana.gpg] https://apt.grafana.com stable main"
-    filename: grafana
-    state: present
+  deb822_repository:
+    name: grafana
+    uris: https://apt.grafana.com
+    suites: stable
+    components: main
+    signed_by: https://apt.grafana.com/gpg.key
 
 - name: Install Alloy
   apt:
