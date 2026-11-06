@@ -341,7 +341,7 @@
     name:   "postgres nightly backup"
     user:   postgres
     minute: "{{ postgres_backup_minute | default('15') }}"
-    hour:   "{{ postgres_backup_hour | default('2') }}"
+    hour:   "{{ postgres_backup_hour | default('0') }}"
     job:    "/opt/postgres/scripts/pg-backup.sh >> {{ postgres_backup_dir }}/cron.log 2>&1"
 
 - name: Install weekly base-backup cron job
@@ -349,7 +349,7 @@
     name:    "postgres weekly base backup"
     user:    postgres
     weekday: "{{ postgres_basebackup_weekday | default('0') }}"
-    hour:    "{{ postgres_basebackup_hour | default('2') }}"
+    hour:    "{{ postgres_basebackup_hour | default('0') }}"
     minute:  "{{ postgres_basebackup_minute | default('45') }}"
     job:     "/opt/postgres/scripts/pg-basebackup.sh >> {{ postgres_basebackup_dir | default('/opt/postgres/base') }}/basebackup.log 2>&1"
     state:   "{{ 'present' if (postgres_wal_archive_enabled | default(false)) else 'absent' }}"

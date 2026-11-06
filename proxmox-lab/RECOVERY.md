@@ -317,12 +317,13 @@ postgres_wal_archive_enabled: true
 postgres_archive_timeout: 60
 postgres_wal_spool_max_mb: 20480
 postgres_basebackup_weekday: "0"
-postgres_basebackup_hour: "2"
+postgres_basebackup_hour: "0"
 postgres_basebackup_minute: "45"
 ```
 
 The VM has about 989 GB free, so the 20 GB spool cap and initial base backup fit the current host.
-Keep the existing logical dump schedule at 00:15. Apply from the reviewed checkout on control:
+The VM's clock is UTC: the weekly base runs Sunday 00:45, after the nightly logical dump at 00:15.
+Apply from the reviewed checkout on control:
 
 ```bash
 cd /home/devops/src/portable-dotnet-architecture/native/infra/ansible

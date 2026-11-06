@@ -143,8 +143,9 @@ postgres_max_connections: 400
 # postgres_effective_io_concurrency: "200"
 # postgres_wal_compression:          "lz4"
 
-# Nightly logical dump schedule (cron on the postgres host, in its clock).
-postgres_backup_hour:   "2"
+# Nightly logical dump schedule (cron on the postgres host, in its clock: UTC on the
+# cloud image). 00:15 runs ahead of the weekly base backup at 00:45 below.
+postgres_backup_hour:   "0"
 postgres_backup_minute: "15"
 
 # postgres_host: IP or hostname that the app VM uses to reach PostgreSQL.
@@ -178,7 +179,7 @@ postgres_wal_archive_enabled: false
 postgres_archive_timeout: 60          # seconds a segment holding writes may stay unfinished
 postgres_wal_spool_max_mb: 20480      # archive_command refuses beyond this
 postgres_basebackup_weekday: "0"      # cron weekday, 0 = Sunday
-postgres_basebackup_hour:   "2"
+postgres_basebackup_hour:   "0"
 postgres_basebackup_minute: "45"
 
 # ── Cloudflare (optional) ──────────────────────────────────────────────────────
