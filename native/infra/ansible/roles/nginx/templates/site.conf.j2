@@ -1,6 +1,8 @@
 server {
     listen 80;
     server_name {{ app_domain }};
+    # The largest request body this app accepts; Kestrel still enforces each endpoint's own limit.
+    client_max_body_size {{ app_max_body_size }};
 
     location / {
         proxy_pass         http://{{ app_name }}_active;

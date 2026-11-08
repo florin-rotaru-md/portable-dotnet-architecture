@@ -43,4 +43,5 @@
   vars:
     app_name: "{{ current_app.name }}"
     app_domain: "{{ current_app.domain }}"
+    app_max_body_size: "{{ current_app.max_body_size | default('1m') }}"
   notify: reload nginx

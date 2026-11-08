@@ -50,6 +50,8 @@ applications:
     # Optional per-app override:
     # health_max_attempts: 16
     # health_interval_seconds: 4
+    # Nginx client_max_body_size: the largest upload or import the app accepts (default 1m).
+    # max_body_size: "128m"
     drain_seconds: 30
     repo_url:     ""
     repo_branch:  "master"
