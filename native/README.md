@@ -71,19 +71,30 @@ schemas; Ansible installs/tunes PostgreSQL and makes PostGIS available to new sp
 
 ## Runtime contract
 
-`deploy.sh` first asserts local name resolution (below), then publishes into the idle slot, starts
-it, polls `/.well-known/ready`, validates/reloads Nginx, enables the serving slot, drains, then
-stops/disables the old slot. Exactly one slot per app must be enabled after release. A freshly
-provisioned app has no enabled slot before first publish.
+`deploy.sh` first asserts local name resolution (below), then publishes into the idle slot, copies
+the override into it, starts it, polls `/.well-known/ready`, validates/reloads Nginx, enables the
+serving slot, drains, then stops/disables the old slot. Exactly one slot per app must be enabled
+after release. A freshly provisioned app has no enabled slot before first publish. One `deploy.sh`
+runs per app at a time (`runtime/deploy.lock`).
+
+A changed override or env file takes the same path. The app role writes `config/` and `env/` and
+ends with `deploy.sh --config-only`, which copies the live build into the idle slot and starts it
+under the new files. A configuration the app refuses fails the run and leaves the serving slot as
+it was; the change stays pending and the next run takes it up again. A slot's override is written
+only while that slot is stopped: the hosts reload the file when it changes, so a copy written under
+the serving process would reach users unchecked. `runtime/config-live.sha256` is the fingerprint of
+the override and env files the serving slot was started with, and
+`deploy.sh --config-only --check` says whether the files on disk differ from it.
 
 ```text
 /opt/apps/<app>/
   build/                    source checkout
-  slots/{blue,green}/        published code
+  slots/{blue,green}/        published code, the override it was started with, release-commit
   env/{common,blue,green}.env
   config/                   override and private repo-token
   nginx/                    upstream templates
   runtime/active-slot
+  runtime/config-live.sha256
   runtime/deploy-history.log
   scripts/                  deploy, rollback, health-check, switch-nginx, current-slot
 /usr/local/sbin/ensure-local-domains   host-wide; rendered by the nginx role
@@ -93,7 +104,10 @@ provisioned app has no enabled slot before first publish.
 On the app VM, later deploys can use `sudo -u devops /opt/apps/<app>/scripts/deploy.sh`.
 Token resolution is command argument → `APP_REPO_TOKEN` → private `config/repo-token`; prefer the
 rendered file over command-line secrets. Reapply the app role after rotating its inventory token.
-`rollback.sh` switches code slots; it does not undo schema changes or shared configuration. Use
+`rollback.sh` switches to the other slot as it was last started: the previous build after a deploy,
+the same build under its previous override after a configuration change. It does not undo schema
+changes, and it clears the fingerprint, so the next run of the app role applies the inventory's
+configuration again. Use
 the [release and rollback acceptance checks](../../platform/docs/OPERATIONS.md#release).
 
 ### Local name resolution

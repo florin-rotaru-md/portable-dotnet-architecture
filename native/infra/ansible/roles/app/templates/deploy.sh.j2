@@ -1,5 +1,15 @@
 #!/usr/bin/env bash
-# deploy.sh — Build from Git and deploy via blue/green slot swap.
+# deploy.sh — Put a new process behind Nginx through the idle slot: start it there, health-check
+# it, and only then switch.
+#
+# A build and a configuration change both reach users this way, so neither replaces the serving
+# process before it has answered the health check:
+#
+#   deploy.sh [--branch master]         build from Git into the idle slot
+#   deploy.sh --config-only             copy the live build into the idle slot and start it under
+#                                       the override and env files on disk; nothing happens when
+#                                       the live slot was already started with them
+#   deploy.sh --config-only --check     say which of the two it would be, and change nothing
 #
 # First deploy:
 #   deploy.sh --repo-url https://github.com/org/repo.git \
@@ -33,6 +43,8 @@ REPO_URL=""
 REPO_BRANCH=""
 REPO_TOKEN="${APP_REPO_TOKEN:-}"
 PROJECT_PATH=""
+CONFIG_ONLY=false
+CHECK_ONLY=false
 
 # ── Argument parsing ─────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
@@ -41,38 +53,47 @@ while [[ $# -gt 0 ]]; do
     --branch)       REPO_BRANCH="$2";  shift 2 ;;
     --token)        REPO_TOKEN="$2";   shift 2 ;;
     --project-path) PROJECT_PATH="$2"; shift 2 ;;
+    --config-only)  CONFIG_ONLY=true;  shift ;;
+    --check)        CHECK_ONLY=true;   shift ;;
     *) echo "Unknown argument: $1" >&2; exit 1 ;;
   esac
 done
 
+if [ "$CHECK_ONLY" = true ] && [ "$CONFIG_ONLY" = false ]; then
+  echo "Error: --check goes with --config-only." >&2; exit 1
+fi
+
 # ── Load / resolve config from cache ─────────────────────────────────────────
-if [ -z "$REPO_URL" ] && [ -f "$RUNTIME_DIR/repo-url" ]; then
-  REPO_URL=$(cat "$RUNTIME_DIR/repo-url")
-fi
-if [ -z "$REPO_URL" ]; then
-  echo "Error: --repo-url is required on first deploy" >&2; exit 1
-fi
+# A build needs the repository; a configuration change reads nothing from it.
+if [ "$CONFIG_ONLY" = false ]; then
+  if [ -z "$REPO_URL" ] && [ -f "$RUNTIME_DIR/repo-url" ]; then
+    REPO_URL=$(cat "$RUNTIME_DIR/repo-url")
+  fi
+  if [ -z "$REPO_URL" ]; then
+    echo "Error: --repo-url is required on first deploy" >&2; exit 1
+  fi
 
-if [ -z "$REPO_BRANCH" ]; then
-  REPO_BRANCH=$(cat "$RUNTIME_DIR/repo-branch" 2>/dev/null || echo "master")
-fi
-if [ -z "$PROJECT_PATH" ] && [ -f "$RUNTIME_DIR/project-path" ]; then
-  PROJECT_PATH=$(cat "$RUNTIME_DIR/project-path")
-fi
-if [ -z "$PROJECT_PATH" ]; then
-  echo "Error: --project-path is required on first deploy" >&2; exit 1
-fi
+  if [ -z "$REPO_BRANCH" ]; then
+    REPO_BRANCH=$(cat "$RUNTIME_DIR/repo-branch" 2>/dev/null || echo "master")
+  fi
+  if [ -z "$PROJECT_PATH" ] && [ -f "$RUNTIME_DIR/project-path" ]; then
+    PROJECT_PATH=$(cat "$RUNTIME_DIR/project-path")
+  fi
+  if [ -z "$PROJECT_PATH" ]; then
+    echo "Error: --project-path is required on first deploy" >&2; exit 1
+  fi
 
-# Token fallback: Ansible renders the app's repo_token from vault.yml to
-# config/repo-token (0600), so manual deploys don't need to supply one.
-if [ -z "$REPO_TOKEN" ] && [ -f "$APP_ROOT/config/repo-token" ]; then
-  REPO_TOKEN=$(cat "$APP_ROOT/config/repo-token")
-fi
+  # Token fallback: Ansible renders the app's repo_token from vault.yml to
+  # config/repo-token (0600), so manual deploys don't need to supply one.
+  if [ -z "$REPO_TOKEN" ] && [ -f "$APP_ROOT/config/repo-token" ]; then
+    REPO_TOKEN=$(cat "$APP_ROOT/config/repo-token")
+  fi
 
-# Persist config (repo URL stored without token)
-echo "$REPO_URL"     > "$RUNTIME_DIR/repo-url"
-echo "$REPO_BRANCH"  > "$RUNTIME_DIR/repo-branch"
-echo "$PROJECT_PATH" > "$RUNTIME_DIR/project-path"
+  # Persist config (repo URL stored without token)
+  echo "$REPO_URL"     > "$RUNTIME_DIR/repo-url"
+  echo "$REPO_BRANCH"  > "$RUNTIME_DIR/repo-branch"
+  echo "$PROJECT_PATH" > "$RUNTIME_DIR/project-path"
+fi
 
 # ── Determine slots ───────────────────────────────────────────────────────────
 CURRENT_SLOT="$("$SCRIPTS_DIR/current-slot.sh")"
@@ -89,6 +110,20 @@ else
 fi
 
 SLOT_DIR="$APP_ROOT/slots/$TARGET_SLOT"
+LIVE_SLOT_DIR="$APP_ROOT/slots/$CURRENT_SLOT"
+
+# What a process is started with besides its build: the override file, and the env files systemd
+# reads at start. The fingerprint of the set the serving slot was started with is kept in
+# runtime/config-live.sha256, written at each switch, and --config-only compares the files on disk
+# with it — with what the serving process has, not with what an earlier run meant to give it. A run
+# that failed half-way therefore leaves the change pending, and the next run takes it up again.
+CONFIG_STAMP="$RUNTIME_DIR/config-live.sha256"
+
+config_fingerprint() {
+  { cat "$APP_ROOT/config/appsettings.override.json" \
+        "$APP_ROOT/env/common.env" "$APP_ROOT/env/blue.env" "$APP_ROOT/env/green.env" \
+        2>/dev/null || true; } | sha256sum | cut -d' ' -f1
+}
 
 print_service_diagnostics() {
   local svc="$1"
@@ -158,11 +193,42 @@ fail_target_slot() {
   exit 1
 }
 
+# ── Configuration only: is there anything to do? ─────────────────────────────
+if [ "$CONFIG_ONLY" = true ]; then
+  if [ -f "$CONFIG_STAMP" ] && [ "$(cat "$CONFIG_STAMP")" = "$(config_fingerprint)" ]; then
+    echo "Configuration is live — $CURRENT_SLOT was started with it."
+    exit 0
+  fi
+
+  # Nothing serves (an app before its first deploy, or one that is stopped): there is no process to
+  # replace, and the next deploy starts its slot with these files anyway.
+  if ! systemctl is-active --quiet "$OLD_SERVICE"; then
+    echo "Configuration waits for the next deploy — $OLD_SERVICE is not running."
+    exit 0
+  fi
+
+  if [ "$CHECK_ONLY" = true ]; then
+    echo "Configuration is pending — $TARGET_SLOT would start with it and take over from $CURRENT_SLOT."
+    exit 0
+  fi
+fi
+
+# One run per app at a time: two of them would fill, start and switch the same idle slot.
+exec 9> "$RUNTIME_DIR/deploy.lock"
+if ! flock -n 9; then
+  echo "Error: another deploy.sh is already running for $APP_NAME." >&2
+  exit 1
+fi
+
 echo "──────────────────────────────────────"
 echo "App:          $APP_NAME"
 echo "Current slot: $CURRENT_SLOT  →  target: $TARGET_SLOT"
-echo "Branch:       $REPO_BRANCH"
-echo "Project:      $PROJECT_PATH"
+if [ "$CONFIG_ONLY" = true ]; then
+  echo "Change:       configuration (the live build, started in the idle slot)"
+else
+  echo "Branch:       $REPO_BRANCH"
+  echo "Project:      $PROJECT_PATH"
+fi
 echo "──────────────────────────────────────"
 
 # ── Local name resolution ─────────────────────────────────────────────────────
@@ -180,70 +246,87 @@ if [ ! -x "$LOCAL_DOMAINS_SCRIPT" ]; then
 fi
 sudo "$LOCAL_DOMAINS_SCRIPT"
 
-# ── Clone / pull repo (private GitHub repo; token required) ──────────────────
-if [ -z "$REPO_TOKEN" ]; then
-  echo "Error: GitHub token is required for repository deploys. Pass --token, set APP_REPO_TOKEN, or re-run the playbook so config/repo-token is rendered from vault.yml." >&2
-  exit 1
-fi
-
-if [[ "$REPO_URL" != https://github.com/* ]]; then
-  echo "Error: only https://github.com/... repository URLs are supported in private-token mode." >&2
-  exit 1
-fi
-
-GH_BASIC_AUTH=$(printf 'x-access-token:%s' "$REPO_TOKEN" | base64 | tr -d '\n')
-
-git_with_auth() {
-  git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic ${GH_BASIC_AUTH}" "$@"
-}
-
-if [ -d "$BUILD_DIR/.git" ]; then
-  echo "Pulling latest from $REPO_BRANCH..."
-  git -C "$BUILD_DIR" remote set-url origin "$REPO_URL"
-  git_with_auth -C "$BUILD_DIR" fetch --depth=1 origin "$REPO_BRANCH"
-  git -C "$BUILD_DIR" reset --hard "origin/$REPO_BRANCH"
+if [ "$CONFIG_ONLY" = true ]; then
+  # ── Copy the live build ─────────────────────────────────────────────────────
+  # The idle slot holds the build before this one, and a configuration change must not bring that
+  # back — so the slot is refilled from the one serving. After it, rollback.sh returns to this
+  # build under its previous configuration, no longer to the previous build.
+  echo "Copying the live build from $CURRENT_SLOT to $TARGET_SLOT..."
+  sudo systemctl is-active --quiet "$TARGET_SERVICE" && sudo systemctl stop "$TARGET_SERVICE" || true
+  find "${SLOT_DIR:?}" -mindepth 1 -delete 2>/dev/null || true
+  cp -a "$LIVE_SLOT_DIR/." "$SLOT_DIR/"
 else
-  echo "Cloning $REPO_URL (branch $REPO_BRANCH)..."
-  git_with_auth clone --branch "$REPO_BRANCH" --depth 1 "$REPO_URL" "$BUILD_DIR"
+  # ── Clone / pull repo (private GitHub repo; token required) ────────────────
+  if [ -z "$REPO_TOKEN" ]; then
+    echo "Error: GitHub token is required for repository deploys. Pass --token, set APP_REPO_TOKEN, or re-run the playbook so config/repo-token is rendered from vault.yml." >&2
+    exit 1
+  fi
+
+  if [[ "$REPO_URL" != https://github.com/* ]]; then
+    echo "Error: only https://github.com/... repository URLs are supported in private-token mode." >&2
+    exit 1
+  fi
+
+  GH_BASIC_AUTH=$(printf 'x-access-token:%s' "$REPO_TOKEN" | base64 | tr -d '\n')
+
+  git_with_auth() {
+    git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic ${GH_BASIC_AUTH}" "$@"
+  }
+
+  if [ -d "$BUILD_DIR/.git" ]; then
+    echo "Pulling latest from $REPO_BRANCH..."
+    git -C "$BUILD_DIR" remote set-url origin "$REPO_URL"
+    git_with_auth -C "$BUILD_DIR" fetch --depth=1 origin "$REPO_BRANCH"
+    git -C "$BUILD_DIR" reset --hard "origin/$REPO_BRANCH"
+  else
+    echo "Cloning $REPO_URL (branch $REPO_BRANCH)..."
+    git_with_auth clone --branch "$REPO_BRANCH" --depth 1 "$REPO_URL" "$BUILD_DIR"
+  fi
+
+  if [ ! -f "$BUILD_DIR/$PROJECT_PATH" ]; then
+    echo "Error: project path '$PROJECT_PATH' was not found in repository '$REPO_URL' (branch '$REPO_BRANCH')." >&2
+    echo "Repository root: $BUILD_DIR" >&2
+    echo "Top-level entries:" >&2
+    find "$BUILD_DIR" -mindepth 1 -maxdepth 2 -type d | sed "s|$BUILD_DIR/||" | head -n 30 >&2 || true
+    exit 1
+  fi
+
+  # ── Build ───────────────────────────────────────────────────────────────────
+  echo "Publishing to $TARGET_SLOT slot..."
+  sudo systemctl is-active --quiet "$TARGET_SERVICE" && sudo systemctl stop "$TARGET_SERVICE" || true
+  find "${SLOT_DIR:?}" -mindepth 1 -delete 2>/dev/null || true
+
+  # Pin the RID: a framework-dependent publish without one copies every runtime's native assets
+  # into the slot (measured 2026-09-01: 363 MB, 255 MB of them Windows libSkiaSharp .pdb files;
+  # 60 MB with the RID). The RID follows the host's architecture, rendered at playbook time, so an
+  # arm64 host gets its own libSkiaSharp.so rather than the x64 one. The unit still runs
+  # `dotnet <App>.dll` (app-slot.service.j2); the apphost the publish also emits is unused.
+  dotnet publish "$BUILD_DIR/$PROJECT_PATH" \
+    -c Release \
+    -r {{ 'linux-arm64' if ansible_facts['architecture'] in ['aarch64', 'arm64'] else 'linux-x64' }} \
+    --self-contained false \
+    -o "$SLOT_DIR/"
+
+  # The commit this slot runs, kept beside the build it names so that a configuration change
+  # carries it along with the copy.
+  git -C "$BUILD_DIR" rev-parse HEAD > "$SLOT_DIR/release-commit"
 fi
 
-if [ ! -f "$BUILD_DIR/$PROJECT_PATH" ]; then
-  echo "Error: project path '$PROJECT_PATH' was not found in repository '$REPO_URL' (branch '$REPO_BRANCH')." >&2
-  echo "Repository root: $BUILD_DIR" >&2
-  echo "Top-level entries:" >&2
-  find "$BUILD_DIR" -mindepth 1 -maxdepth 2 -type d | sed "s|$BUILD_DIR/||" | head -n 30 >&2 || true
-  exit 1
-fi
-
-# ── Build ─────────────────────────────────────────────────────────────────────
-echo "Publishing to $TARGET_SLOT slot..."
-sudo systemctl is-active --quiet "$TARGET_SERVICE" && sudo systemctl stop "$TARGET_SERVICE" || true
-find "${SLOT_DIR:?}" -mindepth 1 -delete 2>/dev/null || true
-
-# Pin the RID: a framework-dependent publish without one copies every runtime's native assets
-# into the slot (measured 2026-09-01: 363 MB, 255 MB of them Windows libSkiaSharp .pdb files;
-# 60 MB with the RID). The RID follows the host's architecture, rendered at playbook time, so an
-# arm64 host gets its own libSkiaSharp.so rather than the x64 one. The unit still runs
-# `dotnet <App>.dll` (app-slot.service.j2); the apphost the publish also emits is unused.
-dotnet publish "$BUILD_DIR/$PROJECT_PATH" \
-  -c Release \
-  -r {{ 'linux-arm64' if ansible_facts['architecture'] in ['aarch64', 'arm64'] else 'linux-x64' }} \
-  --self-contained false \
-  -o "$SLOT_DIR/"
-
-# Keep the config files identical across blue/green slots. `dotnet publish` writes into the slot
-# and does not remove what it did not put there, but a slot created after the last playbook run
-# would otherwise start without them — the override file being the one that carries the connection
-# strings, and config-bundle.json the one an empty database seeds itself from.
+# ── Configuration ─────────────────────────────────────────────────────────────
+# Written here and nowhere else: into the idle slot, while it is stopped. The serving slot's copy
+# is never touched — the host reloads appsettings.override.json when the file changes, so writing
+# it under a running process would hand unchecked values to the one process users reach. A file
+# the inventory no longer declares is removed rather than left behind by the copied build.
 for config_file in appsettings.override.json config-bundle.json; do
   if [ -f "$APP_ROOT/config/$config_file" ]; then
-    for slot in blue green; do
-      cp "$APP_ROOT/config/$config_file" "$APP_ROOT/slots/$slot/$config_file"
-      chown {{ app_user }}:{{ app_user }} "$APP_ROOT/slots/$slot/$config_file"
-      chmod 600 "$APP_ROOT/slots/$slot/$config_file"
-    done
+    cp "$APP_ROOT/config/$config_file" "$SLOT_DIR/$config_file"
+    chown {{ app_user }}:{{ app_user }} "$SLOT_DIR/$config_file"
+    chmod 600 "$SLOT_DIR/$config_file"
+  else
+    rm -f "$SLOT_DIR/$config_file"
   fi
 done
+STARTED_WITH="$(config_fingerprint)"
 
 # The loop above skips a file it cannot find, silently, which is right — not every app has an
 # override and none of this is required for one that does not. What is not right is finding out
@@ -286,6 +369,9 @@ trap - INT TERM
 # ── Switch Nginx ──────────────────────────────────────────────────────────────
 "$SCRIPTS_DIR/switch-nginx.sh" "$TARGET_SLOT"
 
+# The serving process now has this configuration: what --config-only compares with.
+echo "$STARTED_WITH" > "$CONFIG_STAMP"
+
 # ── Own the boot state ────────────────────────────────────────────────────────
 # Exactly one slot per app may be enabled, and it is the one nginx now serves.
 #
@@ -304,8 +390,16 @@ sudo systemctl stop "$OLD_SERVICE"
 sudo systemctl disable "$OLD_SERVICE" >/dev/null 2>&1 || true
 
 # ── Log ───────────────────────────────────────────────────────────────────────
-printf '%s | deploy | branch=%s | slot=%s\n' \
-  "$(date -Iseconds)" "$REPO_BRANCH" "$TARGET_SLOT" \
-  >> "$RUNTIME_DIR/deploy-history.log"
+if [ "$CONFIG_ONLY" = true ]; then
+  printf '%s | config | slot=%s\n' \
+    "$(date -Iseconds)" "$TARGET_SLOT" \
+    >> "$RUNTIME_DIR/deploy-history.log"
 
-echo "✓ Deployment complete — $TARGET_SLOT is live"
+  echo "✓ Configuration applied — $TARGET_SLOT is live"
+else
+  printf '%s | deploy | branch=%s | commit=%s | slot=%s\n' \
+    "$(date -Iseconds)" "$REPO_BRANCH" "$(cat "$SLOT_DIR/release-commit")" "$TARGET_SLOT" \
+    >> "$RUNTIME_DIR/deploy-history.log"
+
+  echo "✓ Deployment complete — $TARGET_SLOT is live"
+fi

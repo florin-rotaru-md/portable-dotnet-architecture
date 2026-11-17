@@ -58,6 +58,7 @@
     mode:    '0600'
     force:   true
   no_log: true
+  register: override_render
 
 # Optional, and rendered on the controller so vault references inside it resolve. The application
 # seeds its database from this file at first boot, for the config sections the database does not
@@ -97,40 +98,26 @@
     state: absent
   when: current_app.repo_token | default('') | string | trim | length == 0
 
-- name: Sync appsettings.override.json into blue/green slots
-  copy:
-    src: "{{ apps_root }}/{{ current_app.name }}/config/appsettings.override.json"
-    dest: "{{ apps_root }}/{{ current_app.name }}/slots/{{ item }}/appsettings.override.json"
-    remote_src: true
-    owner: "{{ app_user }}"
-    group: "{{ app_user }}"
-    mode: "0600"
+# The role writes configuration into config/ and env/ only, never into a slot. deploy.sh copies it
+# into the idle slot while that slot is stopped, and the last task of this file calls it: the host
+# reloads appsettings.override.json when the file changes, so a copy written under the serving
+# process would hand it values no health check has seen.
+#
+# The one thing removed from the slots here is a bundle the inventory no longer declares. It is
+# read only at boot, so taking it from under a running slot changes nothing until the next start —
+# which is the point: that start must not seed from a file the inventory dropped.
+- name: Remove config-bundle.json from the slots when not configured
+  file:
+    path:  "{{ apps_root }}/{{ current_app.name }}/slots/{{ item }}/config-bundle.json"
+    state: absent
   loop:
     - blue
     - green
-  register: slot_override_sync
-  no_log: true
+  when: current_app.config_bundle_file | default('') | length == 0
 
-# Read from the slot's content root at startup, so it travels with the override file. Not
-# registered for the restart decision below: seeding is idempotent and only ever fills what is
-# missing, so a changed bundle does not by itself justify bouncing a healthy slot.
-- name: Sync config-bundle.json into blue/green slots
-  copy:
-    src: "{{ apps_root }}/{{ current_app.name }}/config/config-bundle.json"
-    dest: "{{ apps_root }}/{{ current_app.name }}/slots/{{ item }}/config-bundle.json"
-    remote_src: true
-    owner: "{{ app_user }}"
-    group: "{{ app_user }}"
-    mode: "0600"
-  loop:
-    - blue
-    - green
-  no_log: true
-  when: current_app.config_bundle_file | default('') | length > 0
-
-# Rendered before the restart decision below, and force: true for the same reason common.env is:
-# the port comes from the inventory, so a port_blue/port_green change has to reach the file. Left
-# force: false, the nginx upstream moved to the new port and the app kept binding the old one.
+# force: true for the same reason common.env is: the port comes from the inventory, so a
+# port_blue/port_green change has to reach the file. Left force: false, the nginx upstream moved to
+# the new port and the app kept binding the old one.
 - name: Render blue env file
   copy:
     dest:    "{{ apps_root }}/{{ current_app.name }}/env/blue.env"
@@ -150,46 +137,6 @@
     mode:    '0600'
     force:   true
   register: green_env_render
-
-# check_mode: false on both reads below, so `--check --diff` reports the restart it would do.
-# Without it Ansible skips the `command` in check mode, `active_slot_service_state.rc` is never
-# set, the restart's `when` quietly evaluates false — and the dry run shows the changed files
-# while hiding the one consequence an operator is checking for.
-- name: Read active slot
-  slurp:
-    src: "{{ apps_root }}/{{ current_app.name }}/runtime/active-slot"
-  register: active_slot_raw
-  changed_when: false
-  failed_when: false
-  check_mode: false
-
-- name: Resolve active slot name
-  set_fact:
-    active_slot_name: >-
-      {{ (active_slot_raw.content | b64decode | trim)
-         if (active_slot_raw.content is defined and (active_slot_raw.content | length > 0))
-         else 'blue' }}
-
-- name: Check whether active slot service is running
-  command: systemctl is-active --quiet {{ current_app.name }}-{{ active_slot_name }}.service
-  register: active_slot_service_state
-  changed_when: false
-  failed_when: false
-  check_mode: false
-
-# The env files too, not just the override: systemd reads EnvironmentFile at start, so a changed
-# common.env / <slot>.env reaches the process only through a restart — and an env var the app needs
-# at boot (APP_PROFILE) would otherwise land on disk and change nothing until the next deploy.
-- name: Restart active slot service to apply new override or env
-  systemd:
-    name: "{{ current_app.name }}-{{ active_slot_name }}.service"
-    state: restarted
-  when:
-    - slot_override_sync is changed
-      or common_env_render is changed
-      or blue_env_render is changed
-      or green_env_render is changed
-    - active_slot_service_state.rc == 0
 
 # Read by rollback.sh to health-check the slot it falls back to. Inventory-derived, so force: true —
 # a stale port here aims the rollback health check at nothing and reports the rollback as failed.
@@ -230,6 +177,7 @@
     - health-check.sh.j2
     - deploy.sh.j2
     - rollback.sh.j2
+  register: runtime_scripts_render
   vars:
     app_name: "{{ current_app.name }}"
     app_assembly: "{{ current_app.runtime_assembly | default(((current_app.project_path | default('') | basename | regex_replace('\\.csproj$', '')) if (current_app.project_path | default('') | length > 0) else current_app.assembly)) }}"
@@ -285,3 +233,51 @@
   loop:
     - blue
     - green
+
+# Last, because it starts a slot: the scripts, the units and the port files above are what it runs
+# with. A changed override or env file reaches users the way a build does — deploy.sh starts the
+# idle slot with it, health-checks that slot and only then switches nginx — so a configuration the
+# app refuses fails this task and leaves the serving slot as it was. The script decides whether
+# there is anything to do, by comparing the files with what the serving slot was started with; an
+# app that is not running is left for its next deploy.
+- name: Apply configuration through the idle slot
+  command:
+    argv:
+      - "{{ apps_root }}/{{ current_app.name }}/scripts/deploy.sh"
+      - --config-only
+  become_user: "{{ app_user }}"
+  register: config_apply
+  changed_when: "'Configuration applied' in config_apply.stdout"
+  when: not ansible_check_mode
+
+# A dry run changes no file, so the script would compare the old ones and report nothing pending.
+# The files' own results say what this run would write; the script's --check adds a change an
+# earlier run wrote and could not apply. It runs only when this run leaves the script itself alone:
+# before that, the host has either no deploy.sh or one that does not know the flag.
+- name: Ask deploy.sh whether configuration is pending (check mode)
+  command:
+    argv:
+      - "{{ apps_root }}/{{ current_app.name }}/scripts/deploy.sh"
+      - --config-only
+      - --check
+  become_user: "{{ app_user }}"
+  register: config_apply_pending
+  changed_when: false
+  check_mode: false
+  when:
+    - ansible_check_mode
+    - runtime_scripts_render is not changed
+
+- name: Report the slot switch this run would cause (check mode)
+  debug:
+    msg: >-
+      {{ current_app.name }}: the idle slot would be started with the new configuration and take
+      over once it answers the health check.
+  changed_when: true
+  when:
+    - ansible_check_mode
+    - override_render is changed
+      or common_env_render is changed
+      or blue_env_render is changed
+      or green_env_render is changed
+      or 'Configuration is pending' in (config_apply_pending.stdout | default(''))

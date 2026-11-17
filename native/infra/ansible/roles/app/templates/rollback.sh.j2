@@ -33,6 +33,11 @@ fi
 
 "$SCRIPTS_DIR/switch-nginx.sh" "$PREVIOUS_SLOT"
 
+# The slot now serving was started with the configuration it had before the last switch, so the
+# files on disk are no longer what is live. Without the stamp, `deploy.sh --config-only` finds them
+# pending and the next run of the app role applies them again, through the idle slot.
+rm -f "$RUNTIME_DIR/config-live.sha256"
+
 printf '%s | rollback | slot=%s\n' "$(date -Iseconds)" "$PREVIOUS_SLOT" \
   >> "$RUNTIME_DIR/deploy-history.log"
 
