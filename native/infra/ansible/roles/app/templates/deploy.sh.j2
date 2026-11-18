@@ -5,7 +5,10 @@
 # A build and a configuration change both reach users this way, so neither replaces the serving
 # process before it has answered the health check:
 #
-#   deploy.sh [--branch master]         build from Git into the idle slot
+#   deploy.sh [--branch master]         build the branch's tip from Git into the idle slot
+#   deploy.sh --commit <sha>            build that commit instead: a release that names its
+#                                       commit builds the same source on every application,
+#                                       whatever is pushed while it runs
 #   deploy.sh --config-only             copy the live build into the idle slot and start it under
 #                                       the override and env files on disk; nothing happens when
 #                                       the live slot was already started with them
@@ -41,6 +44,7 @@ HEALTH_INTERVAL_SECONDS="{{ app_health_interval_seconds }}"
 
 REPO_URL=""
 REPO_BRANCH=""
+REPO_COMMIT=""
 REPO_TOKEN="${APP_REPO_TOKEN:-}"
 PROJECT_PATH=""
 CONFIG_ONLY=false
@@ -51,6 +55,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --repo-url)     REPO_URL="$2";     shift 2 ;;
     --branch)       REPO_BRANCH="$2";  shift 2 ;;
+    --commit)       REPO_COMMIT="$2";  shift 2 ;;
     --token)        REPO_TOKEN="$2";   shift 2 ;;
     --project-path) PROJECT_PATH="$2"; shift 2 ;;
     --config-only)  CONFIG_ONLY=true;  shift ;;
@@ -61,6 +66,16 @@ done
 
 if [ "$CHECK_ONLY" = true ] && [ "$CONFIG_ONLY" = false ]; then
   echo "Error: --check goes with --config-only." >&2; exit 1
+fi
+
+if [ -n "$REPO_COMMIT" ]; then
+  if [ "$CONFIG_ONLY" = true ]; then
+    echo "Error: --commit names what to build; --config-only builds nothing." >&2; exit 1
+  fi
+  # The full hash, so the name cannot come to mean another commit.
+  if [[ ! "$REPO_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+    echo "Error: --commit takes a full 40-character commit hash, not '$REPO_COMMIT'." >&2; exit 1
+  fi
 fi
 
 # ── Load / resolve config from cache ─────────────────────────────────────────
@@ -281,6 +296,20 @@ else
   else
     echo "Cloning $REPO_URL (branch $REPO_BRANCH)..."
     git_with_auth clone --branch "$REPO_BRANCH" --depth 1 "$REPO_URL" "$BUILD_DIR"
+  fi
+
+  # A named commit replaces the tip just fetched. It is asked for by hash, so a push made after
+  # the release began changes nothing here, and the check below fails rather than builds
+  # anything else.
+  if [ -n "$REPO_COMMIT" ]; then
+    echo "Checking out commit $REPO_COMMIT..."
+    git_with_auth -C "$BUILD_DIR" fetch --depth=1 origin "$REPO_COMMIT"
+    git -C "$BUILD_DIR" reset --hard FETCH_HEAD
+
+    if [ "$(git -C "$BUILD_DIR" rev-parse HEAD)" != "$REPO_COMMIT" ]; then
+      echo "Error: the build directory is at $(git -C "$BUILD_DIR" rev-parse HEAD), not at the requested $REPO_COMMIT." >&2
+      exit 1
+    fi
   fi
 
   if [ ! -f "$BUILD_DIR/$PROJECT_PATH" ]; then

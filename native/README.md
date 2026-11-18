@@ -52,8 +52,11 @@ Run from `native/infra/ansible` with the reviewed inventory selected:
 ansible-playbook playbooks/bootstrap.yml --check --limit app
 # Apply reviewed role/inventory changes to that host group.
 ansible-playbook playbooks/bootstrap.yml --limit app
-# Release application source to a selected app.
+# Release application source to a selected app: its branch's tip, or the one commit a release names.
 ansible-playbook playbooks/deploy.yml -e app=myapp
+ansible-playbook playbooks/deploy.yml -e app=myapp -e commit=<full hash>
+#   A release of several apps names its commit once: a push made while it runs cannot then give
+#   two of them different source.
 ```
 
 Use `--ask-vault-pass` when the selected inventory is encrypted. A complete initial bootstrap can

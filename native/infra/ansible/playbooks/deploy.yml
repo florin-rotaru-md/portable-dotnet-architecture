@@ -3,8 +3,11 @@
 # control node — the repo token comes straight from vault.yml, nothing is
 # typed and nothing extra lands on the VM.
 #
-#   ansible-playbook playbooks/deploy.yml -e app=api.waa.ro    # one app
+#   ansible-playbook playbooks/deploy.yml -e app=api.waa.ro    # one app, its branch's tip
 #   ansible-playbook playbooks/deploy.yml                      # all repo-based apps
+#   ansible-playbook playbooks/deploy.yml -e app=api.waa.ro -e commit=<full hash>
+#       # that commit and no other: a release names it once and passes it to every app, so a
+#       # push made while the release runs cannot give two apps different source
 #   # encrypted vault: add --ask-vault-pass
 #
 # Requires bootstrap.yml to have run at least once (it renders deploy.sh).
@@ -36,6 +39,13 @@
         deploy_apps: "{{ deploy_apps | selectattr('name', 'equalto', app) | list }}"
       when: app is defined
 
+    - name: Ensure a named commit is a full hash
+      assert:
+        that:
+          - commit is match('^[0-9a-f]{40}$')
+        fail_msg: "commit must be a full 40-character hash, as 'git rev-parse HEAD' prints it."
+      when: commit is defined
+
     - name: Ensure there is something to deploy
       assert:
         that:
@@ -65,14 +75,12 @@
       vars:
         deploy_app: "{{ deploy_apps | selectattr('name', 'equalto', item) | first }}"
       command:
-        argv:
-          - "{{ apps_root }}/{{ item }}/scripts/deploy.sh"
-          - --repo-url
-          - "{{ deploy_app.repo_url }}"
-          - --branch
-          - "{{ deploy_app.repo_branch | default('master') }}"
-          - --project-path
-          - "{{ deploy_app.project_path }}"
+        argv: >-
+          {{ [apps_root ~ '/' ~ item ~ '/scripts/deploy.sh',
+              '--repo-url', deploy_app.repo_url,
+              '--branch', deploy_app.repo_branch | default('master'),
+              '--project-path', deploy_app.project_path]
+             + (['--commit', commit] if commit is defined else []) }}
       environment:
         APP_REPO_TOKEN: "{{ deploy_app.repo_token }}"
       become_user: "{{ app_user }}"
