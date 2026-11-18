@@ -7,6 +7,12 @@
     state: present
     update_cache: true
 
+# Imported, not included, so the tag reaches the tasks: `--tags deploy-key` generates and checks
+# the keys and touches nothing else.
+- name: Give the host a deploy key for each repository
+  import_tasks: deploy_keys.yml
+  tags: [deploy-key]
+
 - name: Configure native app instances
   include_tasks: app_instance.yml
   loop: "{{ native_apps }}"

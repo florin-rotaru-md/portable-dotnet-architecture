@@ -58,12 +58,14 @@ applications:
     # Nginx client_max_body_size: the largest upload or import the app accepts (default 1m).
     # max_body_size: "128m"
     drain_seconds: 30
+    # The GitHub repository, as https://github.com/<owner>/<repository>.git. The host reads it over
+    # SSH with a deploy key the app role generates for it; bootstrap prints a key GitHub has not
+    # been given (repository → Settings → Deploy keys, "Allow write access" unchecked).
     repo_url:     ""
     repo_branch:  "master"
     project_path: ""
     # Set when this app renders through a headless browser (needs use_headless_browser: true):
     # headless_browser: true
-    # repo_token: "{{ app_repo_token }}"
     # Npgsql keeps one pool per unique connection string; cap each with
     # Maximum Pool Size. postgres_max_connections above carries the
     # arithmetic that turns these caps into a server ceiling — the sum over

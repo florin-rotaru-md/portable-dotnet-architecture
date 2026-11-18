@@ -322,7 +322,6 @@ applications:
     repo_branch:   "master"
     project_path:  "Apps/Waa/Waa.Server/Waa.Server.csproj"
     headless_browser: true
-    repo_token:    "{{ app_repo_token }}"
     appsettings_override:
       Serilog:
         Using:
@@ -391,7 +390,6 @@ applications:
 #     repo_url:      "https://github.com/florin-rotaru-md/waa-server.git"
 #     repo_branch:   "master"
 #     project_path:  "src/Waa.Admin/Waa.Admin.csproj"
-#     repo_token:    "{{ app_repo_token }}"
 #     appsettings_override:
 #       ConnectionStrings:
 #         Main: "Host={{ postgres_host }};Port=5432;Database=waa_ro_admin;Username={{ postgres_user }};Password={{ postgres_password }};Pooling=true;Keepalive=60;Maximum Pool Size=5;Timeout=5;Command Timeout=30;Connection Idle Lifetime=60"
@@ -466,15 +464,18 @@ ansible-playbook playbooks/bootstrap.yml -u ubuntu --ask-become-pass --limit app
 #   sudo -u postgres dropdb restore_test
 # '
 
-# Bootstrap performs first deploy automatically for every app that has repo_url + project_path.
-# Later deploys need no token dance: bootstrap rendered each app's repo_token from
-# vault.yml to /opt/apps/<app>/config/repo-token (0600), and deploy.sh falls back
-# to it (--token and APP_REPO_TOKEN still override).
+# Bootstrap generates a deploy key on the app VM for every repository named by a repo_url and
+# prints each key GitHub does not accept yet. Add it once at
+# https://github.com/<owner>/<repository>/settings/keys/new, with "Allow write access"
+# unchecked. Bootstrap performs the first deploy automatically for every app that has
+# repo_url + project_path; on a new VM that deploy stops until GitHub has the key, and the
+# next bootstrap run completes it. Deploys read the repository with that key: nothing is
+# typed and no token is stored.
 #
 # Manual deploy example (on the app VM):
 # sudo -u devops /opt/apps/api.example.local/scripts/deploy.sh
 #
-# Or from the control machine, token straight from vault.yml:
+# Or from the control machine:
 # cd ~/src/portable-dotnet-architecture/native/infra/ansible
 # ansible-playbook playbooks/deploy.yml -e app=api.example.local   # one app
 # ansible-playbook playbooks/deploy.yml                            # every repo-based app

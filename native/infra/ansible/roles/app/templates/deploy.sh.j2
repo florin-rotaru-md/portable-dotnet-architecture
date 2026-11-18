@@ -17,12 +17,13 @@
 # First deploy:
 #   deploy.sh --repo-url https://github.com/org/repo.git \
 #             --branch master \
-#             [--token ghp_xxx] \
 #             --project-path src/MyApp/MyApp.csproj
 #
-# Subsequent deploys (uses cached repo/project; the token resolves from
-# --token → APP_REPO_TOKEN → config/repo-token, so normally none is passed):
+# Subsequent deploys (uses the cached repository, branch and project):
 #   deploy.sh [--branch master]
+#
+# The repository is named by its GitHub address and read over SSH, with the deploy key this host
+# holds for it (roles/app/tasks/deploy_keys.yml): no credential is passed in or kept beside the app.
 #
 set -euo pipefail
 
@@ -32,6 +33,7 @@ APP_ROOT="$APPS_ROOT/$APP_NAME"
 SCRIPTS_DIR="$APP_ROOT/scripts"
 RUNTIME_DIR="$APP_ROOT/runtime"
 BUILD_DIR="$APP_ROOT/build"
+DEPLOY_KEYS_DIR="{{ app_deploy_keys_dir }}"
 # Where the application rolls its own log. Not the journal: the journal has the process's stderr,
 # this has the exception.
 LOG_DIR="{{ app_log_dir }}"
@@ -45,7 +47,6 @@ HEALTH_INTERVAL_SECONDS="{{ app_health_interval_seconds }}"
 REPO_URL=""
 REPO_BRANCH=""
 REPO_COMMIT=""
-REPO_TOKEN="${APP_REPO_TOKEN:-}"
 PROJECT_PATH=""
 CONFIG_ONLY=false
 CHECK_ONLY=false
@@ -56,7 +57,6 @@ while [[ $# -gt 0 ]]; do
     --repo-url)     REPO_URL="$2";     shift 2 ;;
     --branch)       REPO_BRANCH="$2";  shift 2 ;;
     --commit)       REPO_COMMIT="$2";  shift 2 ;;
-    --token)        REPO_TOKEN="$2";   shift 2 ;;
     --project-path) PROJECT_PATH="$2"; shift 2 ;;
     --config-only)  CONFIG_ONLY=true;  shift ;;
     --check)        CHECK_ONLY=true;   shift ;;
@@ -98,13 +98,7 @@ if [ "$CONFIG_ONLY" = false ]; then
     echo "Error: --project-path is required on first deploy" >&2; exit 1
   fi
 
-  # Token fallback: Ansible renders the app's repo_token from vault.yml to
-  # config/repo-token (0600), so manual deploys don't need to supply one.
-  if [ -z "$REPO_TOKEN" ] && [ -f "$APP_ROOT/config/repo-token" ]; then
-    REPO_TOKEN=$(cat "$APP_ROOT/config/repo-token")
-  fi
-
-  # Persist config (repo URL stored without token)
+  # Persist config
   echo "$REPO_URL"     > "$RUNTIME_DIR/repo-url"
   echo "$REPO_BRANCH"  > "$RUNTIME_DIR/repo-branch"
   echo "$PROJECT_PATH" > "$RUNTIME_DIR/project-path"
@@ -271,31 +265,41 @@ if [ "$CONFIG_ONLY" = true ]; then
   find "${SLOT_DIR:?}" -mindepth 1 -delete 2>/dev/null || true
   cp -a "$LIVE_SLOT_DIR/." "$SLOT_DIR/"
 else
-  # ── Clone / pull repo (private GitHub repo; token required) ────────────────
-  if [ -z "$REPO_TOKEN" ]; then
-    echo "Error: GitHub token is required for repository deploys. Pass --token, set APP_REPO_TOKEN, or re-run the playbook so config/repo-token is rendered from vault.yml." >&2
+  # ── Clone / pull repo ───────────────────────────────────────────────────────
+  # The inventory names the repository by its GitHub address; the host reads it over SSH, with the
+  # deploy key it holds for that repository and the options and host key the app role rendered.
+  if [[ ! "$REPO_URL" =~ ^https://github\.com/([^/]+/[^/]+)$ ]]; then
+    echo "Error: the repository URL must read https://github.com/<owner>/<repository>.git, not '$REPO_URL'." >&2
+    exit 1
+  fi
+  REPO_NAME="${BASH_REMATCH[1]%.git}"
+  REPO_SSH_URL="git@github.com:$REPO_NAME.git"
+  DEPLOY_KEY="$DEPLOY_KEYS_DIR/$REPO_NAME"
+
+  if [ ! -f "$DEPLOY_KEY" ]; then
+    echo "Error: this host has no deploy key for $REPO_NAME. Run bootstrap.yml with the deploy-key tag; it generates one." >&2
     exit 1
   fi
 
-  if [[ "$REPO_URL" != https://github.com/* ]]; then
-    echo "Error: only https://github.com/... repository URLs are supported in private-token mode." >&2
+  export GIT_SSH_COMMAND="ssh -F '$DEPLOY_KEYS_DIR/ssh_config' -i '$DEPLOY_KEY'"
+
+  # Reached before any slot is stopped or emptied: both are as the last deploy left them.
+  repository_unreadable() {
+    echo "Error: could not read $REPO_NAME from GitHub with this host's deploy key." >&2
+    echo "If the lines above say 'Permission denied (publickey)', the repository has not been given the key:" >&2
+    echo "add it at https://github.com/$REPO_NAME/settings/keys/new, with 'Allow write access' unchecked." >&2
+    cat "$DEPLOY_KEY.pub" >&2
     exit 1
-  fi
-
-  GH_BASIC_AUTH=$(printf 'x-access-token:%s' "$REPO_TOKEN" | base64 | tr -d '\n')
-
-  git_with_auth() {
-    git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic ${GH_BASIC_AUTH}" "$@"
   }
 
   if [ -d "$BUILD_DIR/.git" ]; then
     echo "Pulling latest from $REPO_BRANCH..."
-    git -C "$BUILD_DIR" remote set-url origin "$REPO_URL"
-    git_with_auth -C "$BUILD_DIR" fetch --depth=1 origin "$REPO_BRANCH"
+    git -C "$BUILD_DIR" remote set-url origin "$REPO_SSH_URL"
+    git -C "$BUILD_DIR" fetch --depth=1 origin "$REPO_BRANCH" || repository_unreadable
     git -C "$BUILD_DIR" reset --hard "origin/$REPO_BRANCH"
   else
-    echo "Cloning $REPO_URL (branch $REPO_BRANCH)..."
-    git_with_auth clone --branch "$REPO_BRANCH" --depth 1 "$REPO_URL" "$BUILD_DIR"
+    echo "Cloning $REPO_NAME (branch $REPO_BRANCH)..."
+    git clone --branch "$REPO_BRANCH" --depth 1 "$REPO_SSH_URL" "$BUILD_DIR" || repository_unreadable
   fi
 
   # A named commit replaces the tip just fetched. It is asked for by hash, so a push made after
@@ -303,7 +307,7 @@ else
   # anything else.
   if [ -n "$REPO_COMMIT" ]; then
     echo "Checking out commit $REPO_COMMIT..."
-    git_with_auth -C "$BUILD_DIR" fetch --depth=1 origin "$REPO_COMMIT"
+    git -C "$BUILD_DIR" fetch --depth=1 origin "$REPO_COMMIT" || repository_unreadable
     git -C "$BUILD_DIR" reset --hard FETCH_HEAD
 
     if [ "$(git -C "$BUILD_DIR" rev-parse HEAD)" != "$REPO_COMMIT" ]; then

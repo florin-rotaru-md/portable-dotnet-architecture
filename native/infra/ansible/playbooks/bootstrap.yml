@@ -4,6 +4,7 @@
 #   ansible-playbook playbooks/bootstrap.yml                            # everything
 #   ansible-playbook playbooks/bootstrap.yml --limit app --tags app     # the app role only
 #   ansible-playbook playbooks/bootstrap.yml --limit app --tags app,nginx   # a port change
+#   ansible-playbook playbooks/bootstrap.yml --limit app --tags deploy-key  # the repository keys only
 #   ansible-playbook playbooks/bootstrap.yml --tags postgres            # database host only
 #   ansible-playbook playbooks/bootstrap.yml --list-tags                # what is available
 #
@@ -49,9 +50,9 @@
 
         # Looped by position, never over the application dicts: `assert` prints its `item` in
         # full on every run (`loop_control.label` only shortens the header line), and an
-        # application dict carries its whole config bundle and repo_token — the JWT signing key
-        # and the token used to be printed by every bootstrap. A name may be what is missing,
-        # so the position is the one handle that always exists.
+        # application dict carries its whole config bundle — a loop over the dicts prints the
+        # JWT signing key. A name may be what is missing, so the position is the one handle
+        # that always exists.
         - name: Validate application definitions
           vars:
             native_app: "{{ native_apps[item] }}"
@@ -70,12 +71,12 @@
               - (native_app.port_blue | int) > 0
               - (native_app.port_green | int) > 0
               - (native_app.port_blue | int) != (native_app.port_green | int)
-              - native_app.repo_url | default('') | length == 0 or (native_app.repo_token | default('') | string | trim | length > 0)
-              - native_app.repo_token is not defined or (native_app.repo_token | string | trim | length == 0) or (native_app.repo_token | string | trim != 'ghp_...')
+              - native_app.repo_url | default('') | length == 0 or native_app.repo_url is match('^https://github[.]com/[^/]+/[^/]+$')
             fail_msg: >-
               Invalid application configuration for {{ native_app.name | default('application #' ~ item) }}.
-              Verify required fields, ports, and repository credentials. For repository-based
-              auto-deploy, set a real GitHub token in vault.yml (not placeholder ghp_...).
+              Verify required fields and ports. A repo_url reads
+              https://github.com/<owner>/<repository>.git: the host fetches it over SSH with the
+              deploy key the app role generates for that repository.
           loop: "{{ range(0, native_apps | length) | list }}"
           loop_control:
             label: "{{ native_app.name | default('application #' ~ item) }}"
@@ -142,7 +143,7 @@
           when:
             - not item.stat.exists
 
-        - name: Run initial deploy (token required)
+        - name: Run initial deploy
           command:
             argv:
               - "{{ apps_root }}/{{ app_cfg.name }}/scripts/deploy.sh"
@@ -152,8 +153,6 @@
               - "{{ app_cfg.repo_branch | default('master') }}"
               - --project-path
               - "{{ app_cfg.project_path | default('') }}"
-          environment:
-            APP_REPO_TOKEN: "{{ app_cfg.repo_token }}"
           become_user: "{{ app_user }}"
           loop: "{{ initial_deploy_apps | default([]) }}"
           loop_control:

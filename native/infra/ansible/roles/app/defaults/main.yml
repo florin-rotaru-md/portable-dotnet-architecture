@@ -1,0 +1,8 @@
+---
+# Where this host keeps the SSH keys it reads its repositories with: one GitHub deploy key per
+# repository, at <owner>/<repository> under this directory (tasks/deploy_keys.yml).
+app_deploy_keys_dir: "{{ apps_root }}/deploy-keys"
+
+# GitHub's SSH host key, as https://api.github.com/meta lists it under ssh_keys. A deploy refuses
+# any other, so a key GitHub rotates is one change here and a run of the deploy-key tag.
+github_ssh_host_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl"

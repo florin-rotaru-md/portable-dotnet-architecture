@@ -33,8 +33,7 @@ protect the inventory and recovery copy whether encrypted or plaintext. Never co
 |---|---|
 | `name`, `assembly`, `domain` | Runtime paths, .NET entry assembly and Nginx virtual host |
 | `port_blue`, `port_green`, `drain_seconds` | Two loopback listeners and release overlap |
-| `repo_url`, `repo_branch`, `project_path` | Initial source checkout and publish target |
-| `repo_token` | Read-only repository credential, rendered privately for later deploys |
+| `repo_url`, `repo_branch`, `project_path` | GitHub repository (`https://github.com/<owner>/<repository>.git`), branch and publish target |
 | `appsettings_override` | Rendered app configuration; application-specific layering still applies |
 | `use_cloudflared`, `cloudflared_version` | Tunnel installation and explicit connector version |
 | `use_loki_grafana`, `monitoring_target` | Optional logging services and their destination VM |
@@ -62,7 +61,7 @@ ansible-playbook playbooks/deploy.yml -e app=myapp -e commit=<full hash>
 Use `--ask-vault-pass` when the selected inventory is encrypted. A complete initial bootstrap can
 deploy every configured app automatically; verify the `applications` list and dependency order first.
 
-An application definition carries its config bundle and repository token, and Ansible prints a
+An application definition carries its config bundle, and Ansible prints a
 loop's `item` with every `assert` result and with any item that fails; `loop_control.label` only
 shortens the header line. The validation and deploy tasks therefore loop over application names
 or positions and look the definition up in a task variable. Role tasks that still loop over
@@ -94,24 +93,47 @@ the override and env files the serving slot was started with, and
   build/                    source checkout
   slots/{blue,green}/        published code, the override it was started with, release-commit
   env/{common,blue,green}.env
-  config/                   override and private repo-token
+  config/                   override and optional config bundle
   nginx/                    upstream templates
   runtime/active-slot
   runtime/config-live.sha256
   runtime/deploy-history.log
   scripts/                  deploy, rollback, health-check, switch-nginx, current-slot
+/opt/apps/deploy-keys/      host-wide: a deploy key per repository, GitHub's host key, SSH options
 /usr/local/sbin/ensure-local-domains   host-wide; rendered by the nginx role
 /etc/systemd/system/ensure-local-domains.service   runs it at boot
 ```
 
 On the app VM, later deploys can use `sudo -u devops /opt/apps/<app>/scripts/deploy.sh`.
-Token resolution is command argument → `APP_REPO_TOKEN` → private `config/repo-token`; prefer the
-rendered file over command-line secrets. Reapply the app role after rotating its inventory token.
 `rollback.sh` switches to the other slot as it was last started: the previous build after a deploy,
 the same build under its previous override after a configuration change. It does not undo schema
 changes, and it clears the fingerprint, so the next run of the app role applies the inventory's
 configuration again. Use
 the [release and rollback acceptance checks](../../platform/docs/OPERATIONS.md#release).
+
+### Repository access
+
+The app VM reads each repository over SSH with a GitHub deploy key of its own. The app role
+generates it at `/opt/apps/deploy-keys/<owner>/<repository>`: read-only on GitHub's side, valid
+for that one repository, never copied off the VM and absent from the inventory. `ssh_config` in
+the same directory holds every SSH option a fetch uses, and `known_hosts` pins GitHub's host key
+(`github_ssh_host_key` in the role defaults); a deploy refuses any other.
+
+GitHub is given the public half once per key: repository → Settings → Deploy keys → Add deploy
+key, with "Allow write access" unchecked. The role reads each repository on every run and prints
+the key of one it could not read, with the address to add it at;
+`bootstrap.yml --limit app --tags deploy-key` runs that part alone. A deploy that cannot read its
+repository stops before it touches a slot and prints the same key.
+
+```bash
+# On the app VM: which repository GitHub takes this key for.
+sudo -u devops ssh -F /opt/apps/deploy-keys/ssh_config -i /opt/apps/deploy-keys/<owner>/<repository> -T git@github.com
+```
+
+A rebuilt VM generates new keys: its first bootstrap prints them and stops at the initial deploy
+until GitHub has them; the keys of the VM it replaces are then deleted on GitHub by hand. To
+replace a key, delete its two files on the VM, run the tag, add the new key and delete the old one
+on GitHub.
 
 ### Local name resolution
 

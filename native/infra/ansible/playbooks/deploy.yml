@@ -1,7 +1,7 @@
 ---
 # Deploy a new version of one application (or every repo-based one) from the
-# control node — the repo token comes straight from vault.yml, nothing is
-# typed and nothing extra lands on the VM.
+# control node. The host reads the repository with its own deploy key
+# (roles/app/tasks/deploy_keys.yml), so no credential is typed or travels with the run.
 #
 #   ansible-playbook playbooks/deploy.yml -e app=api.waa.ro    # one app, its branch's tip
 #   ansible-playbook playbooks/deploy.yml                      # all repo-based apps
@@ -53,24 +53,12 @@
         fail_msg: >-
           No application with repo_url + project_path matched{% if app is defined %} name '{{ app }}'{% endif %}.
 
-    # Both loops below run over application NAMES, never over the application dicts. A loop's
-    # `item` is part of every result Ansible prints — always for `assert`, and for any module the
-    # moment an item fails — and `loop_control.label` only shortens the header line above it. An
-    # application dict carries its whole config bundle and repo_token, so looping over the dicts
-    # printed the JWT signing key, the bundle's other secrets and the token on every deploy.
-    - name: Validate repository credentials
-      vars:
-        deploy_app: "{{ deploy_apps | selectattr('name', 'equalto', item) | first }}"
-      assert:
-        that:
-          - deploy_app.repo_token | default('') | string | trim | length > 0
-          - deploy_app.repo_token | string | trim != 'ghp_...'
-        fail_msg: >-
-          Invalid repo_token for {{ item }}. Set a real token in vault.yml
-          (fine-grained PAT, Contents read-only) — not empty, not the placeholder.
-      loop: "{{ deploy_apps | map(attribute='name') | list }}"
-
   tasks:
+    # The loop runs over application NAMES, never over the application dicts. A loop's `item` is
+    # part of every result Ansible prints — always for `assert`, and for any module the moment an
+    # item fails — and `loop_control.label` only shortens the header line above it. An application
+    # dict carries its whole config bundle, so a loop over the dicts prints the JWT signing key and
+    # the bundle's other secrets.
     - name: Run deploy.sh (build → idle slot → health check → switch)
       vars:
         deploy_app: "{{ deploy_apps | selectattr('name', 'equalto', item) | first }}"
@@ -81,8 +69,6 @@
               '--branch', deploy_app.repo_branch | default('master'),
               '--project-path', deploy_app.project_path]
              + (['--commit', commit] if commit is defined else []) }}
-      environment:
-        APP_REPO_TOKEN: "{{ deploy_app.repo_token }}"
       become_user: "{{ app_user }}"
       loop: "{{ deploy_apps | map(attribute='name') | list }}"
       register: deploy_results
