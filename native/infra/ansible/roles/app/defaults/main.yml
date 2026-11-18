@@ -3,6 +3,11 @@
 # repository, at <owner>/<repository> under this directory (tasks/deploy_keys.yml).
 app_deploy_keys_dir: "{{ apps_root }}/deploy-keys"
 
+# The name a key carries in its comment, before the repository it reads: what GitHub shows for a
+# key added without a title. It is a label, not part of the key; give each host its own when more
+# than one holds a key for the same repository.
+app_deploy_key_name: "apps-deploy"
+
 # GitHub's SSH host key, as https://api.github.com/meta lists it under ssh_keys. A deploy refuses
 # any other, so a key GitHub rotates is one change here and a run of the deploy-key tag.
 github_ssh_host_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl"

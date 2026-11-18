@@ -113,27 +113,62 @@ the [release and rollback acceptance checks](../../platform/docs/OPERATIONS.md#r
 
 ### Repository access
 
-The app VM reads each repository over SSH with a GitHub deploy key of its own. The app role
-generates it at `/opt/apps/deploy-keys/<owner>/<repository>`: read-only on GitHub's side, valid
-for that one repository, never copied off the VM and absent from the inventory. `ssh_config` in
-the same directory holds every SSH option a fetch uses, and `known_hosts` pins GitHub's host key
-(`github_ssh_host_key` in the role defaults); a deploy refuses any other.
+The app VM reads each repository over SSH with a GitHub deploy key of its own: read-only on
+GitHub's side and valid for that one repository. `deploy.sh` uses it for every fetch, and the
+inventory holds no repository credential.
 
-GitHub is given the public half once per key: repository → Settings → Deploy keys → Add deploy
-key, with "Allow write access" unchecked. The role reads each repository on every run and prints
-the key of one it could not read, with the address to add it at;
-`bootstrap.yml --limit app --tags deploy-key` runs that part alone. A deploy that cannot read its
-repository stops before it touches a slot and prints the same key.
-
-```bash
-# On the app VM: which repository GitHub takes this key for.
-sudo -u devops ssh -F /opt/apps/deploy-keys/ssh_config -i /opt/apps/deploy-keys/<owner>/<repository> -T git@github.com
+```text
+/opt/apps/deploy-keys/          0700, app user
+  ssh_config                    every SSH option a fetch uses
+  known_hosts                   GitHub's host key; a deploy refuses any other
+  <owner>/<repository>          private half, 0600
+  <owner>/<repository>.pub      public half, ending in "apps-deploy reads <owner>/<repository>"
 ```
 
-A rebuilt VM generates new keys: its first bootstrap prints them and stops at the initial deploy
-until GitHub has them; the keys of the VM it replaces are then deleted on GitHub by hand. To
-replace a key, delete its two files on the VM, run the tag, add the new key and delete the old one
-on GitHub.
+The words that end the public half are a label, `app_deploy_key_name` and the repository. They are
+not part of the key: GitHub takes the same key under any label. `github_ssh_host_key` and the label
+are role defaults.
+
+The private half, step by step:
+
+1. **Generate it on the VM.** The app role does, as the app user, for every repository a `repo_url`
+   names and only where the file is missing. `bootstrap.yml --limit app --tags deploy-key` runs
+   that part of the role alone. By hand it is the same command:
+
+   ```bash
+   sudo -u devops ssh-keygen -q -t ed25519 -N "" \
+     -C "apps-deploy reads <owner>/<repository>" -f /opt/apps/deploy-keys/<owner>/<repository>
+   ```
+
+2. **Leave it without a passphrase.** A deploy runs unattended. The file's mode and owner and the
+   directory's mode are its protection: only the app user and root read it.
+3. **Keep it on the VM.** It is not in the inventory or the vault, and no playbook reads, copies
+   or prints it. Do not copy it to the control node, a workstation or another host: a second host
+   generates a key of its own. Whatever copies the VM's disk carries the key with it — replication
+   and image backups, protected as [Recovery](../proxmox-lab/RECOVERY.md#credentials) says.
+4. **Check it.**
+
+   ```bash
+   # On the app VM. The private half reads -rw------- and belongs to the app user.
+   sudo -u devops ls -l /opt/apps/deploy-keys/<owner>/
+   # Prints the public half: the two files are a pair, and there is no passphrase.
+   sudo -u devops ssh-keygen -y -P "" -f /opt/apps/deploy-keys/<owner>/<repository>
+   # "Hi <owner>/<repository>!" — GitHub takes the key, for that repository.
+   sudo -u devops ssh -F /opt/apps/deploy-keys/ssh_config \
+     -i /opt/apps/deploy-keys/<owner>/<repository> -T git@github.com
+   ```
+
+5. **Replace it** when someone else may have read the VM's disk. Delete the key on GitHub first,
+   which revokes it at once; then delete its two files on the VM, run the tag and add the key it
+   prints.
+6. **After a restore or a rebuild.** A VM restored from an image has its key back and needs
+   nothing. A VM built from nothing generates new keys: its first bootstrap prints them and stops
+   at the initial deploy until GitHub has them. Delete the keys of the VM it replaces on GitHub.
+
+The public half: GitHub is given it once per key, at repository → Settings → Deploy keys → Add
+deploy key, with "Allow write access" unchecked. The role reads each repository on every run and
+prints the key of one it could not read, with the address to add it at. A deploy that cannot read
+its repository stops before it touches a slot and prints the same key.
 
 ### Local name resolution
 

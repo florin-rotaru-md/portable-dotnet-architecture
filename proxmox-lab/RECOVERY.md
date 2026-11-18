@@ -496,8 +496,13 @@ Before enabling exclusive reconciliation, include both host keys and all intende
 Test a second login before revoking the old one. Keep console access available during SSH changes.
 
 Back up the inventory/vault pair with restricted access; plaintext remains plaintext even when
-the file is named `vault.yml`. Include edge, object-storage, DB, repository and integration recovery
+the file is named `vault.yml`. Include edge, object-storage, DB and integration recovery
 material. Host config archives can carry signing keys; encrypt them outside the host.
+
+The app VM's repository deploy key is not recovery material and is kept nowhere else: an image
+restore brings it back with the disk, and a VM built from nothing generates a new one
+([Repository access](../native/README.md#repository-access)). Replication and VM images carry its
+private half, as they carry every file on that disk.
 
 ## Drill acceptance
 

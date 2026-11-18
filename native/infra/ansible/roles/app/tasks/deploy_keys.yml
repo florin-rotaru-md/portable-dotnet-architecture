@@ -6,6 +6,10 @@
 # GitHub has to be given the public half once per key: repository → Settings → Deploy keys, with
 # "Allow write access" left unchecked. A rebuilt host generates new keys, and the last task below
 # prints every key that did not get through, on every run.
+#
+# The private half has no passphrase, because a deploy runs unattended: its mode, its owner and the
+# directory's mode are what protect it. The steps an operator takes with it are in
+# portable-dotnet-architecture/native/README.md#repository-access.
 
 - name: Name the repositories the applications are built from
   set_fact:
@@ -76,7 +80,7 @@
       - -N
       - ""
       - -C
-      - "{{ ansible_facts['hostname'] }} reads {{ item }}"
+      - "{{ app_deploy_key_name }} reads {{ item }}"
       - -f
       - "{{ app_deploy_keys_dir }}/{{ item }}"
     creates: "{{ app_deploy_keys_dir }}/{{ item }}"
