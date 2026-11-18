@@ -15,6 +15,30 @@
     state: present
     update_cache: true
 
+# The applications decide nothing on a VM's clock (platform/docs/ARCHITECTURE.md#time):
+# every stored time is the database's. That makes the database VM's clock the one
+# every decision is taken on, and leaves tokens, logs and evidence dated by each
+# VM's own. So a guest whose clock is not synchronized stops here, by name, rather
+# than in a log weeks later. The time service is whichever the image carries
+# (systemd-timesyncd or chrony): set-ntp enables it and installs nothing.
+# Set require_synchronized_clock: false to opt out.
+- name: Require a synchronized clock
+  when: require_synchronized_clock | default(true)
+  block:
+    - name: Enable the image's time service
+      command: timedatectl set-ntp true
+      changed_when: false
+
+    # Read-only, so --check runs it too and reports the guest as it is.
+    - name: Wait for the clock to be synchronized
+      command: timedatectl show -p NTPSynchronized --value
+      register: clock_synchronized
+      check_mode: false
+      changed_when: false
+      retries: 8
+      delay: 8
+      until: clock_synchronized.stdout | trim == 'yes'
+
 # Guests are cloned from one small template and each is grown to its own size at
 # the hypervisor (Proxmox: qm resize). Inside, the partition / PV / LV / filesystem
 # still have to follow, and cloud-init's growpart module won't do it because root

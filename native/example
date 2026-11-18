@@ -112,6 +112,10 @@ ssh_authorized_keys_exclusive: false
 # (proxmox-lab Stage 11).
 grow_root_filesystem: true
 
+# Enable the image's time service and stop the run on a guest whose clock is not
+# synchronized: the database VM's clock is the one every stored time is read from.
+require_synchronized_clock: true
+
 # ── Infrastructure ─────────────────────────────────────────────────────────────
 app_user: devops
 apps_root:    /opt/apps

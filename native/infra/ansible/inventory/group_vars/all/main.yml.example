@@ -33,6 +33,11 @@ ssh_disable_password_auth: true
 # that cloud-init grows at every boot — set false there (proxmox-lab Stage 11).
 grow_root_filesystem: true
 
+# The common role enables the image's time service and stops the run on a guest
+# whose clock is not synchronized: the database VM's clock is the one every stored
+# time is read from (platform/docs/ARCHITECTURE.md#time).
+require_synchronized_clock: true
+
 # ── Apps (required) ───────────────────────────────────────────────────────────
 app_user: devops
 app_log_root: /var/log
