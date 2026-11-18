@@ -30,11 +30,13 @@
     components: main
     signed_by:  https://pkg.cloudflare.com/cloudflare-main.gpg
 
-# Pinned on purpose when cloudflared_version is set. This is the only public
-# ingress, the service runs with --no-autoupdate, and unattended-upgrades does
-# not cover the Cloudflare origin — so the binary moves when you decide it does.
-# allow_downgrade makes a rollback the same variable bump in reverse.
-# Unset/empty cloudflared_version = whatever the repository currently offers.
+# With cloudflared_version set, that version is installed, and allow_downgrade makes a
+# rollback the same variable bump in reverse. Unset or empty, the connector is installed
+# only when it is missing, and an installed one is left alone. This is the only public
+# ingress: the service runs with --no-autoupdate and unattended-upgrades does not cover
+# the Cloudflare origin, so the binary moves with the pin or with the operator's own
+# `apt upgrade`, never by itself. The repository keeps only its newest package, so a pin
+# an upgrade has overtaken fails this task.
 - name: Install cloudflared
   apt:
     name:            "cloudflared{{ ('=' ~ cloudflared_version) if (cloudflared_version | default('') | string | trim) else '' }}"

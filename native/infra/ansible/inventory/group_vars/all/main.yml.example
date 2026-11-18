@@ -193,14 +193,18 @@ postgres_basebackup_minute: "45"
 use_cloudflared: false
 # cloudflare_token comes from vault.yml when use_cloudflared: true
 
-# Connector version. Pinned deliberately: the service runs with --no-autoupdate and
-# unattended-upgrades covers only the PGDG origin, so nothing here moves on its own —
-# which is what you want from the only public ingress. Upgrading is a bump here, then
-# `bootstrap.yml --limit app --tags cloudflared`; rolling back is the same bump in
-# reverse (the role allows a downgrade). `apt-cache madison cloudflared` on the app
-# host lists what the repository currently has. Left unset you get whatever was
-# current on install day, and it stays there for ever.
-# cloudflared_version: "2026.8.2"
+# Connector version. Left unset, the role installs what the repository has when the
+# connector is missing and never moves an installed one: the package then follows the
+# operator's own `apt upgrade` on the app host, and the new binary runs from the
+# connector's next restart. Nothing else moves it: the service runs with
+# --no-autoupdate and unattended-upgrades does not cover the Cloudflare origin.
+# Set it to choose a version: `bootstrap.yml --limit app --tags cloudflared` installs
+# it, and a rollback is the same bump in reverse (the role allows a downgrade).
+# A pin and `apt upgrade` do not go together: the repository keeps only its newest
+# package, so once an upgrade has moved the connector past the pin, the next bootstrap
+# fails at its install. `apt-cache madison cloudflared` on the app host lists what the
+# repository has.
+# cloudflared_version: "2026.11.1"
 
 # ── Loki + Grafana (optional, Docker) ─────────────────────────────────────────
 use_loki_grafana: false
