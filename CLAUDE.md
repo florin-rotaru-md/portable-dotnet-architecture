@@ -2,7 +2,7 @@
 
 Start at [Proxmox](proxmox-lab/README.md) for hosts and [native](native/README.md) for VM provisioning.
 Application operation is owned by [platform](../platform/docs/OPERATIONS.md); frontends are in
-the sibling `ui` repository (`waa-src`, `educa-src`).
+the sibling `ui` repository (`waa-src`, `educa-src`, `ticketing-src`).
 
 - `native/infra/ansible` owns users, runtime, Nginx, PostgreSQL, deploy scripts and tunnel inside VMs.
 - `proxmox-lab` owns hand-managed hosts, quorum, ZFS, HA, maintenance and recovery. Update the owning

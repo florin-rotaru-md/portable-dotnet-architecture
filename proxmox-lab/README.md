@@ -6,7 +6,7 @@ Two Proxmox nodes (`pve1` .11, `pve2` .12), separate QDevice (.10), four Ubuntu 
 | VM | Role | Recovery |
 |---|---|---|
 | 1020 / .20 | Ansible control and installation inventory | Hourly replica; manual node-loss recovery |
-| 1021 / .21 | Nginx, cloudflared, Waa RO/Events and Fiscal blue/green slots | HA; hourly replica |
+| 1021 / .21 | Nginx, cloudflared, Waa RO/Events, Educa and Fiscal blue/green slots | HA; hourly replica |
 | 1022 / .22 | PostgreSQL and app/users/DP databases | HA; minute replica |
 | 1023 / .23 | Loki and Grafana | Hourly replica; manual node-loss recovery |
 
